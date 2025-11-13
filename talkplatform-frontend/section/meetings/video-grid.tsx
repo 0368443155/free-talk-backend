@@ -52,9 +52,15 @@ const LocalVideo = memo(({ localStream, currentParticipant, isMuted, isVideoOff,
       });
       
       videoRef.current.srcObject = localStream;
-      videoRef.current.play().catch(err => {
-        console.error('[LocalVideo] Failed to play video:', err);
-      });
+      videoRef.current
+        .play()
+        .catch(err => {
+          if (err?.name === 'AbortError') {
+            console.debug('[LocalVideo] Playback aborted (likely due to stream switch).');
+            return;
+          }
+          console.error('[LocalVideo] Failed to play video:', err);
+        });
     } else {
       videoRef.current.srcObject = null;
     }
@@ -145,9 +151,15 @@ const RemoteVideo = memo(({ stream, participant }: RemoteVideoProps) => {
     if (videoRef.current && stream) {
       if (videoRef.current.srcObject !== stream) {
         videoRef.current.srcObject = stream;
-        videoRef.current.play().catch(err => {
-          console.error('[RemoteVideo] Failed to play video:', err);
-        });
+        videoRef.current
+          .play()
+          .catch(err => {
+            if (err?.name === 'AbortError') {
+              console.debug('[RemoteVideo] Playback aborted (likely due to stream switch).');
+              return;
+            }
+            console.error('[RemoteVideo] Failed to play video:', err);
+          });
       }
       
       const videoTracks = stream.getVideoTracks();

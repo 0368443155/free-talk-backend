@@ -172,6 +172,7 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
     setVideoId(newVideoId);
     setIsPlaying(true);
     setCurrentTimestamp(startSeconds);
+    isLocalChange.current = true;
 
     if (playerRef.current && typeof playerRef.current.loadVideoById === "function") {
       playerRef.current.loadVideoById({
@@ -270,7 +271,7 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
 
       if (data.videoId && data.videoId !== videoId) {
         setVideoId(data.videoId);
-        if (playerRef.current && playerRef.current.loadVideoById) {
+        if (playerRef.current && typeof playerRef.current.loadVideoById === "function") {
           playerRef.current.loadVideoById({
             videoId: data.videoId,
             startSeconds: data.currentTime,
@@ -278,15 +279,16 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
         }
       }
 
-      if (playerRef.current) {
+      if (playerRef.current && typeof playerRef.current.seekTo === "function") {
         playerRef.current.seekTo(data.currentTime, true);
-        if (data.isPlaying) {
+        if (data.isPlaying && typeof playerRef.current.playVideo === "function") {
           playerRef.current.playVideo();
-        } else {
+        } else if (!data.isPlaying && typeof playerRef.current.pauseVideo === "function") {
           playerRef.current.pauseVideo();
         }
       }
 
+      setCurrentTimestamp(data.currentTime);
       setIsPlaying(data.isPlaying);
     };
 
@@ -304,15 +306,14 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
         }
       }
 
-      if (playerRef.current) {
-        if (typeof playerRef.current.seekTo === 'function') {
-          playerRef.current.seekTo(data.currentTime, true);
-        }
-        if (typeof playerRef.current.playVideo === 'function') {
+      if (playerRef.current && typeof playerRef.current.seekTo === "function") {
+        playerRef.current.seekTo(data.currentTime, true);
+        if (typeof playerRef.current.playVideo === "function") {
           playerRef.current.playVideo();
         }
       }
 
+      setCurrentTimestamp(data.currentTime);
       setIsPlaying(true);
     };
 
@@ -320,11 +321,14 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
       console.log("⏸️ YouTube pause received:", data);
       isLocalChange.current = true;
 
-      if (playerRef.current) {
+      if (playerRef.current && typeof playerRef.current.seekTo === "function") {
         playerRef.current.seekTo(data.currentTime, true);
-        playerRef.current.pauseVideo();
+        if (typeof playerRef.current.pauseVideo === "function") {
+          playerRef.current.pauseVideo();
+        }
       }
 
+      setCurrentTimestamp(data.currentTime);
       setIsPlaying(false);
     };
 
@@ -332,7 +336,7 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
       console.log("⏩ YouTube seek received:", data);
       isLocalChange.current = true;
 
-      if (playerRef.current) {
+      if (playerRef.current && typeof playerRef.current.seekTo === "function") {
         playerRef.current.seekTo(data.currentTime, true);
       }
     };
@@ -392,24 +396,26 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
   };
 
   const handleTogglePlay = () => {
-    if (!isHost || !socket || !playerRef.current) return;
+    if (!isHost || !socket) return;
 
-    // Check if player methods are available
-    if (typeof playerRef.current.getCurrentTime !== 'function') {
-      console.error("❌ Player not ready yet");
-      return;
-    }
-
-    const currentTime = playerRef.current.getCurrentTime();
+    const currentTime = getCurrentTime();
 
     if (isPlaying) {
       console.log("⏸️ Host pausing video");
-      playerRef.current.pauseVideo();
+      isLocalChange.current = true;
+      if (playerRef.current && typeof playerRef.current.pauseVideo === "function") {
+        playerRef.current.pauseVideo();
+      }
+      setCurrentTimestamp(currentTime);
       socket.emit("youtube:pause", { currentTime });
       setIsPlaying(false);
     } else {
       console.log("▶️ Host playing video");
-      playerRef.current.playVideo();
+      isLocalChange.current = true;
+      if (playerRef.current && typeof playerRef.current.playVideo === "function") {
+        playerRef.current.playVideo();
+      }
+      setCurrentTimestamp(currentTime);
       socket.emit("youtube:play", { videoId, currentTime });
       setIsPlaying(true);
     }
@@ -423,7 +429,8 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
     // Clear video on host side
     setVideoId("");
     setIsPlaying(false);
-    if (playerRef.current) {
+    if (playerRef.current && typeof playerRef.current.stopVideo === "function") {
+      isLocalChange.current = true;
       playerRef.current.stopVideo();
     }
 
@@ -438,29 +445,6 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
       console.log(`🔊 Volume synced to ${externalVolume}%`);
     }
   }, [externalVolume]);
-
-  if (!videoId && !showSearch) {
-    console.log('📺 [YouTubePlayer] No video, showing empty state:', { isHost, videoId, showSearch });
-    return (
-      <Card className="bg-gray-800 border-gray-700">
-        <CardContent className="p-8 text-center">
-          {isHost ? (
-            <Button onClick={() => setShowSearch(true)} className="gap-2">
-              <Search className="w-4 h-4" />
-              Search YouTube Video
-            </Button>
-          ) : (
-            <div className="text-gray-400">
-              <Play className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p className="text-sm">Waiting for host to start YouTube video...</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    );
-  }
-  
-  console.log('📺 [YouTubePlayer] Rendering player:', { videoId, showSearch, isHost });
 
   useImperativeHandle(ref, () => ({
     handleTogglePlay: () => handleTogglePlay(),
@@ -488,6 +472,29 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
       isPlaying,
     }),
   }));
+
+  if (!videoId && !showSearch) {
+    console.log('📺 [YouTubePlayer] No video, showing empty state:', { isHost, videoId, showSearch });
+    return (
+      <Card className="bg-gray-800 border-gray-700">
+        <CardContent className="p-8 text-center">
+          {isHost ? (
+            <Button onClick={() => setShowSearch(true)} className="gap-2">
+              <Search className="w-4 h-4" />
+              Search YouTube Video
+            </Button>
+          ) : (
+            <div className="text-gray-400">
+              <Play className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p className="text-sm">Waiting for host to start YouTube video...</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+  
+  console.log('📺 [YouTubePlayer] Rendering player:', { videoId, showSearch, isHost });
 
   return (
     <Card className="bg-gray-800 border-gray-700">

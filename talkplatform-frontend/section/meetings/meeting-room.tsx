@@ -916,27 +916,32 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
                 }
               });
               
-              return showVideoGrid ? (
-                <VideoGrid
-                  localStream={localStream}
-                  peers={peers}
-                  participants={participants}
-                  currentUserId={user.id}
-                  isMuted={isMuted}
-                  isVideoOff={isVideoOff}
-                  spotlightUserId={spotlightUserId || undefined}
-                  isScreenSharing={isScreenSharing}
-                />
-              ) : (
-                <YouTubePlayer
-                  ref={youtubePlayerRef}
-                  socket={socket}
-                  isHost={isHost}
-                  initialVideoId={youtubeVideoId || undefined}
-                  initialCurrentTime={youtubeCurrentTime}
-                  initialIsPlaying={youtubeIsPlaying}
-                  volume={youtubeVolume}
-                />
+              return (
+                <div className="h-full">
+                  <div className={showVideoGrid ? "h-full" : "hidden"}>
+                    <VideoGrid
+                      localStream={localStream}
+                      peers={peers}
+                      participants={participants}
+                      currentUserId={user.id}
+                      isMuted={isMuted}
+                      isVideoOff={isVideoOff}
+                      spotlightUserId={spotlightUserId || undefined}
+                      isScreenSharing={isScreenSharing}
+                    />
+                  </div>
+                  <div className={showVideoGrid ? "hidden" : "h-full"}>
+                    <YouTubePlayer
+                      ref={youtubePlayerRef}
+                      socket={socket}
+                      isHost={isHost}
+                      initialVideoId={youtubeVideoId || undefined}
+                      initialCurrentTime={youtubeCurrentTime}
+                      initialIsPlaying={youtubeIsPlaying}
+                      volume={youtubeVolume}
+                    />
+                  </div>
+                </div>
               );
             })()}
           </div>
