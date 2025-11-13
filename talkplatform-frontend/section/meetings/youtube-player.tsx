@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Socket } from "socket.io-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ interface YouTubePlayerProps {
   volume?: number;
 }
 
+
 // YouTube IFrame API types
 declare global {
   interface Window {
@@ -28,20 +29,29 @@ declare global {
 // Export control methods for external use
 export interface YouTubePlayerHandle {
   handleTogglePlay: () => void;
-  handleSelectVideo: (videoId: string) => void;
+  handleSelectVideo: (videoId: string, startSeconds?: number) => void;
   handleClearVideo: () => void;
   handleVolumeChange: (volume: number[]) => void;
   handleToggleMute: () => void;
+  getCurrentTime: () => number;
+  getState: () => {
+    videoId: string | null;
+    currentTime: number;
+    isPlaying: boolean;
+  };
 }
 
-export function YouTubePlayer({
-  socket,
-  isHost,
-  initialVideoId,
-  initialCurrentTime = 0,
-  initialIsPlaying = false,
-  volume: externalVolume = 50,
-}: YouTubePlayerProps) {
+export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>(function YouTubePlayer(
+  {
+    socket,
+    isHost,
+    initialVideoId,
+    initialCurrentTime = 0,
+    initialIsPlaying = false,
+    volume: externalVolume = 50,
+  }: YouTubePlayerProps,
+  ref
+) {
   const [videoId, setVideoId] = useState(initialVideoId || "");
   const [searchQuery, setSearchQuery] = useState("");
   const [isPlaying, setIsPlaying] = useState(initialIsPlaying);
@@ -52,6 +62,13 @@ export function YouTubePlayer({
   const playerDivRef = useRef<HTMLDivElement>(null);
   const isLocalChange = useRef(false);
   const timestampSyncInterval = useRef<NodeJS.Timeout | null>(null);
+
+  const getCurrentTime = () => {
+    if (playerRef.current && typeof playerRef.current.getCurrentTime === "function") {
+      return playerRef.current.getCurrentTime();
+    }
+    return currentTimestamp;
+  };
 
   // Sync timestamp periodically
   useEffect(() => {
@@ -141,6 +158,49 @@ export function YouTubePlayer({
       console.log("✅ YouTube Player instance created");
     } catch (error) {
       console.error("❌ Failed to create YouTube Player:", error);
+    }
+  };
+
+  const loadAndBroadcastVideo = (
+    newVideoId: string,
+    startSeconds = 0,
+    options: { closeSearch?: boolean } = {},
+  ) => {
+    if (!isHost || !socket) return;
+
+    console.log("🔍 Loading video:", newVideoId, "at", startSeconds);
+    setVideoId(newVideoId);
+    setIsPlaying(true);
+    setCurrentTimestamp(startSeconds);
+
+    if (playerRef.current && typeof playerRef.current.loadVideoById === "function") {
+      playerRef.current.loadVideoById({
+        videoId: newVideoId,
+        startSeconds,
+      });
+      setTimeout(() => {
+        if (playerRef.current && typeof playerRef.current.playVideo === "function") {
+          playerRef.current.playVideo();
+        }
+      }, 500);
+    } else if (playerRef.current && typeof playerRef.current.cueVideoById === "function") {
+      playerRef.current.cueVideoById({
+        videoId: newVideoId,
+        startSeconds,
+      });
+      if (typeof playerRef.current.playVideo === "function") {
+        playerRef.current.playVideo();
+      }
+    }
+
+    socket.emit("youtube:play", {
+      videoId: newVideoId,
+      currentTime: startSeconds,
+    });
+
+    if (options.closeSearch) {
+      setShowSearch(false);
+      setSearchQuery("");
     }
   };
 
@@ -320,7 +380,7 @@ export function YouTubePlayer({
   };
 
   const handleSearch = () => {
-    if (!isHost || !socket) return;
+    if (!isHost) return;
 
     const extractedId = extractVideoId(searchQuery);
     if (!extractedId) {
@@ -328,32 +388,7 @@ export function YouTubePlayer({
       return;
     }
 
-    console.log("🔍 Loading video:", extractedId);
-    setVideoId(extractedId);
-    setIsPlaying(true);
-
-    // Load video on host side
-    if (playerRef.current && playerRef.current.loadVideoById) {
-      playerRef.current.loadVideoById({
-        videoId: extractedId,
-        startSeconds: 0,
-      });
-      // Auto-play on host
-      setTimeout(() => {
-        if (playerRef.current && playerRef.current.playVideo) {
-          playerRef.current.playVideo();
-        }
-      }, 500);
-    }
-
-    // Emit to server to sync with participants
-    socket.emit("youtube:play", {
-      videoId: extractedId,
-      currentTime: 0,
-    });
-
-    setShowSearch(false);
-    setSearchQuery("");
+    loadAndBroadcastVideo(extractedId, 0, { closeSearch: true });
   };
 
   const handleTogglePlay = () => {
@@ -427,6 +462,33 @@ export function YouTubePlayer({
   
   console.log('📺 [YouTubePlayer] Rendering player:', { videoId, showSearch, isHost });
 
+  useImperativeHandle(ref, () => ({
+    handleTogglePlay: () => handleTogglePlay(),
+    handleSelectVideo: (id: string, startSeconds = 0) => loadAndBroadcastVideo(id, startSeconds),
+    handleClearVideo: () => handleClearVideo(),
+    handleVolumeChange: (volume: number[]) => {
+      if (!playerRef.current || typeof playerRef.current.setVolume !== "function") return;
+      const [value] = volume;
+      playerRef.current.setVolume(value);
+    },
+    handleToggleMute: () => {
+      if (!playerRef.current) return;
+      if (typeof playerRef.current.isMuted === "function" && playerRef.current.isMuted()) {
+        if (typeof playerRef.current.unMute === "function") {
+          playerRef.current.unMute();
+        }
+      } else if (typeof playerRef.current.mute === "function") {
+        playerRef.current.mute();
+      }
+    },
+    getCurrentTime: () => getCurrentTime(),
+    getState: () => ({
+      videoId: videoId || null,
+      currentTime: getCurrentTime(),
+      isPlaying,
+    }),
+  }));
+
   return (
     <Card className="bg-gray-800 border-gray-700">
       <CardHeader className="pb-3">
@@ -474,5 +536,6 @@ export function YouTubePlayer({
       </CardContent>
     </Card>
   );
-}
+});
+
 

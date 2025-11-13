@@ -23,7 +23,7 @@ import { useMeetingSocket } from "@/hooks/use-meeting-socket";
 import { useWebRTC } from "@/hooks/use-webrtc";
 import { VideoGrid } from "./video-grid";
 import { MeetingChat } from "./meeting-chat";
-import { YouTubePlayer } from "./youtube-player";
+import { YouTubePlayer, YouTubePlayerHandle } from "./youtube-player";
 import { YouTubeSearchModal } from "@/components/youtube-search-modal";
 import { Slider } from "@/components/ui/slider";
 import { BandwidthMonitor } from "@/components/bandwidth-monitor";
@@ -101,7 +101,10 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   const [showRoomFullDialog, setShowRoomFullDialog] = useState(false);
   const [showYouTubeSearch, setShowYouTubeSearch] = useState(false);
   const [youtubeVolume, setYoutubeVolume] = useState(50);
-  const [youtubePlayerRef, setYoutubePlayerRef] = useState<any>(null);
+  const youtubePlayerRef = useRef<YouTubePlayerHandle | null>(null);
+  const [youtubeVideoId, setYoutubeVideoId] = useState<string | null>(meeting.youtube_video_id ?? null);
+  const [youtubeIsPlaying, setYoutubeIsPlaying] = useState<boolean>(!!meeting.youtube_is_playing);
+  const [youtubeCurrentTime, setYoutubeCurrentTime] = useState<number>(meeting.youtube_current_time ?? 0);
   const { toast } = useToast();
   const router = useRouter();
   const [spotlightUserId, setSpotlightUserId] = useState<string | null>(null);
@@ -165,6 +168,12 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   useEffect(() => {
     setShowConnectionBanner(!isConnected && isOnline);
   }, [isConnected, isOnline]);
+
+  useEffect(() => {
+    setYoutubeVideoId(meeting.youtube_video_id ?? null);
+    setYoutubeIsPlaying(!!meeting.youtube_is_playing);
+    setYoutubeCurrentTime(meeting.youtube_current_time ?? 0);
+  }, [meeting.youtube_video_id, meeting.youtube_is_playing, meeting.youtube_current_time]);
 
   // WebRTC
   const {
@@ -243,6 +252,59 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
 
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleYouTubeSync = (data: { videoId: string; currentTime: number; isPlaying: boolean }) => {
+      setYoutubeVideoId(data.videoId || null);
+      setYoutubeCurrentTime(typeof data.currentTime === "number" ? data.currentTime : 0);
+      setYoutubeIsPlaying(!!data.isPlaying);
+    };
+
+    const handleYouTubePlay = (data: { videoId?: string; currentTime: number }) => {
+      if (data.videoId) {
+        setYoutubeVideoId(data.videoId);
+      }
+      if (typeof data.currentTime === "number") {
+        setYoutubeCurrentTime(data.currentTime);
+      }
+      setYoutubeIsPlaying(true);
+    };
+
+    const handleYouTubePause = (data: { currentTime: number }) => {
+      if (typeof data.currentTime === "number") {
+        setYoutubeCurrentTime(data.currentTime);
+      }
+      setYoutubeIsPlaying(false);
+    };
+
+    const handleYouTubeSeek = (data: { currentTime: number }) => {
+      if (typeof data.currentTime === "number") {
+        setYoutubeCurrentTime(data.currentTime);
+      }
+    };
+
+    const handleYouTubeClear = () => {
+      setYoutubeVideoId(null);
+      setYoutubeIsPlaying(false);
+      setYoutubeCurrentTime(0);
+    };
+
+    socket.on("youtube:sync", handleYouTubeSync);
+    socket.on("youtube:play", handleYouTubePlay);
+    socket.on("youtube:pause", handleYouTubePause);
+    socket.on("youtube:seek", handleYouTubeSeek);
+    socket.on("youtube:clear", handleYouTubeClear);
+
+    return () => {
+      socket.off("youtube:sync", handleYouTubeSync);
+      socket.off("youtube:play", handleYouTubePlay);
+      socket.off("youtube:pause", handleYouTubePause);
+      socket.off("youtube:seek", handleYouTubeSeek);
+      socket.off("youtube:clear", handleYouTubeClear);
+    };
+  }, [socket]);
 
   // 🔥 FIX: Optimized chat setup with useCallback for event handlers
   const handleChatMessage = useCallback((data: {
@@ -548,49 +610,67 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
 
   // YouTube handlers
   const handleYoutubeSelectVideo = (videoId: string) => {
-    if (!socket) return;
-    
-    console.log("🎬 Host selected video:", videoId);
-    
-    // Auto-switch to YouTube view
-    setShowVideoGrid(false);
-    
-    socket.emit("youtube:play", {
-      videoId,
-      currentTime: 0,
-    });
-  };
+    if (!isHost) return;
 
-  const handleYoutubeTogglePlay = () => {
-    if (!socket || !meeting.youtube_video_id) return;
-    
-    const isPlaying = meeting.youtube_is_playing;
-    console.log(`🎬 Toggle: ${isPlaying ? 'Pause' : 'Play'} | VideoID: ${meeting.youtube_video_id}`);
-    
-    if (isPlaying) {
-      // Pause the video
-      socket.emit("youtube:pause", { 
-        videoId: meeting.youtube_video_id,
-        currentTime: meeting.youtube_current_time || 0 
-      });
-    } else {
-      // Play the video
-      socket.emit("youtube:play", { 
-        videoId: meeting.youtube_video_id, 
-        currentTime: meeting.youtube_current_time || 0 
+    console.log("🎬 Host selected video:", videoId);
+    setShowVideoGrid(false);
+    setYoutubeVideoId(videoId);
+    setYoutubeCurrentTime(0);
+    setYoutubeIsPlaying(true);
+
+    if (youtubePlayerRef.current) {
+      youtubePlayerRef.current.handleSelectVideo(videoId, 0);
+    } else if (socket) {
+      socket.emit("youtube:play", {
+        videoId,
+        currentTime: 0,
       });
     }
   };
 
+  const handleYoutubeTogglePlay = () => {
+    if (!isHost || !youtubeVideoId) return;
+
+    console.log(`🎬 Toggle: ${youtubeIsPlaying ? 'Pause' : 'Play'} | VideoID: ${youtubeVideoId}`);
+
+    if (youtubePlayerRef.current) {
+      youtubePlayerRef.current.handleTogglePlay();
+    } else if (socket) {
+      if (youtubeIsPlaying) {
+        socket.emit("youtube:pause", {
+          currentTime: youtubeCurrentTime,
+        });
+      } else {
+        socket.emit("youtube:play", {
+          videoId: youtubeVideoId,
+          currentTime: youtubeCurrentTime,
+        });
+      }
+    }
+
+    setYoutubeIsPlaying(prev => !prev);
+  };
+
   const handleYoutubeClear = () => {
-    if (!socket) return;
-    
+    if (!isHost) return;
+
     console.log("❌ Host clearing video");
-    socket.emit("youtube:clear");
+    setYoutubeVideoId(null);
+    setYoutubeIsPlaying(false);
+    setYoutubeCurrentTime(0);
+
+    if (youtubePlayerRef.current) {
+      youtubePlayerRef.current.handleClearVideo();
+    } else if (socket) {
+      socket.emit("youtube:clear");
+    }
   };
 
   const handleYoutubeMute = () => {
-    setYoutubeVolume(prev => prev > 0 ? 0 : 50);
+    if (youtubePlayerRef.current) {
+      youtubePlayerRef.current.handleToggleMute();
+    }
+    setYoutubeVolume(prev => (prev === 0 ? 50 : 0));
   };
 
   const handleToggleLock = async () => {
@@ -830,9 +910,9 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
                 hasSocket: !!socket,
                 socketConnected: socket?.connected,
                 meetingYoutubeData: {
-                  videoId: meeting.youtube_video_id,
-                  currentTime: meeting.youtube_current_time,
-                  isPlaying: meeting.youtube_is_playing,
+                  videoId: youtubeVideoId,
+                  currentTime: youtubeCurrentTime,
+                  isPlaying: youtubeIsPlaying,
                 }
               });
               
@@ -849,11 +929,12 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
                 />
               ) : (
                 <YouTubePlayer
+                  ref={youtubePlayerRef}
                   socket={socket}
                   isHost={isHost}
-                  initialVideoId={meeting.youtube_video_id}
-                  initialCurrentTime={meeting.youtube_current_time}
-                  initialIsPlaying={meeting.youtube_is_playing}
+                  initialVideoId={youtubeVideoId || undefined}
+                  initialCurrentTime={youtubeCurrentTime}
+                  initialIsPlaying={youtubeIsPlaying}
                   volume={youtubeVolume}
                 />
               );
@@ -985,7 +1066,7 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
             {showYouTubeSearch && (
               <div className="flex-1 flex flex-col overflow-hidden bg-[#0f0f0f]">
                 {/* Player Controls - At top of sidebar */}
-                {meeting.youtube_video_id && (
+                {youtubeVideoId && (
                   <div className="p-4 border-b border-gray-800 bg-[#0f0f0f] flex-shrink-0">
                     <div className="flex flex-col gap-3">
                       {/* Host Controls */}
@@ -996,7 +1077,7 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
                             onClick={handleYoutubeTogglePlay}
                             className="flex-1 bg-[#272727] hover:bg-[#3f3f3f] text-white border-0"
                           >
-                            {meeting.youtube_is_playing ? (
+                            {youtubeIsPlaying ? (
                               <>
                                 <Pause className="w-4 h-4 mr-2" />
                                 Pause
@@ -1050,8 +1131,8 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
                     onClose={() => {}}
                     onSelectVideo={handleYoutubeSelectVideo}
                     isHost={isHost}
-                    currentVideoId={meeting.youtube_video_id}
-                    isPlaying={meeting.youtube_is_playing}
+                    currentVideoId={youtubeVideoId}
+                    isPlaying={youtubeIsPlaying}
                     volume={youtubeVolume}
                     onTogglePlay={handleYoutubeTogglePlay}
                     onClear={handleYoutubeClear}
