@@ -1,0 +1,57 @@
+import { ClassSerializerInterceptor, Controller, Get, Query, UseInterceptors, Patch, Param, Req,Body, UseGuards } from '@nestjs/common';
+import { User } from 'src/users/user.entity';
+import { TeachersService } from './teachers.service';
+import { GetTeachersQueryDto } from './dto/get-teachers-query-dto';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { UpdateTeacherProfileDto } from './dto/update-teacher-profile.dto';
+
+interface RequestWithUser extends Request {
+    user: User;
+}
+
+@Controller('teachers')
+@UseInterceptors(ClassSerializerInterceptor) //ẩn các lớp có trường Exclude
+export class TeachersController {
+    constructor (private readonly teachersService: TeachersService){}
+
+    //lấy danh sách
+    //get /teachers?page=1&limit=10&sortBy=rating
+    @Get()
+    async getTeachers(@Query() queryDto: GetTeachersQueryDto){
+        const {teachers, total} = await this.teachersService.getTeachers(queryDto);
+        return {
+            data: teachers,
+            pagination: {
+                currentPage: Number(queryDto.page) ||1,
+                itemsPage: Number(queryDto) || 20,
+                totalItems: total,
+                totalPages: Math.ceil(total/ (Number(queryDto.limit) || 20)),
+            }
+        }
+    }
+
+    // GET /teachers/:id
+    @Get(':id')
+    async getTeacherById(@Param('id') id: string) {
+        // Validate UUID nếu cần
+        // if (!isValidUUID(id)) throw new BadRequestException('Invalid teacher ID format');
+        return this.teachersService.getTeacherById(id);
+        // Lưu ý: Service sẽ throw NotFoundException nếu không tìm thấy
+    }
+
+    // --- API Cập nhật Profile Teacher (Yêu cầu login Teacher) ---
+    // PATCH /teachers/me/profile
+    @Patch('me/profile') // Sử dụng 'me' để chỉ người dùng hiện tại
+    @UseGuards(JwtAuthGuard) // Yêu cầu phải đăng nhập
+    // @Roles('teacher') // Chỉ cho phép role 'teacher' (sẽ tạo RolesGuard)
+    // @UseGuards(JwtAuthGuard, RolesGuard) // Kết hợp 2 Guards
+    async updateMyProfile(
+        @Req() req: RequestWithUser, // Lấy user từ request (đã được JwtStrategy gán vào)
+        @Body() updateDto: UpdateTeacherProfileDto,
+    ) {
+        const userId = req.user.id; // Lấy ID của user đang đăng nhập
+        return this.teachersService.updateTeacherProfile(userId, updateDto);
+    }
+
+    // (Sau này có thể thêm API đăng ký Teacher ở đây POST /teachers/register hoặc để trong AuthController)
+}

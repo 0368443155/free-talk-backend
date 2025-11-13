@@ -1,0 +1,168 @@
+  import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  Query,
+} from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { MeetingsService } from './meetings.service';
+import { CreateMeetingDto } from './dto/create-meeting.dto';
+import { UpdateMeetingDto } from './dto/update-meeting.dto';
+import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
+import { Account } from '../../core/auth/decorators/account.decorator';
+import { User } from '../../users/user.entity';
+import { PaginationDto } from '../../core/common/dto/pagination.dto';
+
+@ApiTags('Meetings')
+@Controller('classrooms/:classroomId/meetings')
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
+export class MeetingsController {
+  constructor(private readonly meetingsService: MeetingsService) {}
+
+  @Post()
+  @ApiOperation({ summary: 'Create a new meeting' })
+  @ApiResponse({ status: 201, description: 'Meeting created successfully' })
+  async create(
+    @Param('classroomId') classroomId: string,
+    @Body() createMeetingDto: CreateMeetingDto,
+    @Account() user: User,
+  ) {
+    return this.meetingsService.create(classroomId, createMeetingDto, user);
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'Get all meetings for a classroom' })
+  @ApiResponse({ status: 200, description: 'Meetings retrieved successfully' })
+  async findAll(
+    @Param('classroomId') classroomId: string,
+    @Account() user: User,
+    @Query() paginationDto: PaginationDto,
+  ) {
+    return this.meetingsService.findAll(classroomId, user, paginationDto);
+  }
+
+  @Get(':meetingId')
+  @ApiOperation({ summary: 'Get meeting by ID' })
+  @ApiResponse({ status: 200, description: 'Meeting retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Meeting not found' })
+  async findOne(@Param('meetingId') meetingId: string, @Account() user: User) {
+    return this.meetingsService.findOne(meetingId, user);
+  }
+
+  @Patch(':meetingId')
+  @ApiOperation({ summary: 'Update meeting' })
+  @ApiResponse({ status: 200, description: 'Meeting updated successfully' })
+  async update(
+    @Param('meetingId') meetingId: string,
+    @Body() updateMeetingDto: UpdateMeetingDto,
+    @Account() user: User,
+  ) {
+    return this.meetingsService.update(meetingId, updateMeetingDto, user);
+  }
+
+  @Delete(':meetingId')
+  @ApiOperation({ summary: 'Delete meeting' })
+  @ApiResponse({ status: 200, description: 'Meeting deleted successfully' })
+  async remove(@Param('meetingId') meetingId: string, @Account() user: User) {
+    return this.meetingsService.remove(meetingId, user);
+  }
+
+  @Post(':meetingId/start')
+  @ApiOperation({ summary: 'Start meeting' })
+  @ApiResponse({ status: 200, description: 'Meeting started successfully' })
+  async startMeeting(@Param('meetingId') meetingId: string, @Account() user: User) {
+    return this.meetingsService.startMeeting(meetingId, user);
+  }
+
+  @Post(':meetingId/end')
+  @ApiOperation({ summary: 'End meeting' })
+  @ApiResponse({ status: 200, description: 'Meeting ended successfully' })
+  async endMeeting(@Param('meetingId') meetingId: string, @Account() user: User) {
+    return this.meetingsService.endMeeting(meetingId, user);
+  }
+
+  @Post(':meetingId/join')
+  @ApiOperation({ summary: 'Join meeting' })
+  @ApiResponse({ status: 200, description: 'Joined meeting successfully' })
+  async joinMeeting(@Param('meetingId') meetingId: string, @Account() user: User) {
+    return this.meetingsService.joinMeeting(meetingId, user);
+  }
+
+  @Post(':meetingId/leave')
+  @ApiOperation({ summary: 'Leave meeting' })
+  @ApiResponse({ status: 200, description: 'Left meeting successfully' })
+  async leaveMeeting(@Param('meetingId') meetingId: string, @Account() user: User) {
+    return this.meetingsService.leaveMeeting(meetingId, user);
+  }
+
+  @Post(':meetingId/lock')
+  @ApiOperation({ summary: 'Lock meeting' })
+  @ApiResponse({ status: 200, description: 'Meeting locked successfully' })
+  async lockMeeting(@Param('meetingId') meetingId: string, @Account() user: User) {
+    return this.meetingsService.lockMeeting(meetingId, user);
+  }
+
+  @Post(':meetingId/unlock')
+  @ApiOperation({ summary: 'Unlock meeting' })
+  @ApiResponse({ status: 200, description: 'Meeting unlocked successfully' })
+  async unlockMeeting(@Param('meetingId') meetingId: string, @Account() user: User) {
+    return this.meetingsService.unlockMeeting(meetingId, user);
+  }
+
+  @Get(':meetingId/participants')
+  @ApiOperation({ summary: 'Get meeting participants' })
+  @ApiResponse({ status: 200, description: 'Participants retrieved successfully' })
+  async getParticipants(@Param('meetingId') meetingId: string, @Account() user: User) {
+    return this.meetingsService.getParticipants(meetingId, user);
+  }
+
+  @Get(':meetingId/chat')
+  @ApiOperation({ summary: 'Get meeting chat messages' })
+  @ApiResponse({ status: 200, description: 'Chat messages retrieved successfully' })
+  async getChatMessages(
+    @Param('meetingId') meetingId: string,
+    @Account() user: User,
+    @Query() paginationDto: PaginationDto,
+  ) {
+    return this.meetingsService.getChatMessages(meetingId, user, paginationDto);
+  }
+
+  @Post(':meetingId/participants/:participantId/kick')
+  @ApiOperation({ summary: 'Kick participant from meeting' })
+  @ApiResponse({ status: 200, description: 'Participant kicked successfully' })
+  async kickParticipant(
+    @Param('meetingId') meetingId: string,
+    @Param('participantId') participantId: string,
+    @Account() user: User,
+  ) {
+    return this.meetingsService.kickParticipant(meetingId, participantId, user);
+  }
+
+  @Post(':meetingId/participants/:participantId/mute')
+  @ApiOperation({ summary: 'Mute participant' })
+  @ApiResponse({ status: 200, description: 'Participant muted successfully' })
+  async muteParticipant(
+    @Param('meetingId') meetingId: string,
+    @Param('participantId') participantId: string,
+    @Account() user: User,
+  ) {
+    return this.meetingsService.muteParticipant(meetingId, participantId, user);
+  }
+
+  @Post(':meetingId/participants/:participantId/promote')
+  @ApiOperation({ summary: 'Promote participant to moderator' })
+  @ApiResponse({ status: 200, description: 'Participant promoted successfully' })
+  async promoteParticipant(
+    @Param('meetingId') meetingId: string,
+    @Param('participantId') participantId: string,
+    @Account() user: User,
+  ) {
+    return this.meetingsService.promoteParticipant(meetingId, participantId, user);
+  }
+}
