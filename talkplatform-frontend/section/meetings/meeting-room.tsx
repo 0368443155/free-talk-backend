@@ -170,10 +170,12 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   }, [isConnected, isOnline]);
 
   useEffect(() => {
+    if (isHost) return;
+
     setYoutubeVideoId(meeting.youtube_video_id ?? null);
     setYoutubeIsPlaying(!!meeting.youtube_is_playing);
     setYoutubeCurrentTime(meeting.youtube_current_time ?? 0);
-  }, [meeting.youtube_video_id, meeting.youtube_is_playing, meeting.youtube_current_time]);
+  }, [isHost, meeting.youtube_video_id, meeting.youtube_is_playing, meeting.youtube_current_time]);
 
   // WebRTC
   const {

@@ -58,10 +58,12 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
   const [showSearch, setShowSearch] = useState(false);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
   const [currentTimestamp, setCurrentTimestamp] = useState(initialCurrentTime); // Save current position
+  const [isPlayerReady, setIsPlayerReady] = useState(false);
   const playerRef = useRef<any>(null);
   const playerDivRef = useRef<HTMLDivElement>(null);
   const isLocalChange = useRef(false);
   const timestampSyncInterval = useRef<NodeJS.Timeout | null>(null);
+  const lastLoadedVideoId = useRef<string | null>(null);
 
   const getCurrentTime = () => {
     if (playerRef.current && typeof playerRef.current.getCurrentTime === "function") {
@@ -89,6 +91,97 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
     };
   }, [videoId]);
 
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player || !isPlayerReady) return;
+
+    if (!videoId) {
+      if (typeof player.stopVideo === "function") {
+        player.stopVideo();
+      }
+      lastLoadedVideoId.current = null;
+      return;
+    }
+
+    const currentVideoId =
+      typeof player.getVideoData === "function" ? player.getVideoData()?.video_id : null;
+
+    if (lastLoadedVideoId.current === videoId && currentVideoId === videoId) {
+      return;
+    }
+
+    let loaded = false;
+
+    if (typeof player.loadVideoById === "function") {
+      player.loadVideoById({
+        videoId,
+        startSeconds: currentTimestamp ?? 0,
+      });
+      loaded = true;
+    } else if (typeof player.cueVideoById === "function") {
+      player.cueVideoById({
+        videoId,
+        startSeconds: currentTimestamp ?? 0,
+      });
+      loaded = true;
+    }
+
+    if (loaded && isPlaying && typeof player.playVideo === "function") {
+      player.playVideo();
+    } else if (loaded && !isPlaying && typeof player.pauseVideo === "function") {
+      player.pauseVideo();
+    }
+
+    if (loaded) {
+      lastLoadedVideoId.current = videoId;
+    }
+
+    if (!loaded) {
+      lastLoadedVideoId.current = null;
+    }
+  }, [videoId, currentTimestamp, isPlaying, isPlayerReady]);
+
+  useEffect(() => {
+    if (isLocalChange.current) {
+      isLocalChange.current = false;
+      return;
+    }
+
+    const nextVideoId = initialVideoId || "";
+    if (nextVideoId !== videoId) {
+      setVideoId(nextVideoId);
+      lastLoadedVideoId.current = nextVideoId;
+      if (playerRef.current) {
+        if (nextVideoId) {
+          if (typeof playerRef.current.loadVideoById === "function") {
+            playerRef.current.loadVideoById({
+              videoId: nextVideoId,
+              startSeconds: initialCurrentTime ?? 0,
+            });
+          }
+        } else if (typeof playerRef.current.stopVideo === "function") {
+          playerRef.current.stopVideo();
+        }
+      }
+    }
+
+    if (typeof initialCurrentTime === "number") {
+      setCurrentTimestamp(initialCurrentTime);
+      if (playerRef.current && typeof playerRef.current.seekTo === "function") {
+        playerRef.current.seekTo(initialCurrentTime, true);
+      }
+    }
+
+    setIsPlaying(initialIsPlaying);
+    if (playerRef.current) {
+      if (initialIsPlaying && typeof playerRef.current.playVideo === "function") {
+        playerRef.current.playVideo();
+      } else if (!initialIsPlaying && typeof playerRef.current.pauseVideo === "function") {
+        playerRef.current.pauseVideo();
+      }
+    }
+  }, [initialVideoId, initialCurrentTime, initialIsPlaying]);
+
   // Load YouTube IFrame API
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -115,6 +208,7 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
       if (playerRef.current && typeof playerRef.current.destroy === 'function') {
         playerRef.current.destroy();
       }
+      setIsPlayerReady(false);
     };
   }, []);
 
@@ -166,13 +260,15 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
     startSeconds = 0,
     options: { closeSearch?: boolean } = {},
   ) => {
-    if (!isHost || !socket) return;
+    if (!isHost) return;
 
     console.log("🔍 Loading video:", newVideoId, "at", startSeconds);
     setVideoId(newVideoId);
     setIsPlaying(true);
     setCurrentTimestamp(startSeconds);
     isLocalChange.current = true;
+
+    let loaded = false;
 
     if (playerRef.current && typeof playerRef.current.loadVideoById === "function") {
       playerRef.current.loadVideoById({
@@ -184,6 +280,7 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
           playerRef.current.playVideo();
         }
       }, 500);
+      loaded = true;
     } else if (playerRef.current && typeof playerRef.current.cueVideoById === "function") {
       playerRef.current.cueVideoById({
         videoId: newVideoId,
@@ -192,12 +289,21 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
       if (typeof playerRef.current.playVideo === "function") {
         playerRef.current.playVideo();
       }
+      loaded = true;
     }
 
-    socket.emit("youtube:play", {
-      videoId: newVideoId,
-      currentTime: startSeconds,
-    });
+    if (loaded) {
+      lastLoadedVideoId.current = newVideoId;
+    } else {
+      lastLoadedVideoId.current = null;
+    }
+
+    if (socket) {
+      socket.emit("youtube:play", {
+        videoId: newVideoId,
+        currentTime: startSeconds,
+      });
+    }
 
     if (options.closeSearch) {
       setShowSearch(false);
@@ -216,6 +322,7 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
     try {
       // Set initial volume
       event.target.setVolume(externalVolume);
+      setIsPlayerReady(true);
       
       if (currentTimestamp > 0) {
         console.log(`⏩ Seeking to ${currentTimestamp}s`);
@@ -267,6 +374,12 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
       isPlaying: boolean;
     }) => {
       console.log("📺 YouTube sync received:", data);
+
+      if (isHost && data.videoId && data.videoId !== videoId) {
+        console.warn("⚠️ Ignoring stale sync for host", { currentVideoId: videoId, incomingVideoId: data.videoId });
+        return;
+      }
+
       isLocalChange.current = true;
 
       if (data.videoId && data.videoId !== videoId) {
@@ -277,6 +390,10 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
             startSeconds: data.currentTime,
           });
         }
+      }
+
+      if (data.videoId) {
+        lastLoadedVideoId.current = data.videoId;
       }
 
       if (playerRef.current && typeof playerRef.current.seekTo === "function") {
@@ -294,6 +411,12 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
 
     const handleYouTubePlay = (data: { videoId?: string; currentTime: number; userId: string }) => {
       console.log("▶️ YouTube play received:", data);
+
+      if (isHost && data.videoId && data.videoId !== videoId) {
+        console.warn("⚠️ Ignoring stale play event for host", { currentVideoId: videoId, incomingVideoId: data.videoId });
+        return;
+      }
+
       isLocalChange.current = true;
 
       if (data.videoId && data.videoId !== videoId) {
@@ -313,12 +436,19 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
         }
       }
 
+      lastLoadedVideoId.current = data.videoId ?? lastLoadedVideoId.current;
       setCurrentTimestamp(data.currentTime);
       setIsPlaying(true);
     };
 
     const handleYouTubePause = (data: { currentTime: number; userId: string }) => {
       console.log("⏸️ YouTube pause received:", data);
+
+      if (isHost && data.currentTime < currentTimestamp - 2) {
+        console.warn("⚠️ Ignoring stale pause event for host", { currentTimestamp, incomingTime: data.currentTime });
+        return;
+      }
+
       isLocalChange.current = true;
 
       if (playerRef.current && typeof playerRef.current.seekTo === "function") {
@@ -334,6 +464,12 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
 
     const handleYouTubeSeek = (data: { currentTime: number; userId: string }) => {
       console.log("⏩ YouTube seek received:", data);
+
+      if (isHost && Math.abs(data.currentTime - currentTimestamp) > 5) {
+        console.warn("⚠️ Ignoring stale seek event for host", { currentTimestamp, incomingTime: data.currentTime });
+        return;
+      }
+
       isLocalChange.current = true;
 
       if (playerRef.current && typeof playerRef.current.seekTo === "function") {
@@ -347,8 +483,9 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
 
       setVideoId("");
       setIsPlaying(false);
+      lastLoadedVideoId.current = null;
       
-      if (playerRef.current) {
+      if (playerRef.current && typeof playerRef.current.stopVideo === "function") {
         playerRef.current.stopVideo();
       }
     };
@@ -396,7 +533,7 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
   };
 
   const handleTogglePlay = () => {
-    if (!isHost || !socket) return;
+    if (!isHost) return;
 
     const currentTime = getCurrentTime();
 
@@ -407,7 +544,9 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
         playerRef.current.pauseVideo();
       }
       setCurrentTimestamp(currentTime);
-      socket.emit("youtube:pause", { currentTime });
+      if (socket) {
+        socket.emit("youtube:pause", { currentTime });
+      }
       setIsPlaying(false);
     } else {
       console.log("▶️ Host playing video");
@@ -416,18 +555,21 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
         playerRef.current.playVideo();
       }
       setCurrentTimestamp(currentTime);
-      socket.emit("youtube:play", { videoId, currentTime });
+      if (socket) {
+        socket.emit("youtube:play", { videoId, currentTime });
+      }
       setIsPlaying(true);
     }
   };
 
   const handleClearVideo = () => {
-    if (!isHost || !socket) return;
+    if (!isHost) return;
 
     console.log("❌ Clearing video for all users");
     
     // Clear video on host side
     setVideoId("");
+    lastLoadedVideoId.current = null;
     setIsPlaying(false);
     if (playerRef.current && typeof playerRef.current.stopVideo === "function") {
       isLocalChange.current = true;
@@ -435,7 +577,9 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
     }
 
     // Emit clear event to server
-    socket.emit("youtube:clear");
+    if (socket) {
+      socket.emit("youtube:clear");
+    }
   };
 
   // Sync volume from external control
