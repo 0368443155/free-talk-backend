@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/components/ui/use-toast';
+import { AdminBandwidthMonitor } from '@/components/admin-bandwidth-monitor';
 import {
   adminAdjustCreditsApi,
   adminGetFeesApi,
@@ -51,6 +52,7 @@ export default function AdminPage() {
           <TabsTrigger value="users">Users</TabsTrigger>
           <TabsTrigger value="teachers">Teachers</TabsTrigger>
           <TabsTrigger value="fees">Platform Fees</TabsTrigger>
+          <TabsTrigger value="bandwidth">Bandwidth Monitor</TabsTrigger>
         </TabsList>
         <TabsContent value="users">
           <UsersTab />
@@ -60,6 +62,9 @@ export default function AdminPage() {
         </TabsContent>
         <TabsContent value="fees">
           <FeesTab />
+        </TabsContent>
+        <TabsContent value="bandwidth">
+          <AdminBandwidthMonitor />
         </TabsContent>
       </Tabs>
     </div>

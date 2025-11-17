@@ -14,6 +14,7 @@ import { Repository } from 'typeorm';
 import { Meeting } from './entities/meeting.entity';
 import { MeetingParticipant } from './entities/meeting-participant.entity';
 import { MeetingChatMessage, MessageType } from './entities/meeting-chat-message.entity';
+import { BlockedParticipant } from './entities/blocked-participant.entity';
 import { User } from '../../users/user.entity';
 
 interface SocketWithUser extends Socket {
@@ -60,6 +61,8 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly chatMessageRepository: Repository<MeetingChatMessage>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(BlockedParticipant)
+    private readonly blockedParticipantRepository: Repository<BlockedParticipant>,
   ) {}
 
   async handleConnection(client: SocketWithUser) {
@@ -487,6 +490,125 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
     this.server.to(client.meetingId).emit('media:user-screen-share', {
       userId: client.user.id,
       isSharing: data.isSharing,
+      timestamp: new Date(),
+    });
+  }
+
+  // Host moderation controls
+  private async ensureHost(client: SocketWithUser) {
+    if (!client.meetingId || !client.user) return false;
+    const participant = await this.participantRepository.findOne({
+      where: { meeting: { id: client.meetingId }, user: { id: client.user.id } },
+      select: { id: true, role: true },
+      relations: ['meeting', 'user'],
+    });
+    return participant?.role === 'host';
+  }
+
+  @SubscribeMessage('admin:mute-user')
+  async handleAdminMuteUser(
+    @ConnectedSocket() client: SocketWithUser,
+    @MessageBody() data: { targetUserId: string; mute?: boolean },
+  ) {
+    if (!(await this.ensureHost(client))) return;
+    const isMuted = data.mute !== false; // default true
+    await this.participantRepository.update(
+      { meeting: { id: client.meetingId }, user: { id: data.targetUserId } },
+      { is_muted: isMuted },
+    );
+    this.server.to(client.meetingId!).emit('media:user-muted', {
+      userId: data.targetUserId,
+      isMuted,
+    });
+  }
+
+  @SubscribeMessage('admin:video-off-user')
+  async handleAdminVideoOffUser(
+    @ConnectedSocket() client: SocketWithUser,
+    @MessageBody() data: { targetUserId: string; videoOff?: boolean },
+  ) {
+    if (!(await this.ensureHost(client))) return;
+    const isVideoOff = data.videoOff !== false; // default true
+    await this.participantRepository.update(
+      { meeting: { id: client.meetingId }, user: { id: data.targetUserId } },
+      { is_video_off: isVideoOff },
+    );
+    this.server.to(client.meetingId!).emit('media:user-video-off', {
+      userId: data.targetUserId,
+      isVideoOff,
+    });
+  }
+
+  @SubscribeMessage('admin:stop-share-user')
+  async handleAdminStopShareUser(
+    @ConnectedSocket() client: SocketWithUser,
+    @MessageBody() data: { targetUserId: string },
+  ) {
+    if (!(await this.ensureHost(client))) return;
+    // Broadcast a stop-share signal for the target
+    this.server.to(client.meetingId!).emit('media:user-screen-share', {
+      userId: data.targetUserId,
+      isSharing: false,
+      timestamp: new Date(),
+    });
+  }
+
+  @SubscribeMessage('admin:kick-user')
+  async handleAdminKickUser(
+    @ConnectedSocket() client: SocketWithUser,
+    @MessageBody() data: { targetUserId: string; reason?: string },
+  ) {
+    if (!(await this.ensureHost(client))) return;
+    // Remove participant from DB
+    await this.participantRepository.delete({
+      meeting: { id: client.meetingId },
+      user: { id: data.targetUserId }
+    });
+    // Notify the kicked user
+    this.server.to(client.meetingId!).emit('user:kicked', {
+      userId: data.targetUserId,
+      reason: data.reason || 'Kicked by host',
+      timestamp: new Date(),
+    });
+    // Notify others about user leaving
+    this.server.to(client.meetingId!).emit('meeting:user-left', {
+      userId: data.targetUserId,
+      timestamp: new Date(),
+    });
+  }
+
+  @SubscribeMessage('admin:block-user')
+  async handleAdminBlockUser(
+    @ConnectedSocket() client: SocketWithUser,
+    @MessageBody() data: { targetUserId: string; reason?: string },
+  ) {
+    if (!(await this.ensureHost(client))) return;
+    
+    // Add to blocked list first
+    const blockedParticipant = this.blockedParticipantRepository.create({
+      meeting_id: client.meetingId!,
+      user_id: data.targetUserId,
+      blocked_by: client.user!.id,
+      reason: data.reason || 'Blocked by host',
+    });
+    await this.blockedParticipantRepository.save(blockedParticipant);
+    
+    // Remove participant from DB
+    await this.participantRepository.delete({
+      meeting: { id: client.meetingId },
+      user: { id: data.targetUserId }
+    });
+    
+    // Notify the blocked user and others
+    this.server.to(client.meetingId!).emit('user:blocked', {
+      userId: data.targetUserId,
+      reason: data.reason || 'Blocked by host',
+      timestamp: new Date(),
+    });
+    
+    // Notify others about user leaving
+    this.server.to(client.meetingId!).emit('meeting:user-left', {
+      userId: data.targetUserId,
       timestamp: new Date(),
     });
   }

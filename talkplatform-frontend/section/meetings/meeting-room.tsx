@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -66,6 +67,7 @@ import {
   getPublicMeetingChatApi,
   joinMeetingApi,
   joinPublicMeetingApi,
+  safeJoinPublicMeetingApi,
   lockMeetingApi,
   unlockMeetingApi,
   lockPublicMeetingApi,
@@ -90,6 +92,12 @@ interface MeetingRoomProps {
 
 export function MeetingRoom({ meeting, user, classroomId, onReconnect }: MeetingRoomProps) {
   const [participants, setParticipants] = useState<IMeetingParticipant[]>([]);
+  const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
+  const [confirmKickOpen, setConfirmKickOpen] = useState(false);
+  const [confirmBlockOpen, setConfirmBlockOpen] = useState(false);
+  const [targetParticipant, setTargetParticipant] = useState<{ id: string; name: string } | null>(null);
+  const [blockedModalOpen, setBlockedModalOpen] = useState(false);
+  const [blockedMessage, setBlockedMessage] = useState('');
   const [chatMessages, setChatMessages] = useState<IMeetingChatMessage[]>([]);
   const [showParticipants, setShowParticipants] = useState(false);
   const [showChat, setShowChat] = useState(true);
@@ -399,6 +407,88 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     };
   }, [socket]);
 
+  // Host moderation enforcement - listen for host commands
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleForceMute = (data: { userId: string; isMuted: boolean }) => {
+      if (data.userId === user.id && data.isMuted) {
+        // Host muted me - force mute if not already muted
+        if (!isMuted) {
+          toggleMute();
+        }
+        toast({ 
+          title: "You have been muted by the host", 
+          description: "Your microphone has been turned off.",
+          variant: "default" 
+        });
+      }
+    };
+
+    const handleForceVideoOff = (data: { userId: string; isVideoOff: boolean }) => {
+      if (data.userId === user.id && data.isVideoOff) {
+        // Host turned off my camera - force video off if not already off
+        if (!isVideoOff) {
+          toggleVideo();
+        }
+        toast({ 
+          title: "Your camera has been turned off", 
+          description: "The host has disabled your camera.",
+          variant: "default" 
+        });
+      }
+    };
+
+    const handleForceStopShare = (data: { userId: string; isSharing: boolean }) => {
+      if (data.userId === user.id && !data.isSharing) {
+        // Host stopped my screen share - force stop if currently sharing
+        if (isScreenSharing) {
+          toggleScreenShare();
+          toast({ 
+            title: "Screen sharing stopped", 
+            description: "The host has stopped your screen sharing.",
+            variant: "default" 
+          });
+        }
+      }
+    };
+
+    const handleKicked = (data: { userId: string; reason: string }) => {
+      if (data.userId === user.id) {
+        toast({
+          title: "You have been kicked",
+          description: data.reason,
+          variant: "destructive",
+        });
+        // Redirect after 3 seconds
+        setTimeout(() => {
+          window.location.href = '/dashboard';
+        }, 3000);
+      }
+    };
+
+    const handleBlocked = (data: { userId: string; reason: string }) => {
+      if (data.userId === user.id) {
+        setBlockedMessage(data.reason + ". You cannot rejoin this meeting.");
+        setBlockedModalOpen(true);
+      }
+    };
+
+    socket.on('media:user-muted', handleForceMute);
+    socket.on('media:user-video-off', handleForceVideoOff);
+    socket.on('media:user-screen-share', handleForceStopShare);
+    socket.on('user:kicked', handleKicked);
+    socket.on('user:blocked', handleBlocked);
+
+    return () => {
+      socket.off('media:user-muted', handleForceMute);
+      socket.off('media:user-video-off', handleForceVideoOff);
+      socket.off('media:user-screen-share', handleForceStopShare);
+      socket.off('user:kicked', handleKicked);
+      socket.off('user:blocked', handleBlocked);
+    };
+  }, [socket, user.id, isMuted, isVideoOff, isScreenSharing, toggleMute, toggleVideo, toggleScreenShare, toast]);
+
   // 🔥 FIX: Optimized handleSendMessage with stable dependencies
   const handleSendMessage = useCallback(async (message: string) => {
     if (!socket?.connected) {
@@ -540,7 +630,21 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
       console.log("📡 [JOIN] Calling join API...");
 
       if (isPublicMeeting) {
-        await joinPublicMeetingApi(meeting.id);
+        const joinResult = await safeJoinPublicMeetingApi(meeting.id);
+        
+        if (!joinResult.success) {
+          if (joinResult.blocked) {
+            // Handle blocked user without console error
+            console.log("🚫 [JOIN] User is blocked from this meeting");
+            setBlockedMessage(joinResult.message || 'You have been blocked from this meeting');
+            setBlockedModalOpen(true);
+            setIsJoining(false);
+            return;
+          }
+          // If not blocked but still failed, throw error to be handled below
+          throw new Error(joinResult.message || 'Failed to join meeting');
+        }
+        // Join was successful, continue with normal flow
       } else {
         await joinMeetingApi(classroomId!, meeting.id);
       }
@@ -556,7 +660,7 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
 
       const errorMessage = error.response?.data?.message || "";
       const statusCode = error.response?.status;
-
+      
       // Handle 409 status code - room is full
       if (statusCode === 409) {
         // Check if it's a room full error or already participant
@@ -702,50 +806,46 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     }
   };
 
-  const handleKickParticipant = async (participantId: string, participantName: string) => {
-    try {
-      if (isPublicMeeting) {
-        await kickPublicMeetingParticipantApi(meeting.id, participantId);
-      } else {
-        await kickParticipantApi(classroomId!, meeting.id, participantId);
-      }
-      toast({
-        title: "Success",
-        description: `${participantName} has been kicked from the meeting`,
-      });
-      // Refresh participants list
-      await fetchParticipants();
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.response?.data?.message || "Failed to kick participant",
-        variant: "destructive",
-      });
-    }
+  const handleKickParticipant = (participantId: string, participantName: string) => {
+    setTargetParticipant({ id: participantId, name: participantName });
+    setConfirmKickOpen(true);
   };
 
-  const handleBlockParticipant = async (participantId: string, participantName: string) => {
-    try {
-      if (isPublicMeeting) {
-        await blockPublicMeetingParticipantApi(meeting.id, participantId);
-      } else {
-        // For classroom meetings, use kick (no block endpoint yet)
-        await kickParticipantApi(classroomId!, meeting.id, participantId);
-      }
-      toast({
-        title: "Success",
-        description: `${participantName} has been blocked from the meeting`,
-      });
-      // Refresh participants list
-      await fetchParticipants();
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.response?.data?.message || "Failed to block participant",
-        variant: "destructive",
-      });
-    }
+  const confirmKickParticipant = () => {
+    if (!targetParticipant) return;
+    socket?.emit('admin:kick-user', { 
+      targetUserId: targetParticipant.id, 
+      reason: 'Kicked by host' 
+    });
+    toast({
+      title: "Participant Kicked",
+      description: `${targetParticipant.name} has been removed from the meeting.`,
+      variant: "default",
+    });
+    setConfirmKickOpen(false);
+    setTargetParticipant(null);
   };
+
+  const handleBlockParticipant = (participantId: string, participantName: string) => {
+    setTargetParticipant({ id: participantId, name: participantName });
+    setConfirmBlockOpen(true);
+  };
+
+  const confirmBlockParticipant = () => {
+    if (!targetParticipant) return;
+    socket?.emit('admin:block-user', { 
+      targetUserId: targetParticipant.id, 
+      reason: 'Blocked by host' 
+    });
+    toast({
+      title: "Participant Blocked",
+      description: `${targetParticipant.name} has been blocked from the meeting.`,
+      variant: "default",
+    });
+    setConfirmBlockOpen(false);
+    setTargetParticipant(null);
+  };
+
 
   const getRoleIcon = (role: ParticipantRole) => {
     if (role === ParticipantRole.HOST) return <Crown className="w-4 h-4 text-yellow-500" />;
@@ -1024,11 +1124,61 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
                               </PopoverTrigger>
                               <PopoverContent className="w-48 p-2 bg-gray-800 border-gray-700" align="end">
                                 <div className="flex flex-col gap-1">
+                                  {/* Media controls */}
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="w-full justify-start text-orange-400 hover:text-orange-300 hover:bg-gray-700"
+                                    onClick={() => {
+                                      socket?.emit('admin:mute-user', { 
+                                        targetUserId: participantUserId, 
+                                        mute: true 
+                                      });
+                                      toast({ title: `Muted ${participant.user.name}` });
+                                    }}
+                                  >
+                                    <MicOff className="w-4 h-4 mr-2" />
+                                    Mute mic
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="w-full justify-start text-blue-400 hover:text-blue-300 hover:bg-gray-700"
+                                    onClick={() => {
+                                      socket?.emit('admin:video-off-user', { 
+                                        targetUserId: participantUserId, 
+                                        videoOff: true 
+                                      });
+                                      toast({ title: `Turned off ${participant.user.name}'s camera` });
+                                    }}
+                                  >
+                                    <VideoOff className="w-4 h-4 mr-2" />
+                                    Turn off camera
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="w-full justify-start text-purple-400 hover:text-purple-300 hover:bg-gray-700"
+                                    onClick={() => {
+                                      socket?.emit('admin:stop-share-user', { 
+                                        targetUserId: participantUserId 
+                                      });
+                                      toast({ title: `Stopped ${participant.user.name}'s screen share` });
+                                    }}
+                                  >
+                                    <MonitorUp className="w-4 h-4 mr-2" />
+                                    Stop screen share
+                                  </Button>
+                                  
+                                  {/* Separator */}
+                                  <div className="h-px bg-gray-600 my-1" />
+                                  
+                                  {/* Room management */}
                                   <Button
                                     size="sm"
                                     variant="ghost"
                                     className="w-full justify-start text-yellow-400 hover:text-yellow-300 hover:bg-gray-700"
-                                    onClick={() => handleKickParticipant(participant.id, participant.user.name)}
+                                    onClick={() => handleKickParticipant(participantUserId, participant.user.name)}
                                   >
                                     <UserX className="w-4 h-4 mr-2" />
                                     Kick
@@ -1037,7 +1187,7 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
                                     size="sm"
                                     variant="ghost"
                                     className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-gray-700"
-                                    onClick={() => handleBlockParticipant(participant.id, participant.user.name)}
+                                    onClick={() => handleBlockParticipant(participantUserId, participant.user.name)}
                                   >
                                     <VolumeX className="w-4 h-4 mr-2" />
                                     Block
@@ -1056,14 +1206,14 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
 
             {showChat && (
               <>
-                {!isConnected && (
+                {!isOnline && (
                   <div className="bg-gray-700 px-3 py-2 text-xs text-yellow-300 text-center flex-shrink-0">
                     Chat disconnected. Messages will send when reconnected.
                   </div>
                 )}
                 <MeetingChat
                   messages={chatMessages}
-                  isOnline={isOnline && isConnected}
+                  isOnline={isOnline}
                   currentUserId={user.id}
                   onSendMessage={handleSendMessage}
                 />
@@ -1236,7 +1386,7 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
                 {meeting.is_locked ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
               </Button>
             )}
-            <Button size="icon" onClick={handleLeaveMeeting} className="w-10 h-10 rounded-md bg-red-600 hover:bg-red-700 text-white" aria-label="Leave">
+            <Button size="icon" onClick={() => setConfirmLeaveOpen(true)} className="w-10 h-10 rounded-md bg-red-600 hover:bg-red-700 text-white" aria-label="Leave">
               <PhoneOff className="w-4 h-4" />
             </Button>
           </div>
@@ -1368,6 +1518,82 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Confirm Leave Modal */}
+      <Dialog open={confirmLeaveOpen} onOpenChange={setConfirmLeaveOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Leave meeting?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to leave this meeting now?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmLeaveOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleLeaveMeeting}>Leave</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm Kick Modal */}
+      <Dialog open={confirmKickOpen} onOpenChange={setConfirmKickOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Kick participant?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove <strong>{targetParticipant?.name}</strong> from this meeting? They will be able to rejoin later.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setConfirmKickOpen(false); setTargetParticipant(null); }}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmKickParticipant}>Kick</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm Block Modal */}
+      <Dialog open={confirmBlockOpen} onOpenChange={setConfirmBlockOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Block participant?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to block <strong>{targetParticipant?.name}</strong>? They will be removed and cannot rejoin this meeting.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setConfirmBlockOpen(false); setTargetParticipant(null); }}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmBlockParticipant}>Block</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Blocked User Modal */}
+      <Dialog open={blockedModalOpen} onOpenChange={() => {}} modal={true}>
+        <DialogContent 
+          className="max-w-md"
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle className="text-red-600 text-xl font-bold">Access Denied</DialogTitle>
+            <DialogDescription className="text-gray-700 whitespace-pre-line mt-2">
+              {blockedMessage || 'You have been blocked from this meeting and cannot join.'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-6">
+            <Button 
+              onClick={() => {
+                setBlockedModalOpen(false);
+                window.location.href = '/dashboard';
+              }} 
+              className="w-full bg-blue-600 hover:bg-blue-700"
+            >
+              Back to Dashboard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

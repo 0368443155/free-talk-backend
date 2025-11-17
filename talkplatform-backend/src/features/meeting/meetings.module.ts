@@ -8,6 +8,7 @@ import { MeetingsGateway } from './meetings.gateway';
 import { Meeting } from './entities/meeting.entity';
 import { MeetingParticipant } from './entities/meeting-participant.entity';
 import { MeetingChatMessage } from './entities/meeting-chat-message.entity';
+import { BlockedParticipant } from './entities/blocked-participant.entity';
 import { User } from '../../users/user.entity';
 
 @Module({
@@ -16,6 +17,7 @@ import { User } from '../../users/user.entity';
       Meeting,
       MeetingParticipant,
       MeetingChatMessage,
+      BlockedParticipant,
       User,
     ]),
   ],

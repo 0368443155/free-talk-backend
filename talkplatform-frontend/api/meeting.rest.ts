@@ -234,6 +234,37 @@ export const joinPublicMeetingApi = async (meetingId: string): Promise<IMeetingP
   return response.data;
 };
 
+// Safe join public meeting - returns blocked status instead of throwing error
+export const safeJoinPublicMeetingApi = async (meetingId: string): Promise<{
+  success: boolean;
+  data?: IMeetingParticipant;
+  blocked?: boolean;
+  message?: string;
+}> => {
+  try {
+    const response = await axiosConfig.post(`public-meetings/${meetingId}/join`);
+    return {
+      success: true,
+      data: response.data
+    };
+  } catch (error: any) {
+    const statusCode = error.response?.status;
+    const errorMessage = error.response?.data?.message || "";
+    
+    // Handle 403 blocked status without console error
+    if (statusCode === 403 && errorMessage.toLowerCase().includes('blocked')) {
+      return {
+        success: false,
+        blocked: true,
+        message: errorMessage || 'You have been blocked from this meeting'
+      };
+    }
+    
+    // Re-throw other errors
+    throw error;
+  }
+};
+
 // Leave public meeting
 export const leavePublicMeetingApi = async (meetingId: string): Promise<void> => {
   await axiosConfig.post(`public-meetings/${meetingId}/leave`);

@@ -10,6 +10,7 @@ import { Repository } from 'typeorm';
 import { Meeting, MeetingStatus } from './entities/meeting.entity';
 import { MeetingParticipant, ParticipantRole } from './entities/meeting-participant.entity';
 import { MeetingChatMessage, MessageType } from './entities/meeting-chat-message.entity';
+import { BlockedParticipant } from './entities/blocked-participant.entity';
 import { User, UserRole } from '../../users/user.entity';
 import { CreateMeetingDto } from './dto/create-meeting.dto';
 import { UpdateMeetingDto } from './dto/update-meeting.dto';
@@ -24,6 +25,8 @@ export class MeetingsService {
     private readonly participantRepository: Repository<MeetingParticipant>,
     @InjectRepository(MeetingChatMessage)
     private readonly chatMessageRepository: Repository<MeetingChatMessage>,
+    @InjectRepository(BlockedParticipant)
+    private readonly blockedParticipantRepository: Repository<BlockedParticipant>,
   ) {}
 
 
@@ -207,9 +210,13 @@ export class MeetingsService {
       throw new BadRequestException('Meeting is not live');
     }
 
-    // Check if user is blocked
-    if (meeting.blocked_users && meeting.blocked_users.includes(user.id)) {
-      throw new ForbiddenException('You are blocked from this meeting');
+    // Check if user is blocked from this meeting
+    const isBlocked = await this.blockedParticipantRepository.findOne({
+      where: { meeting_id: meetingId, user_id: user.id },
+    });
+
+    if (isBlocked) {
+      throw new ForbiddenException('You have been blocked from this meeting');
     }
 
     // Check if meeting is locked
