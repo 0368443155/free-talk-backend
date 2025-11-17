@@ -28,6 +28,7 @@ import { YouTubePlayer, YouTubePlayerHandle } from "./youtube-player";
 import { YouTubeSearchModal } from "@/components/youtube-search-modal";
 import { Slider } from "@/components/ui/slider";
 import { BandwidthMonitor } from "@/components/bandwidth-monitor";
+import { useMeetingBandwidthReporter } from "@/hooks/use-meeting-bandwidth-reporter";
 import {
   Mic,
   MicOff,
@@ -204,6 +205,28 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     userId: user.id,
     isOnline,
   });
+
+  // Report bandwidth to global monitoring
+  const peerConnection = getFirstPeerConnection();
+  console.log(`📊 [MEETING-ROOM] Bandwidth reporter debug:`);
+  console.log(`  - Meeting ID: ${meeting.id.slice(0, 8)}`);
+  console.log(`  - Meeting Title: ${meeting.title}`);
+  console.log(`  - Participants: ${participants.length}`);
+  console.log(`  - PeerConnection:`, peerConnection);
+  console.log(`  - PeerConnection state:`, peerConnection?.connectionState);
+  console.log(`  - PeerConnection ice state:`, peerConnection?.iceConnectionState);
+  
+  const { isReporting } = useMeetingBandwidthReporter({
+    meetingId: meeting.id,
+    meetingTitle: meeting.title,
+    peerConnection: peerConnection,
+    participantCount: participants.length,
+    userId: user.id,
+    username: user.name,
+    enabled: true
+  });
+
+  console.log(`📊 [MEETING-ROOM] Bandwidth reporter status - isReporting: ${isReporting}`);
 
   // Spotlight self when starting/stopping local screen share
   useEffect(() => {

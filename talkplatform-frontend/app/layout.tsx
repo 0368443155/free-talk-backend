@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth-provider";
 import Toaster from "@/components/ui/toaster";
+import { GlobalBandwidthProvider } from "@/contexts/global-bandwidth-context";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,8 +32,10 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <AuthProvider>
-          {children}
-          <Toaster />
+          <GlobalBandwidthProvider>
+            {children}
+            <Toaster />
+          </GlobalBandwidthProvider>
         </AuthProvider>
       </body>
     </html>

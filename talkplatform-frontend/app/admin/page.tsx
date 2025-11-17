@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/components/ui/use-toast';
-import { AdminBandwidthMonitor } from '@/components/admin-bandwidth-monitor';
+import { EnhancedBandwidthMonitor } from '@/components/enhanced-bandwidth-monitor';
 import {
   adminAdjustCreditsApi,
   adminGetFeesApi,
@@ -64,7 +64,7 @@ export default function AdminPage() {
           <FeesTab />
         </TabsContent>
         <TabsContent value="bandwidth">
-          <AdminBandwidthMonitor />
+          <EnhancedBandwidthMonitor />
         </TabsContent>
       </Tabs>
     </div>

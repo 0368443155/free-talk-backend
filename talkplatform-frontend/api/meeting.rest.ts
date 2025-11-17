@@ -190,6 +190,37 @@ export const getPublicMeetingsApi = async (page = 1, limit = 10): Promise<IMeeti
   return response.data;
 };
 
+// Get live meetings only
+export const getLiveMeetingsApi = async (): Promise<IMeeting[]> => {
+  try {
+    console.log('📊 [API] Fetching live meetings...');
+    
+    // Backend doesn't support status filter, so get all meetings and filter client-side
+    const response = await axiosConfig.get('public-meetings', {
+      params: { limit: 100 },
+    });
+    
+    const allMeetings = response.data.data || [];
+    console.log(`📊 [API] Retrieved ${allMeetings.length} total meetings`);
+    
+    // Filter for live meetings on client side
+    const liveMeetings = allMeetings.filter((meeting: IMeeting) => {
+      const isLive = meeting.status === MeetingStatus.LIVE;
+      if (isLive) {
+        console.log(`📊 [API] Found live meeting: ${meeting.id.slice(0, 8)} - ${meeting.title}`);
+      }
+      return isLive;
+    });
+    
+    console.log(`📊 [API] Found ${liveMeetings.length} live meetings`);
+    return liveMeetings;
+    
+  } catch (error: any) {
+    console.error('❌ [API] Error fetching meetings:', error);
+    return [];
+  }
+};
+
 // Create meeting
 export const createPublicMeetingApi = async (data: ICreateMeeting): Promise<IMeeting> => {
   const response = await axiosConfig.post('public-meetings', data);
