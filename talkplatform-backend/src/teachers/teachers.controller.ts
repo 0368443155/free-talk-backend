@@ -1,4 +1,4 @@
-import { ClassSerializerInterceptor, Controller, Get, Query, UseInterceptors, Patch, Param, Req,Body, UseGuards } from '@nestjs/common';
+import { ClassSerializerInterceptor, Controller, Get, Query, UseInterceptors, Patch, Param, Req,Body, UseGuards, Post } from '@nestjs/common';
 import { User } from 'src/users/user.entity';
 import { TeachersService } from './teachers.service';
 import { GetTeachersQueryDto } from './dto/get-teachers-query-dto';
@@ -51,6 +51,22 @@ export class TeachersController {
     ) {
         const userId = req.user.id; // Lấy ID của user đang đăng nhập
         return this.teachersService.updateTeacherProfile(userId, updateDto);
+    }
+
+    // POST /teachers/me/become-teacher
+    @Post('me/become-teacher')
+    @UseGuards(JwtAuthGuard)
+    async becomeTeacher(@Req() req: RequestWithUser) {
+        const userId = (req as any).user.id;
+        return this.teachersService.becomeTeacher(userId);
+    }
+
+    // GET /teachers/me/profile
+    @Get('me/profile')
+    @UseGuards(JwtAuthGuard)
+    async getMyProfile(@Req() req: RequestWithUser) {
+        const userId = (req as any).user.id;
+        return this.teachersService.getProfileByUserId(userId);
     }
 
     // (Sau này có thể thêm API đăng ký Teacher ở đây POST /teachers/register hoặc để trong AuthController)

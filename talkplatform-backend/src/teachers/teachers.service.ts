@@ -118,11 +118,17 @@ export class TeachersService {
     //API cập nhật Profile teacher {yêu cầu login teacher}
     async updateTeacherProfile(userId: string, updateDto: UpdateTeacherProfileDto): Promise<TeacherProfile> {
         //tìm profilêtacher dựa trên userID (khóa ngoại Tc Prf)
-        const profile = await this.teacherProfilesRepository.findOneBy({user_id: userId});
+        let profile = await this.teacherProfilesRepository.findOneBy({user_id: userId});
 
         if (!profile){
-            //không nên xảy ra nếu có role 'teacher'
-            throw new NotFoundException(`Teacher profile not found for user ID "${userId}"`);
+            // If missing (e.g. user just became teacher), create a minimal profile first
+            profile = new TeacherProfile();
+            profile.user_id = userId;
+            profile.hourly_rate = 1;
+            profile.average_rating = 0;
+            profile.total_hours_taught = 0;
+            profile.is_verified = false;
+            await this.teacherProfilesRepository.insert(profile);
         }
         // Cập nhật các trường được phép
         if (updateDto.headline !== undefined) profile.headline = updateDto.headline;
@@ -138,5 +144,37 @@ export class TeachersService {
             console.error("Error updating teacher profile:", error);
             throw new InternalServerErrorException("Could not update teacher profile.");
         }
+    }
+
+    // Get teacher profile by user id (includes unverified)
+    async getProfileByUserId(userId: string): Promise<TeacherProfile> {
+        const profile = await this.teacherProfilesRepository.findOne({ where: { user_id: userId } });
+        if (!profile) throw new NotFoundException('Teacher profile not found');
+        return profile;
+    }
+
+    // User self-enroll to become a teacher
+    async becomeTeacher(userId: string): Promise<{ user: User; profile: TeacherProfile }> {
+        const user = await this.usersRepository.findOne({ where: { id: userId }, relations: ['teacherProfile'] });
+        if (!user) throw new NotFoundException('User not found');
+
+        // Create profile if not exists
+        let profile = await this.teacherProfilesRepository.findOne({ where: { user_id: userId } });
+        if (!profile) {
+            profile = new TeacherProfile();
+            profile.user_id = userId;
+            profile.user = user;
+            // Optional fields left undefined initially
+            profile.hourly_rate = 1;
+            profile.average_rating = 0;
+            profile.total_hours_taught = 0;
+            profile.is_verified = false;
+            await this.teacherProfilesRepository.insert(profile);
+        }
+
+        // Do NOT promote role here. User remains student until admin verifies.
+        // Role promotion will be handled by AdminService.verifyTeacher.
+
+        return { user, profile };
     }
 }

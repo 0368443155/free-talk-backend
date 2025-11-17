@@ -11,6 +11,7 @@ import { TeacherProfile } from './teachers/teacher-profile.entity';
 import { TeachersModule } from './teachers/teachers.module';
 import { MeetingsModule } from './features/meeting/meetings.module';
 import { ClassroomsModule } from './features/meeting/classrooms.module';
+import { AdminModule } from './admin/admin.module';
 import { APP_PIPE, APP_INTERCEPTOR, Reflector } from '@nestjs/core';
 
 @Module({
@@ -60,6 +61,7 @@ import { APP_PIPE, APP_INTERCEPTOR, Reflector } from '@nestjs/core';
         TeachersModule,
         MeetingsModule,
         ClassroomsModule,
+        AdminModule,
     ],
     controllers: [AppController], // <-- THÊM MỚI
     providers: [AppService,
