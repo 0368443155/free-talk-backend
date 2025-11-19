@@ -15,6 +15,7 @@ import { AdminModule } from './admin/admin.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { EventsModule } from './events/events.module';
 import { TasksModule } from './tasks/tasks.module';
+import { LiveKitModule } from './livekit/livekit.module';
 import { APP_PIPE, APP_INTERCEPTOR, Reflector } from '@nestjs/core';
 
 @Module({
@@ -68,6 +69,7 @@ import { APP_PIPE, APP_INTERCEPTOR, Reflector } from '@nestjs/core';
         MetricsModule,
         EventsModule,
         TasksModule,
+        LiveKitModule,
     ],
     controllers: [AppController], // <-- THÊM MỚI
     providers: [AppService,

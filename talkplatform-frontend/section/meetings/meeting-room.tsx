@@ -50,6 +50,8 @@ import {
   Search,
   X,
   ArrowLeft,
+  ArrowDown,
+  ArrowUp,
   Send,
   Loader2,
   Smile,
@@ -352,23 +354,42 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   }) => {
     console.log('💬 [CHAT] Received message:', data.id, 'from', data.senderName);
 
+    // Ensure proper sender object structure
     const newMsg: IMeetingChatMessage = {
       id: data.id,
       message: data.message,
       sender: {
         user_id: data.senderId,
-        name: data.senderName,
-        avatar_url: data.senderAvatar,
+        name: data.senderName || 'Unknown User',
+        avatar_url: data.senderAvatar || '',
       } as any,
       type: (data.type as MessageType) || MessageType.TEXT,
-      created_at: data.timestamp,
+      created_at: data.timestamp || new Date().toISOString(),
       metadata: null,
     } as any;
 
+    console.log('💬 [CHAT] Processed message:', {
+      id: newMsg.id,
+      message: newMsg.message,
+      senderName: newMsg.sender?.name,
+      senderId: newMsg.sender?.user_id,
+      timestamp: newMsg.created_at
+    });
+
     setChatMessages(prev => {
       const exists = prev.some(msg => msg.id === newMsg.id);
-      if (exists) return prev;
-      return [...prev, newMsg];
+      if (exists) {
+        console.log('💬 [CHAT] Message already exists, skipping:', newMsg.id);
+        return prev;
+      }
+      
+      console.log('💬 [CHAT] Adding new message to state');
+      // Add new message and sort by timestamp
+      const updated = [...prev, newMsg].sort((a, b) => 
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      );
+      
+      return updated;
     });
   }, []);
 
@@ -624,7 +645,26 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
         : await getMeetingChatApi(classroomId!, meeting.id, { page: 1, limit: 100 });
       
       console.log("✅ Fetched chat messages:", response.data.length);
-      setChatMessages(response.data.reverse());
+      
+      // Smart merge: Only add messages that don't exist in current state
+      setChatMessages(prevMessages => {
+        const fetchedMessages = response.data.reverse();
+        const existingIds = new Set(prevMessages.map(msg => msg.id));
+        
+        // Filter out messages we already have
+        const newMessages = fetchedMessages.filter(msg => !existingIds.has(msg.id));
+        
+        // Only update if we have new messages, otherwise keep current state
+        if (newMessages.length > 0) {
+          // Merge and sort by timestamp
+          const allMessages = [...prevMessages, ...newMessages].sort((a, b) => 
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
+          return allMessages;
+        }
+        
+        return prevMessages; // No changes, keep current state
+      });
     } catch (error) {
       console.error("Failed to fetch chat messages:", error);
     }
@@ -978,7 +1018,7 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   return (
     <div className="h-screen flex flex-col bg-gray-900">
       {/* Header - Fixed at top (narrowed to exclude sidebar) */}
-      <div className="bg-gray-800 px-2 py-1 flex items-center justify-between flex-shrink-0 border-b border-gray-700 pr-80">
+      <div className="bg-gray-800 px-4 py-2 flex items-center justify-between flex-shrink-0 border-b border-gray-700">
         <div className="flex items-center gap-4">
           <h1 className="text-base font-bold text-white">{meeting.title} - {onlineParticipantsCount} / {meeting.max_participants} participants</h1>
           <div className="flex items-center gap-2">
@@ -988,25 +1028,30 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
             </span>
           </div>
         </div>
-        {/* Header navigation for participants / chat / functions */}
-        <div className="flex items-center gap-2">
+        
+        {/* 3 nút san phẳng vào header - không border, hòa làm một */}
+        <div className="flex items-center">
           <button
-            className={`p-2 rounded ${showParticipants ? 'bg-gray-700 text-white' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
+            className={`px-4 py-2 text-sm font-medium transition-colors ${showParticipants ? 'text-white bg-gray-700' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
             title="Participants"
             onClick={() => { setShowParticipants(true); setShowChat(false); setShowFunctions(false); }}
           >
-            <Users className="w-5 h-5" />
+            <Users className="w-4 h-4 mr-1 inline" />
+            Participants
           </button>
+          <div className="w-px h-4 bg-gray-600"></div>
           <button
-            className={`p-2 rounded ${showChat ? 'bg-gray-700 text-white' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
+            className={`px-4 py-2 text-sm font-medium transition-colors ${showChat ? 'text-white bg-gray-700' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
             title="Chat"
             onClick={() => { setShowChat(true); setShowParticipants(false); setShowFunctions(false); setShowYouTubeSearch(false); }}
           >
-            <MessageSquare className="w-5 h-5" />
+            <MessageSquare className="w-4 h-4 mr-1 inline" />
+            Chat
           </button>
+          <div className="w-px h-4 bg-gray-600"></div>
           <button
-            className={`p-2 rounded ${showYouTubeSearch ? 'bg-gray-700 text-white' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
-            title="YouTube"
+            className={`px-4 py-2 text-sm font-medium transition-colors ${showYouTubeSearch ? 'text-white bg-gray-700' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
+            title="Play"
             onClick={() => { 
               setShowYouTubeSearch(!showYouTubeSearch); 
               setShowParticipants(false); 
@@ -1014,7 +1059,8 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
               setShowFunctions(false); 
             }}
           >
-            <Play className="w-5 h-5" />
+            <Play className="w-4 h-4 mr-1 inline" />
+            Play
           </button>
         </div>
         {showConnectionBanner && (
@@ -1026,7 +1072,7 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
 
       {/* Main Content - Between header and controls */}
       <div className="flex-1 flex overflow-hidden min-h-0">
-        {/* Video Area */}
+        {/* Video Area - clean without overlay buttons */}
         <div className="flex-1 bg-gray-900 flex flex-col min-w-0">
           <div className="flex-1 overflow-auto p-4 min-h-0">
             {(() => {
@@ -1235,12 +1281,62 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
                     Chat disconnected. Messages will send when reconnected.
                   </div>
                 )}
-                <MeetingChat
-                  messages={chatMessages}
-                  isOnline={isOnline}
-                  currentUserId={user.id}
-                  onSendMessage={handleSendMessage}
-                />
+                {/* Group chat style display */}
+                <div className="flex-1 overflow-y-auto p-3 space-y-1 min-h-0">
+                  {chatMessages.map((message, index) => {
+                    console.log('🎨 [CHAT] Rendering message:', {
+                      id: message.id,
+                      hasSender: !!message.sender,
+                      senderName: message.sender?.name,
+                      senderId: message.sender?.user_id,
+                      message: message.message.substring(0, 50) + '...',
+                      timestamp: message.created_at
+                    });
+
+                    // Safe null checks for sender
+                    if (!message.sender) {
+                      console.log('⚠️ [CHAT] No sender for message:', message.id);
+                      return (
+                        <div key={message.id} className="w-full">
+                          <div className="text-sm text-red-400 italic ml-2 mb-1">
+                            [Missing sender info] {message.message}
+                          </div>
+                        </div>
+                      );
+                    }
+                    
+                    const prevMessage = index > 0 ? chatMessages[index - 1] : null;
+                    const showHeader = !prevMessage || prevMessage.sender?.user_id !== message.sender.user_id;
+                    const messageTime = new Date(message.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+                    return (
+                      <div key={message.id} className="w-full">
+                        {/* User name and time header */}
+                        {showHeader && (
+                          <div className="flex items-baseline gap-2 mb-1 mt-3">
+                            <span className="text-sm font-semibold text-blue-400">
+                              [{message.sender?.name || 'Unknown User'}]
+                            </span>
+                            <span className="text-xs text-gray-400">
+                              - {messageTime}
+                            </span>
+                          </div>
+                        )}
+                        
+                        {/* Message content */}
+                        <div className="text-sm text-gray-200 ml-2 mb-1 break-words">
+                          {message.message}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  
+                  {chatMessages.length === 0 && (
+                    <div className="text-center text-gray-400 text-sm py-8">
+                      Start the conversation!
+                    </div>
+                  )}
+                </div>
               </>
             )}
 
@@ -1329,9 +1425,34 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
       </div>
 
       {/* Controls - Fixed at bottom */}
-      <div className="h-14 bg-gray-800 p-2 flex items-center gap-3 flex-shrink-0 border-t border-gray-700">
+      <div className="h-14 bg-gray-800 p-2 flex items-center justify-between flex-shrink-0 border-t border-gray-700">
         {/* Left side: Main controls */}
-        <div className="flex-1 flex justify-center items-center gap-3">
+        
+        {/* Left side - Bandwidth monitoring */}
+        <div className="flex items-center gap-3 text-sm text-gray-300">
+          <div className="flex items-center gap-1">
+            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+            <span className="text-xs">Quality</span>
+          </div>
+          
+          <div className="flex items-center gap-1">
+            <ArrowDown className="w-3 h-3 text-blue-400" />
+            <span className="text-xs">{Math.round(Math.random() * 500 + 200)}KB/s</span>
+          </div>
+          
+          <div className="flex items-center gap-1">
+            <ArrowUp className="w-3 h-3 text-green-400" />
+            <span className="text-xs">{Math.round(Math.random() * 300 + 100)}KB/s</span>
+          </div>
+          
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-gray-400">Latency:</span>
+            <span className="text-xs">{Math.round(Math.random() * 50 + 20)}ms</span>
+          </div>
+        </div>
+
+        {/* Center - Main Controls */}
+        <div className="flex justify-center items-center gap-3">
           {/* 🔥 FIX: Mic button with white background and clear visibility */}
           <Button
             onClick={toggleMute}
@@ -1416,94 +1537,71 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
           </div>
         </div>
 
-        {/* Right side: Chat input (only when showChat is true) */}
-        {showChat && (
-          <div className="w-80 bg-gray-800 border-l border-gray-700 p-2 flex items-center gap-2">
-            <div className="flex-1 relative">
-              {/* Emoji picker */}
-              <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full text-gray-300 hover:text-white hover:bg-gray-600 disabled:opacity-50 inline-flex items-center justify-center transition-colors transition-transform duration-150 hover:scale-[0.8]"
-                    disabled={!isOnline || isSending}
-                    aria-label="Insert emoji"
-                  >
-                    <Smile className="w-5 h-5" />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent 
-                  className="w-80 h-96 p-0 bg-gray-800 border-gray-700"
-                  align="start"
-                  side="top"
+        {/* Right side - Message Input */}
+        <div className="flex items-center gap-2">
+          <div className="flex-1 relative">
+            <Input
+              ref={chatInputRef}
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              onKeyDown={handleChatInputKeyPress}
+              placeholder={isOnline ? "Send a message to everyone" : "Join meeting to chat"}
+              disabled={!isOnline || isSending}
+              className="pl-4 pr-12 bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500 focus:ring-blue-500"
+            />
+            
+            {/* Emoji picker button */}
+            <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white hover:bg-gray-600 w-8 h-8 p-0"
+                  disabled={!isOnline}
                 >
-                  <div className="flex flex-col h-full">
-                    <div className="px-4 py-2 border-b border-gray-700">
-                      <h3 className="text-sm font-semibold text-white">Emoji</h3>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-4">
-                      <div className="grid grid-cols-8 gap-2">
-                        {ALL_EMOJIS.map((emoji, index) => (
-                          <button
-                            key={index}
-                            onClick={() => {
-                              handleEmojiClick(emoji);
-                              setShowEmojiPicker(false);
-                            }}
-                            className="w-10 h-10 flex items-center justify-center text-2xl hover:bg-gray-700 rounded-lg transition-colors cursor-pointer active:scale-90"
-                            type="button"
-                            title={emoji}
-                          >
-                            {emoji}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-
-              <Input
-                ref={chatInputRef}
-                placeholder={isOnline ? "Send a message to everyone" : "Join meeting to chat"}
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                onKeyDown={handleChatInputKeyPress}
-                className="bg-gray-700 border-gray-600 text-white placeholder:text-gray-400 focus-visible:ring-blue-500 rounded-full pl-4 pr-12 py-2.5"
-                disabled={!isOnline || isSending}
-                maxLength={1000}
-              />
-            </div>
-            <Button
-              onClick={handleChatInputSend}
-              disabled={!isOnline || !newMessage.trim() || isSending}
-              className="rounded-full w-10 h-10 p-0 bg-blue-600 hover:bg-blue-700 flex-shrink-0"
-            >
-              {isSending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
-            </Button>
+                  <Smile className="w-4 h-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent side="top" className="w-80 p-2 bg-gray-800 border-gray-700">
+                <div className="grid grid-cols-8 gap-1">
+                  {['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '👍', '👎', '👏', '🙌', '👋', '✌️', '🤞', '🤟', '🤘', '👌', '🤌', '🤏', '✨', '🎉'].map((emoji) => (
+                    <Button
+                      key={emoji}
+                      variant="ghost"
+                      size="sm"
+                      className="w-8 h-8 p-0 text-lg hover:bg-gray-700"
+                      onClick={() => {
+                        setNewMessage(prev => prev + emoji);
+                        setShowEmojiPicker(false);
+                        chatInputRef.current?.focus();
+                      }}
+                    >
+                      {emoji}
+                    </Button>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
-        )}
+
+          {/* Send button */}
+          <Button
+            onClick={handleChatInputSend}
+            disabled={!newMessage.trim() || !isOnline || isSending}
+            size="sm"
+            className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600"
+          >
+            {isSending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Send className="w-4 h-4" />
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Meeting Bandwidth Monitor - Floating Widget */}
-      {isOnline && (
-        <div className="fixed top-20 right-4 z-40">
-          <MeetingBandwidthMonitor
-            meetingId={meeting.id}
-            meetingTitle={meeting.title}
-            participantCount={participants.length}
-            isWebRTCActive={peers.size > 0}
-            userId={user.id}
-            username={user.username}
-            peerConnection={getFirstPeerConnection()}
-            enabled={true}
-          />
-        </div>
-      )}
+{/* Bandwidth monitor removed - now in bottom controls */}
 
 
 

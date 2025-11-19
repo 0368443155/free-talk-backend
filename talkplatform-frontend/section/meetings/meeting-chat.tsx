@@ -16,6 +16,7 @@ interface MeetingChatProps {
   isOnline: boolean;
   currentUserId: string;
   onSendMessage: (message: string) => void;
+  onSendReaction?: (emoji: string) => void;
 }
 
 // Popular emojis organized by categories
@@ -29,7 +30,7 @@ const EMOJI_CATEGORIES = {
 
 const ALL_EMOJIS = Object.values(EMOJI_CATEGORIES).flat();
 
-export function MeetingChat({ messages, isOnline, currentUserId, onSendMessage }: MeetingChatProps) {
+export function MeetingChat({ messages, isOnline, currentUserId, onSendMessage, onSendReaction }: MeetingChatProps) {
   const [newMessage, setNewMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
@@ -141,7 +142,16 @@ export function MeetingChat({ messages, isOnline, currentUserId, onSendMessage }
   // Handle emoji selection
   const handleEmojiClick = (emoji: string) => {
     setNewMessage(prev => prev + emoji);
+    setShowEmojiPicker(false);
     inputRef.current?.focus();
+  };
+
+  // Handle reaction sending
+  const handleReactionClick = (emoji: string) => {
+    if (onSendReaction) {
+      onSendReaction(emoji);
+    }
+    setShowEmojiPicker(false);
   };
 
   // 🔥 FIX: Check if message is from current user - normalize both IDs
@@ -256,6 +266,99 @@ export function MeetingChat({ messages, isOnline, currentUserId, onSendMessage }
           </Button>
         </div>
       )}
+
+      {/* Single input area - removed duplicate */}
+      <div className="border-t border-gray-700 p-4">
+        <div className="flex gap-2 items-end">
+          {/* Emoji picker */}
+          <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg p-2"
+                disabled={!isOnline}
+              >
+                <Smile className="w-5 h-5" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent side="top" className="w-80 p-2 bg-gray-800 border-gray-700">
+              <div className="space-y-2">
+                {/* Quick reactions */}
+                <div>
+                  <p className="text-xs font-medium text-gray-400 mb-2">Quick Reactions</p>
+                  <div className="flex gap-1">
+                    {['👍', '❤️', '😂', '😮', '😢', '🎉', '👏', '🔥'].map((emoji) => (
+                      <Button
+                        key={emoji}
+                        variant="ghost"
+                        size="sm"
+                        className="w-8 h-8 p-0 text-lg hover:bg-gray-700"
+                        onClick={() => handleReactionClick(emoji)}
+                      >
+                        {emoji}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* All emojis for typing */}
+                <div>
+                  <p className="text-xs font-medium text-gray-400 mb-2">Add to Message</p>
+                  <div className="grid grid-cols-8 gap-1 max-h-32 overflow-y-auto">
+                    {ALL_EMOJIS.slice(0, 64).map((emoji, index) => (
+                      <Button
+                        key={index}
+                        variant="ghost"
+                        size="sm"
+                        className="w-8 h-8 p-0 text-sm hover:bg-gray-700"
+                        onClick={() => handleEmojiClick(emoji)}
+                      >
+                        {emoji}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {/* Message input */}
+          <div className="flex-1">
+            <Input
+              ref={inputRef}
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder={isOnline ? "Type a message..." : "Reconnecting..."}
+              disabled={!isOnline || isSending}
+              className="bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Send button */}
+          <Button
+            onClick={handleSendMessage}
+            disabled={!newMessage.trim() || !isOnline || isSending}
+            size="sm"
+            className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600"
+          >
+            {isSending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Send className="w-4 h-4" />
+            )}
+          </Button>
+        </div>
+
+        {/* Connection status */}
+        {!isOnline && (
+          <div className="mt-2 text-xs text-yellow-400 flex items-center gap-1">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            Reconnecting to chat...
+          </div>
+        )}
+      </div>
 
     </div>
   );

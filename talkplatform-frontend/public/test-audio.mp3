@@ -1,0 +1,9 @@
+# This is a placeholder for the test audio file
+# In a real implementation, you would place a short MP3 file here
+# for testing audio output devices in the Green Room component.
+# 
+# You can use any short audio clip (2-3 seconds) like a beep or tone.
+# For now, you can download a test tone from:
+# https://www.soundjay.com/misc/beep-07.wav
+# 
+# Convert to MP3 and place it as test-audio.mp3 in the public folder.

@@ -45,8 +45,8 @@ export function useMeetingSocket({
     console.log('🔌 Starting socket connection...', { meetingId, userId });
 
     const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 
-                      process.env.NEXT_PUBLIC_SERVER || 
-                      'http://localhost:3001';
+                      process.env.NEXT_PUBLIC_NESTJS_URL || 
+                      'http://localhost:3000';
 
     console.log('🌐 Socket URL:', socketUrl);
 

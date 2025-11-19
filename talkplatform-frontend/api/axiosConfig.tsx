@@ -12,13 +12,11 @@ const getBaseURL = () => {
 
 const axiosConfig = axios.create({
   baseURL: getBaseURL(),
-  timeout: 30000,
+  timeout: 10000, // Giảm timeout xuống 10s
   headers: {
-    'X-Custom-Header': 'footbar',
-    'Access-Control-Allow-Origin': 'true',
     'Content-Type': 'application/json',
   },
-  withCredentials: true,
+  // Bỏ withCredentials để tránh CORS issues
 });
 
 // ✅ SỬA LỖI: Đọc token MỖI LẦN gửi request (không cache)
