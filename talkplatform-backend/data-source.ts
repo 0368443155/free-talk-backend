@@ -12,6 +12,8 @@ import {
   MeetingChatMessage,
   Classroom,
   ClassroomMember,
+  BandwidthMetric,
+  MetricsHourly,
 } from './src/entities';
 
 dotenv.config(); // Nạp .env
@@ -36,6 +38,8 @@ export const dataSourceOptions: DataSourceOptions = {
     MeetingChatMessage,
     Classroom,
     ClassroomMember,
+    BandwidthMetric,
+    MetricsHourly,
   ],
   migrations: [path.join(__dirname, 'src', 'database', 'migrations', '*{.ts,.js}')], // Đường dẫn migrations chính xác
   migrationsTableName: 'migrations_typeorm', // Tên bảng migrations

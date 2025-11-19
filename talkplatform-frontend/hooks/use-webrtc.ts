@@ -52,6 +52,7 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
   const pendingCandidates = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const screenStreamRef = useRef<MediaStream | null>(null);
   const lastCameraTrackRef = useRef<MediaStreamTrack | null>(null);
+  const isReplacingTracksRef = useRef(false);
 
   // Start local media stream
   const startLocalStream = useCallback(async () => {
@@ -83,15 +84,33 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
       if (socket && isOnline) {
         socket.emit('webrtc:ready', { userId });
 
-        // 🔥 NEW: Add tracks to existing peer connections
+        // 🔥 NEW: Add tracks to existing peer connections in consistent order
         peersRef.current.forEach((peer, targetUserId) => {
           console.log(`➕ Adding new tracks to existing peer: ${targetUserId}`);
-          stream.getTracks().forEach(track => {
-            const sender = peer.connection.getSenders().find(s => s.track?.kind === track.kind);
+          
+          const tracks = stream.getTracks();
+          
+          // Process audio tracks first
+          tracks.filter(track => track.kind === 'audio').forEach(track => {
+            const sender = peer.connection.getSenders().find(s => s.track?.kind === 'audio');
             if (sender) {
               sender.replaceTrack(track);
+              console.log(`🔄 Replaced audio track for ${targetUserId}`);
             } else {
               peer.connection.addTrack(track, stream);
+              console.log(`➕ Added audio track for ${targetUserId}`);
+            }
+          });
+          
+          // Process video tracks second
+          tracks.filter(track => track.kind === 'video').forEach(track => {
+            const sender = peer.connection.getSenders().find(s => s.track?.kind === 'video');
+            if (sender) {
+              sender.replaceTrack(track);
+              console.log(`🔄 Replaced video track for ${targetUserId}`);
+            } else {
+              peer.connection.addTrack(track, stream);
+              console.log(`➕ Added video track for ${targetUserId}`);
             }
           });
         });
@@ -168,14 +187,29 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
         
         localStreamRef.current.addTrack(newVideoTrack);
 
-        // 🔥 CRITICAL: Replace track in ALL peer connections
-        peersRef.current.forEach((peer, targetUserId) => {
-          const sender = peer.connection.getSenders().find(s => s.track?.kind === 'video');
-          if (sender) {
-            console.log(`🔄 Replacing video track for peer: ${targetUserId}`);
-            sender.replaceTrack(newVideoTrack);
+        // 🔥 CRITICAL: Replace track in ALL peer connections with async handling
+        isReplacingTracksRef.current = true;
+        
+        const videoReplacePromises = Array.from(peersRef.current.entries()).map(async ([targetUserId, peer]) => {
+          try {
+            const sender = peer.connection.getSenders().find(s => s.track?.kind === 'video');
+            if (sender) {
+              console.log(`🔄 Replacing video track for peer: ${targetUserId}`);
+              await sender.replaceTrack(newVideoTrack);
+              console.log(`✅ Video track replaced for ${targetUserId}`);
+            }
+          } catch (error) {
+            console.error(`❌ Failed to replace video track for ${targetUserId}:`, error);
           }
         });
+
+        // Wait for all video track replacements to complete
+        await Promise.all(videoReplacePromises);
+        
+        // Clear the flag after all replacements are done
+        setTimeout(() => {
+          isReplacingTracksRef.current = false;
+        }, 500);
 
         // Update state
         setLocalStream(new MediaStream([
@@ -202,7 +236,7 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
     setPeers(new Map(peersRef.current));
   }, [socket, isVideoOff]);
 
-  // Toggle screen share: replace video track with display media, and restore camera when stopped
+  // Toggle screen share: ADD screen track without replacing camera
   const toggleScreenShare = useCallback(async () => {
     // If turning OFF screen share
     if (isScreenSharing) {
@@ -211,33 +245,70 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
         screenStreamRef.current?.getTracks().forEach(t => t.stop());
         screenStreamRef.current = null;
 
-        // Restore camera track: if we have a cached camera track use it, otherwise try to reacquire
-        let restoreTrack: MediaStreamTrack | null = lastCameraTrackRef.current;
-        if (!restoreTrack || restoreTrack.readyState !== 'live') {
-          if (localStreamRef.current?.getVideoTracks()[0] && !localStreamRef.current.getVideoTracks()[0].label.toLowerCase().includes('screen')) {
-            restoreTrack = localStreamRef.current.getVideoTracks()[0];
-          } else {
-            const cam = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-            restoreTrack = cam.getVideoTracks()[0] || null;
-          }
-        }
-
-        if (restoreTrack) {
-          // Replace in peers
-          peersRef.current.forEach(({ connection }) => {
+        // Restore camera track to peers (replace screen with camera)
+        isReplacingTracksRef.current = true;
+        
+        const restorePromises = Array.from(peersRef.current.entries()).map(async ([targetUserId, { connection }]) => {
+          try {
             const sender = connection.getSenders().find(s => s.track?.kind === 'video');
-            if (sender) sender.replaceTrack(restoreTrack as MediaStreamTrack);
-          });
+            if (sender && lastCameraTrackRef.current && lastCameraTrackRef.current.readyState === 'live') {
+              await sender.replaceTrack(lastCameraTrackRef.current);
+              console.log(`📹 Restored camera track for ${targetUserId}`);
+            } else if (sender) {
+              // If no cached camera, get fresh one
+              try {
+                const freshCamera = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                const freshVideoTrack = freshCamera.getVideoTracks()[0];
+                if (freshVideoTrack) {
+                  await sender.replaceTrack(freshVideoTrack);
+                  console.log(`📹 Added fresh camera track for ${targetUserId}`);
+                }
+              } catch (error) {
+                console.warn(`Could not restore camera for ${targetUserId}:`, error);
+                // Remove track if we can't restore camera
+                await sender.replaceTrack(null);
+              }
+            }
+          } catch (error) {
+            console.error(`❌ Failed to restore camera for ${targetUserId}:`, error);
+          }
+        });
 
-          // Update local stream composition
-          const audio = localStreamRef.current?.getAudioTracks() || [];
-          localStreamRef.current = new MediaStream([...audio, restoreTrack]);
-          setLocalStream(localStreamRef.current);
-          setIsVideoOff(!restoreTrack.enabled);
-        }
+        await Promise.all(restorePromises);
+        
+        setTimeout(() => {
+          isReplacingTracksRef.current = false;
+        }, 500);
 
         setIsScreenSharing(false);
         if (socket) socket.emit('media:screen-share', { isSharing: false });
+        
+        // Restore camera after stopping screen share
+        const audio = localStreamRef.current?.getAudioTracks() || [];
+        
+        if (lastCameraTrackRef.current && lastCameraTrackRef.current.readyState === 'live') {
+          // Restore cached camera
+          localStreamRef.current = new MediaStream([...audio, lastCameraTrackRef.current]);
+          setLocalStream(localStreamRef.current);
+        } else {
+          // Get fresh camera track if cached one is not available
+          try {
+            const freshCamera = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            const freshVideoTrack = freshCamera.getVideoTracks()[0];
+            
+            if (freshVideoTrack) {
+              localStreamRef.current = new MediaStream([...audio, freshVideoTrack]);
+              setLocalStream(localStreamRef.current);
+              lastCameraTrackRef.current = freshVideoTrack;
+            }
+          } catch (error) {
+            console.warn('Could not restore camera after screen share:', error);
+            // Fallback: just audio
+            localStreamRef.current = new MediaStream(audio);
+            setLocalStream(localStreamRef.current);
+          }
+        }
+        
         // Force rerender peers state
         setPeers(new Map(peersRef.current));
       } catch (e) {
@@ -246,7 +317,7 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
       return;
     }
 
-    // Turn ON screen share
+    // Turn ON screen share - ADD track instead of replace
     try {
       const displayStream = await (navigator.mediaDevices as any).getDisplayMedia({
         video: { frameRate: 30 },
@@ -255,29 +326,49 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
       const screenTrack = displayStream.getVideoTracks()[0];
       if (!screenTrack) return;
 
-      // Cache current camera track (if any) to restore later
+      // Cache current camera track (keep it for simultaneous sharing)
       const currentCamera = localStreamRef.current?.getVideoTracks()[0] || null;
       lastCameraTrackRef.current = currentCamera;
 
-      // Replace in peers
-      peersRef.current.forEach(({ connection }) => {
-        const sender = connection.getSenders().find(s => s.track?.kind === 'video');
-        if (sender) sender.replaceTrack(screenTrack);
+      // Set flag to prevent negotiation during track addition
+      isReplacingTracksRef.current = true;
+      
+      // REPLACE video track with screen (better approach for viewing)
+      const replacePromises = Array.from(peersRef.current.entries()).map(async ([targetUserId, { connection }]) => {
+        try {
+          const sender = connection.getSenders().find(s => s.track?.kind === 'video');
+          if (sender) {
+            await sender.replaceTrack(screenTrack);
+            console.log(`🖥️ Replaced video with screen track for ${targetUserId}`);
+          } else {
+            // If no video sender exists, add screen track
+            connection.addTrack(screenTrack, displayStream);
+            console.log(`➕ Added screen track to ${targetUserId}`);
+          }
+        } catch (error) {
+          console.error(`❌ Failed to send screen track to ${targetUserId}:`, error);
+        }
       });
 
-      // Update local stream to render screen locally (keep audio tracks)
+      await Promise.all(replacePromises);
+      
+      setTimeout(() => {
+        isReplacingTracksRef.current = false;
+      }, 500);
+
+      // Update local stream to show ONLY screen when sharing (not camera)
       const audio = localStreamRef.current?.getAudioTracks() || [];
+      
       screenStreamRef.current = new MediaStream([screenTrack]);
-      localStreamRef.current = new MediaStream([...audio, screenTrack]);
+      localStreamRef.current = new MediaStream([...audio, screenTrack]); // Only screen + audio
       setLocalStream(localStreamRef.current);
-      setIsVideoOff(false);
       setIsScreenSharing(true);
+      
       if (socket) socket.emit('media:screen-share', { isSharing: true });
 
       // Auto-stop when user clicks "Stop sharing"
       screenTrack.onended = () => {
         setTimeout(() => {
-          // Safeguard call to toggle off only if still sharing
           if (isScreenSharing) {
             toggleScreenShare().catch(() => {});
           }
@@ -295,13 +386,25 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
   const createPeerConnection = useCallback((targetUserId: string): RTCPeerConnection => {
     console.log(`🔗 Creating peer connection for ${targetUserId}`);
 
-    const pc = new RTCPeerConnection(ICE_SERVERS);
+    const pc = new RTCPeerConnection({
+      ...ICE_SERVERS,
+      sdpSemantics: 'unified-plan', // Use unified plan for consistent behavior
+    });
 
-    // Add local stream tracks
+    // 🔥 CRITICAL FIX: Add tracks in consistent order (audio first, then video)
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
+      const tracks = localStreamRef.current.getTracks();
+      
+      // Add audio tracks first
+      tracks.filter(track => track.kind === 'audio').forEach(track => {
         pc.addTrack(track, localStreamRef.current!);
-        console.log(`➕ Added ${track.kind} track to peer connection`);
+        console.log(`🎵 Added audio track to peer connection`);
+      });
+      
+      // Add video tracks second
+      tracks.filter(track => track.kind === 'video').forEach(track => {
+        pc.addTrack(track, localStreamRef.current!);
+        console.log(`📹 Added video track to peer connection`);
       });
     }
 
@@ -349,10 +452,16 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
       }
     };
 
-    // 🔥 FIXED: Handle negotiation needed with proper offer options
+    // 🔥 FIXED: Handle negotiation needed with consistent m-line order
     pc.onnegotiationneeded = async () => {
       try {
         console.log(`🔄 Negotiation needed for ${targetUserId}`);
+        
+        // Prevent negotiation during track replacement
+        if (isReplacingTracksRef.current) {
+          console.log(`⏸️ Skipping negotiation - replacing tracks`);
+          return;
+        }
         
         // Prevent negotiation during signaling state changes
         if (pc.signalingState !== 'stable') {
@@ -360,10 +469,20 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
           return;
         }
         
-        // Create offer with OfferToReceiveAudio/Video to maintain m-line order
+        // Wait a bit to let any pending state changes complete
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Double-check state after delay
+        if (pc.signalingState !== 'stable' || isReplacingTracksRef.current) {
+          console.log(`⏸️ State still not stable or replacing tracks after delay`);
+          return;
+        }
+        
+        // Create offer with consistent options to maintain m-line order
         const offer = await pc.createOffer({
           offerToReceiveAudio: true,
           offerToReceiveVideo: true,
+          iceRestart: false, // Prevent ICE restart unless necessary
         });
         
         await pc.setLocalDescription(offer);
@@ -374,8 +493,22 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
             offer: pc.localDescription,
           });
         }
+        
+        console.log(`📤 Offer sent to ${targetUserId}`);
       } catch (error) {
         console.error(`❌ Negotiation failed for ${targetUserId}:`, error);
+        
+        // If failed, try to restart ICE connection
+        if (pc.connectionState === 'failed') {
+          console.log(`🔄 Attempting ICE restart for ${targetUserId}`);
+          try {
+            if (pc.restartIce) {
+              pc.restartIce();
+            }
+          } catch (restartError) {
+            console.error(`❌ ICE restart failed:`, restartError);
+          }
+        }
       }
     };
 
@@ -417,7 +550,10 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
         }
         pendingCandidates.current.delete(data.fromUserId);
 
-        const answer = await pc.createAnswer();
+        const answer = await pc.createAnswer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true,
+        });
         await pc.setLocalDescription(answer);
 
         socket.emit('webrtc:answer', {
@@ -490,8 +626,11 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
         peersRef.current.set(data.userId, peerConnection);
         setPeers(new Map(peersRef.current));
 
-        // Create and send offer
-        const offer = await pc.createOffer();
+        // Create and send offer with consistent options
+        const offer = await pc.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true,
+        });
         await pc.setLocalDescription(offer);
 
         socket.emit('webrtc:offer', {

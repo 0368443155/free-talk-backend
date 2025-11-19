@@ -27,8 +27,7 @@ import { MeetingChat } from "./meeting-chat";
 import { YouTubePlayer, YouTubePlayerHandle } from "./youtube-player";
 import { YouTubeSearchModal } from "@/components/youtube-search-modal";
 import { Slider } from "@/components/ui/slider";
-import { BandwidthMonitor } from "@/components/bandwidth-monitor";
-import { useMeetingBandwidthReporter } from "@/hooks/use-meeting-bandwidth-reporter";
+import { MeetingBandwidthMonitor } from "@/components/meeting-bandwidth-monitor";
 import {
   Mic,
   MicOff,
@@ -187,7 +186,7 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   }, [isHost, meeting.youtube_video_id, meeting.youtube_is_playing, meeting.youtube_current_time]);
 
   // WebRTC
-  const {
+    const {
     localStream,
     peers,
     isMuted,
@@ -206,25 +205,27 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     isOnline,
   });
 
-  // Report bandwidth to global monitoring
-  const peerConnection = getFirstPeerConnection();
-  console.log(`📊 [MEETING-ROOM] Bandwidth reporter debug:`);
-  console.log(`  - Meeting ID: ${meeting.id.slice(0, 8)}`);
-  console.log(`  - Meeting Title: ${meeting.title}`);
-  console.log(`  - Participants: ${participants.length}`);
-  console.log(`  - PeerConnection:`, peerConnection);
-  console.log(`  - PeerConnection state:`, peerConnection?.connectionState);
-  console.log(`  - PeerConnection ice state:`, peerConnection?.iceConnectionState);
-  
-  const { isReporting } = useMeetingBandwidthReporter({
-    meetingId: meeting.id,
-    meetingTitle: meeting.title,
-    peerConnection: peerConnection,
-    participantCount: participants.length,
-    userId: user.id,
-    username: user.name,
-    enabled: true
-  });
+  // Bandwidth monitoring is now handled by backend middleware
+  const isReporting = false;
+  const isSimpleReporting = false;
+
+  //  DEBUG: Log bandwidth status (có thể xóa sau khi test xong)
+  useEffect(() => {
+    if (isOnline) {
+      console.log('📊 [MEETING-ROOM] Bandwidth Reporter Status:', {
+        isReporting,
+        meetingId: meeting.id.slice(0, 8) + '...',
+        meetingTitle: meeting.title,
+        userId: user.id.slice(0, 8) + '...',
+        username: user.username,
+        isOnline,
+        peersCount: peers.size,
+        participantsCount: participants.length,
+        peerConnection: !!getFirstPeerConnection(),
+        peerState: getFirstPeerConnection()?.connectionState
+      });
+    }
+  }, [isReporting, isOnline, peers.size, participants.length]);
 
   console.log(`📊 [MEETING-ROOM] Bandwidth reporter status - isReporting: ${isReporting}`);
 
@@ -1488,13 +1489,21 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
         )}
       </div>
 
-      {/* Bandwidth Monitor - Floating Widget */}
-      <div className="fixed bottom-24 right-4 z-40 w-80">
-        <BandwidthMonitor 
-          peerConnection={getFirstPeerConnection()} 
-          enabled={isOnline && peers.size > 0}
-        />
-      </div>
+      {/* Meeting Bandwidth Monitor - Floating Widget */}
+      {isOnline && (
+        <div className="fixed top-20 right-4 z-40">
+          <MeetingBandwidthMonitor
+            meetingId={meeting.id}
+            meetingTitle={meeting.title}
+            participantCount={participants.length}
+            isWebRTCActive={peers.size > 0}
+            userId={user.id}
+            username={user.username}
+            peerConnection={getFirstPeerConnection()}
+            enabled={true}
+          />
+        </div>
+      )}
 
 
 

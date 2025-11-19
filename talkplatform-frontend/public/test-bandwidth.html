@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bandwidth Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ccc; }
+        button { padding: 10px 20px; margin: 5px; }
+        .result { background: #f0f0f0; padding: 10px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Bandwidth System Test</h1>
+    
+    <div class="test-section">
+        <h2>1. LocalStorage Test</h2>
+        <button onclick="testLocalStorage()">Test LocalStorage</button>
+        <button onclick="clearLocalStorage()">Clear LocalStorage</button>
+        <div id="localStorageResult" class="result">Click test để kiểm tra</div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. Send Test Data</h2>
+        <button onclick="sendTestData()">Send 1 Test Data</button>
+        <button onclick="startAutoTest()">Start Auto Test (5s)</button>
+        <button onclick="stopAutoTest()">Stop Auto Test</button>
+        <div id="testDataResult" class="result">Chưa có dữ liệu test</div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. Check Stored Data</h2>
+        <button onclick="checkStoredData()">Check LocalStorage</button>
+        <div id="checkDataResult" class="result">Chưa kiểm tra</div>
+    </div>
+
+    <div class="test-section">
+        <h2>4. Admin Dashboard Link</h2>
+        <p><a href="/admin/bandwidth" target="_blank">Mở Admin Bandwidth Dashboard</a></p>
+        <p>Sau khi gửi test data, dashboard sẽ hiển thị dữ liệu</p>
+    </div>
+
+    <script>
+        let autoTestInterval = null;
+        let testCount = 0;
+
+        function testLocalStorage() {
+            try {
+                const testKey = 'test_bandwidth_key';
+                const testValue = { timestamp: Date.now(), message: 'Test localStorage' };
+                
+                localStorage.setItem(testKey, JSON.stringify(testValue));
+                const stored = localStorage.getItem(testKey);
+                const parsed = JSON.parse(stored);
+                
+                document.getElementById('localStorageResult').innerHTML = 
+                    `<strong>✅ LocalStorage OK</strong><br>
+                    Stored: ${JSON.stringify(testValue)}<br>
+                    Retrieved: ${JSON.stringify(parsed)}<br>
+                    Test time: ${new Date(parsed.timestamp).toLocaleTimeString()}`;
+            } catch (error) {
+                document.getElementById('localStorageResult').innerHTML = 
+                    `<strong>❌ LocalStorage Error:</strong> ${error.message}`;
+            }
+        }
+
+        function clearLocalStorage() {
+            localStorage.removeItem('talkplatform_room_aggregate_bandwidth');
+            localStorage.removeItem('test_bandwidth_key');
+            document.getElementById('localStorageResult').innerHTML = 
+                '<strong>🗑️ LocalStorage cleared</strong>';
+        }
+
+        function sendTestData() {
+            testCount++;
+            const meetingId = 'test-meeting-' + Date.now();
+            const userId = 'test-user-' + testCount;
+            
+            const testData = {
+                meetingId,
+                meetingTitle: `Test Meeting ${testCount}`,
+                userId,
+                username: `TestUser${testCount}`,
+                bandwidth: {
+                    inbound: 50000 + Math.random() * 100000,
+                    outbound: 30000 + Math.random() * 70000,
+                    inboundFormatted: '65.2 KB/s',
+                    outboundFormatted: '42.8 KB/s'
+                }
+            };
+
+            // Get current state
+            let state = {};
+            try {
+                const stored = localStorage.getItem('talkplatform_room_aggregate_bandwidth');
+                if (stored) {
+                    state = JSON.parse(stored);
+                }
+            } catch (error) {
+                console.error('Error reading localStorage:', error);
+            }
+
+            // Initialize room if not exists
+            if (!state[meetingId]) {
+                state[meetingId] = {
+                    meetingId,
+                    meetingTitle: testData.meetingTitle,
+                    users: {},
+                    lastUpdated: Date.now()
+                };
+            }
+
+            // Update user data
+            const total = testData.bandwidth.inbound + testData.bandwidth.outbound;
+            state[meetingId].users[userId] = {
+                userId,
+                username: testData.username,
+                bandwidth: {
+                    ...testData.bandwidth,
+                    total: total,
+                    totalFormatted: `${(total / 1024).toFixed(1)} KB/s`
+                },
+                lastUpdated: Date.now()
+            };
+
+            // Recalculate room totals (simplified)
+            const users = Object.values(state[meetingId].users);
+            const totalInbound = users.reduce((sum, user) => sum + user.bandwidth.inbound, 0);
+            const totalOutbound = users.reduce((sum, user) => sum + user.bandwidth.outbound, 0);
+            
+            state[meetingId].totalBandwidth = {
+                inbound: totalInbound,
+                outbound: totalOutbound,
+                total: totalInbound + totalOutbound,
+                inboundFormatted: `${(totalInbound / 1024).toFixed(1)} KB/s`,
+                outboundFormatted: `${(totalOutbound / 1024).toFixed(1)} KB/s`,
+                totalFormatted: `${((totalInbound + totalOutbound) / 1024).toFixed(1)} KB/s`
+            };
+            state[meetingId].participantCount = users.length;
+            state[meetingId].lastUpdated = Date.now();
+
+            // Save to localStorage
+            localStorage.setItem('talkplatform_room_aggregate_bandwidth', JSON.stringify(state));
+
+            document.getElementById('testDataResult').innerHTML = 
+                `<strong>📊 Test Data ${testCount} Sent</strong><br>
+                Meeting: ${testData.meetingTitle}<br>
+                User: ${testData.username}<br>
+                Inbound: ${testData.bandwidth.inboundFormatted}<br>
+                Outbound: ${testData.bandwidth.outboundFormatted}<br>
+                Time: ${new Date().toLocaleTimeString()}`;
+
+            console.log('Test data sent:', testData);
+        }
+
+        function startAutoTest() {
+            if (autoTestInterval) return;
+            
+            sendTestData(); // Send first immediately
+            autoTestInterval = setInterval(sendTestData, 5000);
+            
+            document.getElementById('testDataResult').innerHTML += 
+                '<br><strong>🔄 Auto test started (every 5 seconds)</strong>';
+        }
+
+        function stopAutoTest() {
+            if (autoTestInterval) {
+                clearInterval(autoTestInterval);
+                autoTestInterval = null;
+                document.getElementById('testDataResult').innerHTML += 
+                    '<br><strong>⏹️ Auto test stopped</strong>';
+            }
+        }
+
+        function checkStoredData() {
+            try {
+                const stored = localStorage.getItem('talkplatform_room_aggregate_bandwidth');
+                if (!stored) {
+                    document.getElementById('checkDataResult').innerHTML = 
+                        '<strong>❌ No data in localStorage</strong>';
+                    return;
+                }
+
+                const data = JSON.parse(stored);
+                const meetings = Object.keys(data);
+                
+                let html = `<strong>📊 Found ${meetings.length} meetings:</strong><br><br>`;
+                
+                meetings.forEach((meetingId, index) => {
+                    const meeting = data[meetingId];
+                    const users = Object.keys(meeting.users);
+                    html += `
+                        <div style="margin: 10px 0; padding: 10px; background: #f9f9f9;">
+                            <strong>${index + 1}. ${meeting.meetingTitle}</strong><br>
+                            ID: ${meetingId.slice(0, 16)}...<br>
+                            Users: ${users.length}<br>
+                            Total Bandwidth: ${meeting.totalBandwidth?.totalFormatted || 'N/A'}<br>
+                            Last Updated: ${new Date(meeting.lastUpdated).toLocaleTimeString()}
+                        </div>
+                    `;
+                });
+
+                document.getElementById('checkDataResult').innerHTML = html;
+            } catch (error) {
+                document.getElementById('checkDataResult').innerHTML = 
+                    `<strong>❌ Error reading data:</strong> ${error.message}`;
+            }
+        }
+
+        // Initialize
+        document.getElementById('localStorageResult').innerHTML = 
+            '🧪 Test system ready. Click "Test LocalStorage" to start.';
+    </script>
+</body>
+</html>

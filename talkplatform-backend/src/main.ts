@@ -1,26 +1,30 @@
-import { NestFactory, Reflector } from '@nestjs/core';
+import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 async function bootstrap() {
-    const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule);
+  
+  // Global validation pipe (đã được cấu hình trong AppModule nhưng có thể override ở đây)
+  app.useGlobalPipes(new ValidationPipe({
+    whitelist: true, // Tự động loại bỏ các thuộc tính không có trong DTO
+    transform: true, // Tự động chuyển đổi payload thành DTO instance 
+    forbidNonWhitelisted: true, // Ném lỗi nếu có thuộc tính không được định nghĩa
+  }));
 
-    //lấy configservice đọc port từ .env
-    const configService = app.get(ConfigService);
-    const port = configService.get<number>('PORT', 3000);
+  // Enable CORS for frontend
+  app.enableCors({
+    origin: ['http://localhost:3001', 'http://localhost:3051'], // Frontend URLs
+    credentials: true,
+  });
 
-    // Kích hoạt CORS (cho phép frontend gọi)
-    app.enableCors({
-        origin: true, //cho phép mọi origin (thay đổi khi deploy)
-        credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    });
-    
-    app.setGlobalPrefix('api/v1');
-
-    // ValidationPipe và ClassSerializerInterceptor đã được kích hoạt global trong AppModule
-    // thông qua APP_PIPE và APP_INTERCEPTOR, không cần gọi lại ở đây.
-    await app.listen(port);
-    console.log(`🚀 Application is running on: http://localhost:${port}`);
+  const configService = app.get(ConfigService);
+  const port = configService.get<number>('PORT', 3000);
+   app.setGlobalPrefix('api/v1');
+  
+  await app.listen(port);
+  console.log(`🚀 TalkPlatform Backend is running on: http://localhost:${port}`);
+  console.log(`📊 Admin Dashboard: http://localhost:3001/admin`);
 }
 bootstrap();

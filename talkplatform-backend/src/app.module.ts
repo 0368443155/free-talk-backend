@@ -2,16 +2,19 @@ import { Module, ValidationPipe, ClassSerializerInterceptor } from '@nestjs/comm
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { RedisModule } from '@nestjs-modules/ioredis';
-import { AuthModule } from './auth/auth.module'; // <-- THÊM MỚI
-import { UsersModule } from './users/users.module'; // <-- THÊM MỚI
-import { AppController } from './app.controller'; // <-- THÊM MỚI
-import { AppService } from './app.service'; // <-- THÊM MỚI
+import { AuthModule } from './auth/auth.module';
+import { UsersModule } from './users/users.module';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
 import { User } from './users/user.entity';
 import { TeacherProfile } from './teachers/teacher-profile.entity';
 import { TeachersModule } from './teachers/teachers.module';
 import { MeetingsModule } from './features/meeting/meetings.module';
 import { ClassroomsModule } from './features/meeting/classrooms.module';
 import { AdminModule } from './admin/admin.module';
+import { MetricsModule } from './metrics/metrics.module';
+import { EventsModule } from './events/events.module';
+import { TasksModule } from './tasks/tasks.module';
 import { APP_PIPE, APP_INTERCEPTOR, Reflector } from '@nestjs/core';
 
 @Module({
@@ -55,13 +58,16 @@ import { APP_PIPE, APP_INTERCEPTOR, Reflector } from '@nestjs/core';
             }),
         }),
         
-        // 4. THÊM MỚI: Import các module tính năng
+        // 4. Import các module tính năng
         AuthModule,
         UsersModule,
         TeachersModule,
         MeetingsModule,
         ClassroomsModule,
         AdminModule,
+        MetricsModule,
+        EventsModule,
+        TasksModule,
     ],
     controllers: [AppController], // <-- THÊM MỚI
     providers: [AppService,
