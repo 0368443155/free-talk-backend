@@ -40,8 +40,86 @@ export class PublicMeetingsController {
   @ApiResponse({ status: 200, description: 'Meetings retrieved successfully' })
   async findAll(
     @Query() paginationDto: PaginationDto,
+    @Query('meeting_type') meetingType?: string,
+    @Query('language') language?: string,
+    @Query('level') level?: string,
+    @Query('region') region?: string,
+    @Query('status') status?: string,
+    @Query('is_live_only') isLiveOnly?: boolean,
   ) {
-    return this.meetingsService.findAllPublicMeetings(paginationDto);
+    const filters = {
+      meeting_type: meetingType as any,
+      language,
+      level: level as any,
+      region,
+      status: status as any,
+      is_live_only: isLiveOnly,
+    };
+
+    // Remove undefined values
+    Object.keys(filters).forEach(key => {
+      if (filters[key] === undefined) {
+        delete filters[key];
+      }
+    });
+
+    return this.meetingsService.findAllPublicMeetings(paginationDto, Object.keys(filters).length > 0 ? filters : undefined);
+  }
+
+  @Get('free-talk')
+  @ApiOperation({ summary: 'Get available free talk rooms' })
+  @ApiResponse({ status: 200, description: 'Free talk rooms retrieved successfully' })
+  async findFreeTalkRooms(
+    @Query() paginationDto: PaginationDto,
+    @Query('language') language?: string,
+    @Query('level') level?: string,
+    @Query('region') region?: string,
+  ) {
+    const filters = { language, level: level as any, region };
+    Object.keys(filters).forEach(key => {
+      if (filters[key] === undefined) {
+        delete filters[key];
+      }
+    });
+
+    return this.meetingsService.findAvailableFreeTalkRooms(paginationDto, Object.keys(filters).length > 0 ? filters : undefined);
+  }
+
+  @Get('teacher-classes')
+  @ApiOperation({ summary: 'Get teacher classes' })
+  @ApiResponse({ status: 200, description: 'Teacher classes retrieved successfully' })
+  async findTeacherClasses(
+    @Query() paginationDto: PaginationDto,
+    @Query('language') language?: string,
+    @Query('level') level?: string,
+    @Query('min_price') minPrice?: number,
+    @Query('max_price') maxPrice?: number,
+    @Query('scheduled_only') scheduledOnly?: boolean,
+  ) {
+    const filters = { 
+      language, 
+      level: level as any, 
+      min_price: minPrice, 
+      max_price: maxPrice,
+      scheduled_only: scheduledOnly 
+    };
+    Object.keys(filters).forEach(key => {
+      if (filters[key] === undefined) {
+        delete filters[key];
+      }
+    });
+
+    return this.meetingsService.findTeacherClasses(paginationDto, Object.keys(filters).length > 0 ? filters : undefined);
+  }
+
+  @Get('nearby/:region')
+  @ApiOperation({ summary: 'Get nearby meetings by region' })
+  @ApiResponse({ status: 200, description: 'Nearby meetings retrieved successfully' })
+  async findNearbyMeetings(
+    @Param('region') region: string,
+    @Query() paginationDto: PaginationDto,
+  ) {
+    return this.meetingsService.findNearbyMeetings(region, paginationDto);
   }
 
   @Get(':meetingId')

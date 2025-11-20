@@ -1,6 +1,6 @@
-import { IsString, IsOptional, IsBoolean, IsNumber, IsDateString, IsObject, Min, Max, IsNotEmpty, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsNumber, IsDateString, IsObject, Min, Max, IsNotEmpty, IsEnum, IsArray } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { MeetingStatus, MeetingLevel, RoomStatus } from '../entities/meeting.entity';
+import { MeetingStatus, MeetingLevel, RoomStatus, MeetingType, PricingType } from '../entities/meeting.entity';
 
 export class CreateMeetingDto {
   @ApiProperty({ description: 'Meeting title' })
@@ -81,5 +81,48 @@ export class CreateMeetingDto {
   @IsOptional()
   @IsBoolean()
   participants_can_unmute?: boolean;
+
+  // New enhanced fields for free talk and teacher classes
+  @ApiPropertyOptional({ description: 'Type of meeting', enum: MeetingType, default: MeetingType.FREE_TALK })
+  @IsOptional()
+  @IsEnum(MeetingType)
+  meeting_type?: MeetingType;
+
+  @ApiPropertyOptional({ description: 'Price in credits for paid meetings', default: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  price_credits?: number;
+
+  @ApiPropertyOptional({ description: 'Pricing model', enum: PricingType, default: PricingType.FREE })
+  @IsOptional()
+  @IsEnum(PricingType)
+  pricing_type?: PricingType;
+
+  @ApiPropertyOptional({ description: 'Geographic region for location-based matching', example: 'US-West' })
+  @IsOptional()
+  @IsString()
+  region?: string;
+
+  @ApiPropertyOptional({ description: 'Topic tags for better discoverability', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
+
+  @ApiPropertyOptional({ description: 'Audio-first meeting (minimal video)', default: true })
+  @IsOptional()
+  @IsBoolean()
+  is_audio_first?: boolean;
+
+  @ApiPropertyOptional({ description: 'Requires host approval to join', default: false })
+  @IsOptional()
+  @IsBoolean()
+  requires_approval?: boolean;
+
+  @ApiPropertyOptional({ description: 'Teacher affiliate code for revenue tracking' })
+  @IsOptional()
+  @IsString()
+  affiliate_code?: string;
 }
 

@@ -186,12 +186,12 @@ export function AdminLiveKitDashboard({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-white">
-              {formatBitrate(stats?.avgBitrate || 0)}bps
+              {formatBitrate(parseFloat(stats?.avgBitrate) || 0)}bps
             </div>
             <div className="flex items-center gap-1 mt-1">
               <TrendingUp className="w-4 h-4 text-green-400" />
               <span className="text-sm text-gray-400">
-                Max: {formatBitrate(stats?.maxBitrate || 0)}bps
+                Max: {formatBitrate(parseFloat(stats?.maxBitrate) || 0)}bps
               </span>
             </div>
           </CardContent>
@@ -203,16 +203,16 @@ export function AdminLiveKitDashboard({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-white">
-              {(stats?.avgPacketLoss || 0).toFixed(2)}%
+              {(parseFloat(stats?.avgPacketLoss) || 0).toFixed(2)}%
             </div>
             <div className="flex items-center gap-1 mt-1">
-              {(stats?.avgPacketLoss || 0) > 2 ? (
+              {(parseFloat(stats?.avgPacketLoss) || 0) > 2 ? (
                 <TrendingDown className="w-4 h-4 text-red-400" />
               ) : (
                 <CheckCircle className="w-4 h-4 text-green-400" />
               )}
               <span className="text-sm text-gray-400">
-                Max: {(stats?.maxPacketLoss || 0).toFixed(2)}%
+                Max: {(parseFloat(stats?.maxPacketLoss) || 0).toFixed(2)}%
               </span>
             </div>
           </CardContent>
@@ -224,12 +224,12 @@ export function AdminLiveKitDashboard({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-white">
-              {Math.round(stats?.avgRtt || 0)}ms
+              {Math.round(parseFloat(stats?.avgRtt) || 0)}ms
             </div>
             <div className="flex items-center gap-1 mt-1">
               <Activity className="w-4 h-4 text-blue-400" />
               <span className="text-sm text-gray-400">
-                Jitter: {Math.round(stats?.avgJitter || 0)}ms
+                Jitter: {Math.round(parseFloat(stats?.avgJitter) || 0)}ms
               </span>
             </div>
           </CardContent>
@@ -257,7 +257,7 @@ export function AdminLiveKitDashboard({
                       variant="outline" 
                       className={`text-xs ${getQualityColor(item.quality)} border-current`}
                     >
-                      {item.percentage.toFixed(1)}%
+                      {(parseFloat(item.percentage) || 0).toFixed(1)}%
                     </Badge>
                   </div>
                 </div>
@@ -295,16 +295,16 @@ export function AdminLiveKitDashboard({
                         {formatBitrate(meeting.avgBitrate)}bps
                       </div>
                       <div className="text-xs text-gray-400">
-                        Quality: {meeting.avgQualityScore.toFixed(1)}/4.0
+                        Quality: {(parseFloat(meeting.avgQualityScore) || 0).toFixed(1)}/4.0
                       </div>
                     </div>
                     <Badge 
-                      variant={meeting.avgQualityScore >= 3 ? "default" : "destructive"}
+                      variant={(parseFloat(meeting.avgQualityScore) || 0) >= 3 ? "default" : "destructive"}
                       className="text-xs"
                     >
-                      {meeting.avgQualityScore >= 3.5 ? 'Excellent' :
-                       meeting.avgQualityScore >= 2.5 ? 'Good' :
-                       meeting.avgQualityScore >= 1.5 ? 'Fair' : 'Poor'}
+                      {(parseFloat(meeting.avgQualityScore) || 0) >= 3.5 ? 'Excellent' :
+                       (parseFloat(meeting.avgQualityScore) || 0) >= 2.5 ? 'Good' :
+                       (parseFloat(meeting.avgQualityScore) || 0) >= 1.5 ? 'Fair' : 'Poor'}
                     </Badge>
                   </div>
                 </div>

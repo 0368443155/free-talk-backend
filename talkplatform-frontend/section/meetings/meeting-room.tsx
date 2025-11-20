@@ -638,7 +638,10 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     });
 
     if (!autoJoinAttempted && participantsFetched && (!currentParticipant || !isOnlineCheck) && !isJoining) {
-      console.log("Triggering auto-join...");
+      console.log("Triggering auto-join with LiveKit...");
+      setUseLiveKit(true);
+      setLivekitPhase("meeting");
+      setShowGreenRoom(false);
       setAutoJoinAttempted(true);
       handleJoinMeeting();
     }

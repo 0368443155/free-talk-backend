@@ -27,6 +27,19 @@ export enum MeetingLevel {
   ADVANCED = 'advanced',
 }
 
+export enum MeetingType {
+  FREE_TALK = 'free_talk',
+  TEACHER_CLASS = 'teacher_class',
+  WORKSHOP = 'workshop',
+  PRIVATE_SESSION = 'private_session',
+}
+
+export enum PricingType {
+  FREE = 'free',
+  CREDITS = 'credits',
+  SUBSCRIPTION = 'subscription',
+}
+
 export interface IMeetingSettings {
   allow_screen_share?: boolean;
   allow_chat?: boolean;
@@ -68,6 +81,15 @@ export interface IMeeting {
   updated_at: Date;
   host?: any;
   participants?: IMeetingParticipant[];
+  // Enhanced fields
+  meeting_type?: MeetingType;
+  price_credits?: number;
+  pricing_type?: PricingType;
+  region?: string;
+  tags?: string[];
+  is_audio_first?: boolean;
+  requires_approval?: boolean;
+  affiliate_code?: string;
 }
 
 export interface IMeetingParticipant {
@@ -101,6 +123,15 @@ export interface ICreateMeeting {
   topic?: string;
   allow_microphone?: boolean;
   participants_can_unmute?: boolean;
+  // Enhanced fields
+  meeting_type?: MeetingType;
+  price_credits?: number;
+  pricing_type?: PricingType;
+  region?: string;
+  tags?: string[];
+  is_audio_first?: boolean;
+  requires_approval?: boolean;
+  affiliate_code?: string;
 }
 
 export interface IMeetingListResponse {
@@ -191,27 +222,26 @@ export const getPublicMeetingsApi = async (page = 1, limit = 10): Promise<IMeeti
 };
 
 // Get live meetings only
-export const getLiveMeetingsApi = async (): Promise<IMeeting[]> => {
+export const getLiveMeetingsApi = async (filters?: {
+  meeting_type?: MeetingType;
+  language?: string;
+  level?: MeetingLevel;
+  region?: string;
+}): Promise<IMeeting[]> => {
   try {
     console.log('📊 [API] Fetching live meetings...');
     
-    // Backend doesn't support status filter, so get all meetings and filter client-side
-    const response = await axiosConfig.get('public-meetings', {
-      params: { limit: 100 },
-    });
+    const params: any = { limit: 100, is_live_only: true };
     
-    const allMeetings = response.data.data || [];
-    console.log(`📊 [API] Retrieved ${allMeetings.length} total meetings`);
+    // Add filters
+    if (filters?.meeting_type) params.meeting_type = filters.meeting_type;
+    if (filters?.language) params.language = filters.language;
+    if (filters?.level) params.level = filters.level;
+    if (filters?.region) params.region = filters.region;
     
-    // Filter for live meetings on client side
-    const liveMeetings = allMeetings.filter((meeting: IMeeting) => {
-      const isLive = meeting.status === MeetingStatus.LIVE;
-      if (isLive) {
-        console.log(`📊 [API] Found live meeting: ${meeting.id.slice(0, 8)} - ${meeting.title}`);
-      }
-      return isLive;
-    });
+    const response = await axiosConfig.get('public-meetings', { params });
     
+    const liveMeetings = response.data.data || [];
     console.log(`📊 [API] Found ${liveMeetings.length} live meetings`);
     return liveMeetings;
     
@@ -219,6 +249,50 @@ export const getLiveMeetingsApi = async (): Promise<IMeeting[]> => {
     console.error('❌ [API] Error fetching meetings:', error);
     return [];
   }
+};
+
+// Get available free talk rooms
+export const getFreeTalkRoomsApi = async (filters?: {
+  language?: string;
+  level?: MeetingLevel;
+  region?: string;
+}, page = 1, limit = 20): Promise<IMeetingListResponse> => {
+  const params: any = { page, limit };
+  
+  if (filters?.language) params.language = filters.language;
+  if (filters?.level) params.level = filters.level;
+  if (filters?.region) params.region = filters.region;
+  
+  const response = await axiosConfig.get('public-meetings/free-talk', { params });
+  return response.data;
+};
+
+// Get teacher classes
+export const getTeacherClassesApi = async (filters?: {
+  language?: string;
+  level?: MeetingLevel;
+  min_price?: number;
+  max_price?: number;
+  scheduled_only?: boolean;
+}, page = 1, limit = 20): Promise<IMeetingListResponse> => {
+  const params: any = { page, limit };
+  
+  if (filters?.language) params.language = filters.language;
+  if (filters?.level) params.level = filters.level;
+  if (filters?.min_price !== undefined) params.min_price = filters.min_price;
+  if (filters?.max_price !== undefined) params.max_price = filters.max_price;
+  if (filters?.scheduled_only) params.scheduled_only = filters.scheduled_only;
+  
+  const response = await axiosConfig.get('public-meetings/teacher-classes', { params });
+  return response.data;
+};
+
+// Get nearby meetings by region
+export const getNearbyMeetingsApi = async (region: string, page = 1, limit = 20): Promise<IMeetingListResponse> => {
+  const response = await axiosConfig.get(`public-meetings/nearby/${region}`, {
+    params: { page, limit }
+  });
+  return response.data;
 };
 
 // Create meeting

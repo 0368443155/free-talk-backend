@@ -44,7 +44,7 @@ export interface LiveKitDashboardData {
 // Send LiveKit metric to backend
 export const sendLiveKitMetricApi = async (metric: LiveKitMetric): Promise<{ success: boolean; error?: string }> => {
   try {
-    const response = await axiosInstance.post('/api/metrics/livekit', metric);
+    const response = await axiosInstance.post('/metrics/livekit', metric);
     return response.data;
   } catch (error: any) {
     console.error('Error sending LiveKit metric:', error);
@@ -58,7 +58,7 @@ export const sendLiveKitMetricApi = async (metric: LiveKitMetric): Promise<{ suc
 // Bulk send multiple LiveKit metrics
 export const sendBulkLiveKitMetricsApi = async (metrics: LiveKitMetric[]): Promise<{ success: boolean; count: number; error?: string }> => {
   try {
-    const response = await axiosInstance.post('/api/metrics/livekit/bulk', metrics);
+    const response = await axiosInstance.post('/metrics/livekit/bulk', metrics);
     return response.data;
   } catch (error: any) {
     console.error('Error sending bulk LiveKit metrics:', error);
@@ -74,7 +74,7 @@ export const sendBulkLiveKitMetricsApi = async (metrics: LiveKitMetric[]): Promi
 export const getLiveKitDashboardMetricsApi = async (meetingId?: string): Promise<LiveKitDashboardData> => {
   try {
     const params = meetingId ? { meetingId } : {};
-    const response = await axiosInstance.get('/api/metrics/livekit/dashboard', { params });
+    const response = await axiosInstance.get('/metrics/livekit/dashboard', { params });
     return response.data;
   } catch (error: any) {
     console.error('Error fetching LiveKit dashboard metrics:', error);

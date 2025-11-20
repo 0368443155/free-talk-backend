@@ -172,7 +172,7 @@ export default function AdminDashboardEnhanced({ initialData }: { initialData?: 
   const fetchRealtimeMetrics = async () => {
     try {
       const { axiosInstance } = await import('@/api/axiosConfig');
-      const response = await axiosInstance.get('/api/metrics/realtime');
+      const response = await axiosInstance.get('/metrics/realtime');
       if (response.status === 200) {
         setRealtimeMetrics(response.data);
       }
@@ -184,7 +184,7 @@ export default function AdminDashboardEnhanced({ initialData }: { initialData?: 
   const fetchHistoricalData = async () => {
     try {
       const { axiosInstance } = await import('@/api/axiosConfig');
-      const response = await axiosInstance.get('/api/metrics/hourly?hours=24');
+      const response = await axiosInstance.get('/metrics/hourly?hours=24');
       if (response.status === 200) {
         setHistoricalData(response.data);
       }

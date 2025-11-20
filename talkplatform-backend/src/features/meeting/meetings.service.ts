@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Meeting, MeetingStatus } from './entities/meeting.entity';
+import { Meeting, MeetingStatus, MeetingType, PricingType, MeetingLevel } from './entities/meeting.entity';
 import { MeetingParticipant, ParticipantRole } from './entities/meeting-participant.entity';
 import { MeetingChatMessage, MessageType } from './entities/meeting-chat-message.entity';
 import { BlockedParticipant } from './entities/blocked-participant.entity';
@@ -31,9 +31,17 @@ export class MeetingsService {
 
 
   async createPublicMeeting(createMeetingDto: CreateMeetingDto, user: User) {
+    // Set defaults based on meeting type
+    const meetingType = createMeetingDto.meeting_type || MeetingType.FREE_TALK;
+    
+    // Apply meeting type specific defaults
+    const meetingDefaults = this.getMeetingTypeDefaults(meetingType);
+    
     // Create meeting without classroom
     const meeting = this.meetingRepository.create({
+      ...meetingDefaults,
       ...createMeetingDto,
+      meeting_type: meetingType,
       host: user,
       blocked_users: [],
       settings: {
@@ -64,6 +72,51 @@ export class MeetingsService {
     return savedMeeting;
   }
 
+  private getMeetingTypeDefaults(meetingType: MeetingType) {
+    switch (meetingType) {
+      case MeetingType.FREE_TALK:
+        return {
+          max_participants: 4,
+          is_audio_first: true,
+          pricing_type: PricingType.FREE,
+          price_credits: 0,
+          requires_approval: false,
+        };
+      case MeetingType.TEACHER_CLASS:
+        return {
+          max_participants: 100,
+          is_audio_first: false,
+          pricing_type: PricingType.CREDITS,
+          price_credits: 1,
+          requires_approval: false,
+        };
+      case MeetingType.WORKSHOP:
+        return {
+          max_participants: 50,
+          is_audio_first: false,
+          pricing_type: PricingType.CREDITS,
+          price_credits: 5,
+          requires_approval: true,
+        };
+      case MeetingType.PRIVATE_SESSION:
+        return {
+          max_participants: 2,
+          is_audio_first: false,
+          pricing_type: PricingType.CREDITS,
+          price_credits: 10,
+          requires_approval: true,
+        };
+      default:
+        return {
+          max_participants: 4,
+          is_audio_first: true,
+          pricing_type: PricingType.FREE,
+          price_credits: 0,
+          requires_approval: false,
+        };
+    }
+  }
+
   // 🔥 FIX: Helper method to sync current_participants with actual online count
   private async syncCurrentParticipants(meetingId: string): Promise<number> {
     const onlineCount = await this.participantRepository.count({
@@ -81,15 +134,44 @@ export class MeetingsService {
     return onlineCount;
   }
 
-  async findAllPublicMeetings(paginationDto: PaginationDto) {
+  async findAllPublicMeetings(paginationDto: PaginationDto, filters?: {
+    meeting_type?: MeetingType;
+    language?: string;
+    level?: MeetingLevel;
+    region?: string;
+    status?: MeetingStatus;
+    is_live_only?: boolean;
+  }) {
     const { page = 1, limit = 10 } = paginationDto;
     const skip = (page - 1) * limit;
 
+    const whereClause: any = {
+      is_classroom_only: false,
+      is_private: false,
+    };
+
+    // Apply filters
+    if (filters?.meeting_type) {
+      whereClause.meeting_type = filters.meeting_type;
+    }
+    if (filters?.language) {
+      whereClause.language = filters.language;
+    }
+    if (filters?.level) {
+      whereClause.level = filters.level;
+    }
+    if (filters?.region) {
+      whereClause.region = filters.region;
+    }
+    if (filters?.status) {
+      whereClause.status = filters.status;
+    }
+    if (filters?.is_live_only) {
+      whereClause.status = MeetingStatus.LIVE;
+    }
+
     const [meetings, total] = await this.meetingRepository.findAndCount({
-      where: {
-        is_classroom_only: false,
-        is_private: false,
-      },
+      where: whereClause,
       relations: ['host', 'participants', 'participants.user'],
       order: { scheduled_at: 'DESC', created_at: 'DESC' },
       skip,
@@ -109,6 +191,62 @@ export class MeetingsService {
       limit,
       totalPages: Math.ceil(total / limit),
     };
+  }
+
+  // Find available free talk rooms (max 4 people, audio-first)
+  async findAvailableFreeTalkRooms(paginationDto: PaginationDto, filters?: {
+    language?: string;
+    level?: MeetingLevel;
+    region?: string;
+  }) {
+    return this.findAllPublicMeetings(paginationDto, {
+      meeting_type: MeetingType.FREE_TALK,
+      status: MeetingStatus.LIVE,
+      ...filters,
+    });
+  }
+
+  // Find teacher classes (scheduled or live)
+  async findTeacherClasses(paginationDto: PaginationDto, filters?: {
+    language?: string;
+    level?: MeetingLevel;
+    min_price?: number;
+    max_price?: number;
+    scheduled_only?: boolean;
+  }) {
+    const baseFilters: any = {
+      meeting_type: MeetingType.TEACHER_CLASS,
+      ...filters,
+    };
+
+    if (filters?.scheduled_only) {
+      baseFilters.status = MeetingStatus.SCHEDULED;
+    }
+
+    const result = await this.findAllPublicMeetings(paginationDto, baseFilters);
+
+    // Apply price filtering client-side if needed
+    if (filters?.min_price !== undefined || filters?.max_price !== undefined) {
+      result.data = result.data.filter(meeting => {
+        if (filters.min_price !== undefined && meeting.price_credits < filters.min_price) {
+          return false;
+        }
+        if (filters.max_price !== undefined && meeting.price_credits > filters.max_price) {
+          return false;
+        }
+        return true;
+      });
+    }
+
+    return result;
+  }
+
+  // Find nearby meetings based on region
+  async findNearbyMeetings(region: string, paginationDto: PaginationDto) {
+    return this.findAllPublicMeetings(paginationDto, {
+      region,
+      is_live_only: true,
+    });
   }
 
 

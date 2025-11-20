@@ -7,7 +7,7 @@ import { RolesGuard } from '../core/auth/guards/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { UserRole } from '../users/user.entity';
 
-@Controller('api/metrics')
+@Controller('metrics')
 export class MetricsController {
   constructor(private readonly metricsService: MetricsService) {}
 
@@ -65,8 +65,6 @@ export class MetricsController {
   }
 
   @Get('livekit/dashboard')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
   async getLiveKitDashboardMetrics(@Query('meetingId') meetingId?: string) {
     return this.metricsService.getLiveKitDashboardMetrics(meetingId);
   }

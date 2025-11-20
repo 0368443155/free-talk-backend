@@ -34,6 +34,19 @@ export enum MeetingLevel {
   ADVANCED = 'advanced',
 }
 
+export enum MeetingType {
+  FREE_TALK = 'free_talk',
+  TEACHER_CLASS = 'teacher_class',
+  WORKSHOP = 'workshop',
+  PRIVATE_SESSION = 'private_session',
+}
+
+export enum PricingType {
+  FREE = 'free',
+  CREDITS = 'credits',
+  SUBSCRIPTION = 'subscription',
+}
+
 @Entity('meetings')
 export class Meeting {
   @PrimaryGeneratedColumn('uuid')
@@ -122,6 +135,38 @@ export class Meeting {
 
   @Column({ type: 'varchar', length: 500, nullable: true })
   topic: string;
+
+  @Column({
+    type: 'enum',
+    enum: MeetingType,
+    default: MeetingType.FREE_TALK,
+  })
+  meeting_type: MeetingType;
+
+  @Column({ type: 'int', default: 0 })
+  price_credits: number;
+
+  @Column({
+    type: 'enum',
+    enum: PricingType,
+    default: PricingType.FREE,
+  })
+  pricing_type: PricingType;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  region: string;
+
+  @Column({ type: 'json', nullable: true })
+  tags: string[];
+
+  @Column({ type: 'boolean', default: true })
+  is_audio_first: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  requires_approval: boolean;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  affiliate_code: string;
 
   @Column({
     type: 'enum',
