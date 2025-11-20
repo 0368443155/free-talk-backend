@@ -53,7 +53,7 @@ export default function AdminDashboardEnhanced({ initialData }: { initialData?: 
   });
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [historicalData, setHistoricalData] = useState<any[]>([]);
-  const [alerts, setAlerts] = useState<Array<{id: string, type: string, message: string, timestamp: string}>>([]);
+  const [alerts, setAlerts] = useState<Array<{id: string, severity: 'high' | 'medium' | 'low', message: string, timestamp: Date}>>([]);
 
   // Format bandwidth (bytes per second)
   const formatBytes = (bytes: number): string => {
@@ -138,23 +138,28 @@ export default function AdminDashboardEnhanced({ initialData }: { initialData?: 
 
   // Check for alerts based on metrics
   const checkAlerts = (metrics: SystemMetrics) => {
-    const newAlerts = [];
+    const newAlerts: Array<{
+      id: string;
+      severity: 'high' | 'medium' | 'low';
+      message: string;
+      timestamp: Date;
+    }> = [];
     
     if (metrics.totalBandwidth > 1024 * 1024) { // > 1MB/s
       newAlerts.push({
         id: Date.now() + '-bandwidth',
-        type: 'critical',
+        severity: 'high',
         message: `High bandwidth usage: ${formatBytes(metrics.totalBandwidth)}`,
-        timestamp: new Date().toISOString()
+        timestamp: new Date()
       });
     }
 
     if (metrics.avgResponseTime > 1000) { // > 1s
       newAlerts.push({
         id: Date.now() + '-response',
-        type: 'warning',
+        severity: 'medium',
         message: `High response time: ${metrics.avgResponseTime.toFixed(0)}ms`,
-        timestamp: new Date().toISOString()
+        timestamp: new Date()
       });
     }
 
@@ -166,10 +171,10 @@ export default function AdminDashboardEnhanced({ initialData }: { initialData?: 
   // Fetch APIs
   const fetchRealtimeMetrics = async () => {
     try {
-      const response = await fetch('/api/metrics/realtime');
-      if (response.ok) {
-        const data = await response.json();
-        setRealtimeMetrics(data);
+      const { axiosInstance } = await import('@/api/axiosConfig');
+      const response = await axiosInstance.get('/api/metrics/realtime');
+      if (response.status === 200) {
+        setRealtimeMetrics(response.data);
       }
     } catch (error) {
       console.error('Failed to fetch realtime metrics:', error);
@@ -178,10 +183,10 @@ export default function AdminDashboardEnhanced({ initialData }: { initialData?: 
 
   const fetchHistoricalData = async () => {
     try {
-      const response = await fetch('/api/metrics/hourly?hours=24');
-      if (response.ok) {
-        const data = await response.json();
-        setHistoricalData(data);
+      const { axiosInstance } = await import('@/api/axiosConfig');
+      const response = await axiosInstance.get('/api/metrics/hourly?hours=24');
+      if (response.status === 200) {
+        setHistoricalData(response.data);
       }
     } catch (error) {
       console.error('Failed to fetch historical data:', error);

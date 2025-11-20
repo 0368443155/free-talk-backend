@@ -15,6 +15,7 @@ import {
   BandwidthMetric,
   MetricsHourly,
 } from './src/entities';
+import { LiveKitMetric } from './src/metrics/livekit-metric.entity';
 
 dotenv.config(); // Nạp .env
 
@@ -40,6 +41,7 @@ export const dataSourceOptions: DataSourceOptions = {
     ClassroomMember,
     BandwidthMetric,
     MetricsHourly,
+    LiveKitMetric,
   ],
   migrations: [path.join(__dirname, 'src', 'database', 'migrations', '*{.ts,.js}')], // Đường dẫn migrations chính xác
   migrationsTableName: 'migrations_typeorm', // Tên bảng migrations

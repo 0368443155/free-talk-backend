@@ -53,10 +53,12 @@ export function ReactionOverlay({ onReactionReceived }: ReactionOverlayProps) {
     return () => clearInterval(interval);
   }, []);
 
-  // Expose addReaction method to parent via ref
-  React.useImperativeHandle(onReactionReceived, () => ({
-    addReaction,
-  }), [addReaction]);
+  // Expose addReaction method to parent via callback
+  React.useEffect(() => {
+    if (onReactionReceived) {
+      (onReactionReceived as any)({ addReaction });
+    }
+  }, [addReaction, onReactionReceived]);
 
   return (
     <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">

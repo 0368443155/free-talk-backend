@@ -1,4 +1,5 @@
 import AdminDashboardEnhanced from '@/components/admin-dashboard-enhanced';
+import AdminRealtimeDashboard from '@/components/admin-realtime-dashboard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';

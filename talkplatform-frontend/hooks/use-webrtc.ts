@@ -388,7 +388,7 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
 
     const pc = new RTCPeerConnection({
       ...ICE_SERVERS,
-      sdpSemantics: 'unified-plan', // Use unified plan for consistent behavior
+      // unified-plan is now the default, no need to specify
     });
 
     // 🔥 CRITICAL FIX: Add tracks in consistent order (audio first, then video)

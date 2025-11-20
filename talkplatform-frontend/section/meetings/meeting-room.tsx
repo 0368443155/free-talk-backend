@@ -26,6 +26,8 @@ import { VideoGrid } from "./video-grid";
 import { MeetingChat } from "./meeting-chat";
 import { YouTubePlayer, YouTubePlayerHandle } from "./youtube-player";
 import { YouTubeSearchModal } from "@/components/youtube-search-modal";
+import { LiveKitRoomWrapper } from "@/components/meeting/livekit-room-wrapper";
+import { GreenRoom } from "@/components/meeting/green-room";
 import { Slider } from "@/components/ui/slider";
 import { MeetingBandwidthMonitor } from "@/components/meeting-bandwidth-monitor";
 import {
@@ -93,6 +95,7 @@ interface MeetingRoomProps {
 }
 
 export function MeetingRoom({ meeting, user, classroomId, onReconnect }: MeetingRoomProps) {
+  // Meeting state
   const [participants, setParticipants] = useState<IMeetingParticipant[]>([]);
   const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
   const [confirmKickOpen, setConfirmKickOpen] = useState(false);
@@ -118,6 +121,11 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   const { toast } = useToast();
   const router = useRouter();
   const [spotlightUserId, setSpotlightUserId] = useState<string | null>(null);
+
+  // LiveKit integration state
+  const [useLiveKit, setUseLiveKit] = useState(true); // Enable LiveKit by default
+  const [livekitPhase, setLivekitPhase] = useState<'green-room' | 'meeting'>('green-room');
+  const [showGreenRoom, setShowGreenRoom] = useState(false);
   
   // Chat input state
   const [newMessage, setNewMessage] = useState("");
@@ -137,6 +145,32 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
 
   const isHost = meeting.host?.id === user.id;
   const isPublicMeeting = !classroomId;
+
+  // LiveKit handlers
+  const handleJoinWithLiveKit = useCallback(() => {
+    setUseLiveKit(true);
+    setLivekitPhase('green-room');
+    setShowGreenRoom(true);
+  }, []);
+
+  const handleJoinWithoutLiveKit = useCallback(() => {
+    setUseLiveKit(false);
+    setShowGreenRoom(false);
+    // Continue with traditional meeting flow
+    handleJoinMeeting();
+  }, []);
+
+  const handleLiveKitJoinMeeting = useCallback(() => {
+    setLivekitPhase('meeting');
+    setShowGreenRoom(false);
+  }, []);
+
+  const handleLiveKitLeave = useCallback(() => {
+    setUseLiveKit(false);
+    setLivekitPhase('green-room');
+    setShowGreenRoom(false);
+    router.push('/dashboard');
+  }, [router]);
 
   // 🔥 FIX: Memoize current participant lookup to prevent unnecessary re-computations
   const currentParticipant = useMemo(() => {
@@ -917,6 +951,29 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     return null;
   };
 
+  // LiveKit Integration - Show Green Room or LiveKit Meeting
+  if (useLiveKit && showGreenRoom && livekitPhase === 'green-room') {
+    return (
+      <GreenRoom
+        meetingTitle={meeting.title}
+        onJoinMeeting={handleLiveKitJoinMeeting}
+        onCancel={handleLiveKitLeave}
+      />
+    );
+  }
+
+  // LiveKit Meeting Room
+  if (useLiveKit && livekitPhase === 'meeting') {
+    return (
+      <LiveKitRoomWrapper
+        meetingId={meeting.id}
+        user={user}
+        onLeave={handleLiveKitLeave}
+        isHost={isHost}
+      />
+    );
+  }
+
   // 🔥 FIX: Show loading while joining
   if (!currentParticipant || !currentParticipant.is_online) {
     if ((isJoining || (autoJoinAttempted && participants.length > 0)) && !showRoomFullDialog) {
@@ -949,17 +1006,34 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
                   <Badge variant="destructive" className="mt-2">Meeting is locked</Badge>
                 )}
               </div>
-              <div className="flex gap-2">
-                <Button
-                  className="flex-1"
-                  onClick={handleJoinMeeting}
-                  disabled={isJoining || (meeting.is_locked && !isHost)}
-                >
-                  <Users className="w-4 h-4 mr-2" />
-                  {isJoining ? "Joining..." : "Join Meeting"}
-                </Button>
+              <div className="space-y-3">
+                {/* LiveKit Options */}
+                <div className="space-y-2">
+                  <p className="text-sm text-gray-300 text-center">Choose your meeting experience:</p>
+                  
+                  <Button
+                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white border-none"
+                    onClick={handleJoinWithLiveKit}
+                    disabled={meeting.is_locked && !isHost}
+                  >
+                    <Video className="w-4 h-4 mr-2" />
+                    Join with LiveKit (Enhanced Video)
+                  </Button>
+                  
+                  <Button
+                    variant="outline"
+                    className="w-full border-gray-600 text-gray-300 hover:bg-gray-700"
+                    onClick={handleJoinWithoutLiveKit}
+                    disabled={isJoining || (meeting.is_locked && !isHost)}
+                  >
+                    <Users className="w-4 h-4 mr-2" />
+                    {isJoining ? "Joining..." : "Join Traditional Meeting"}
+                  </Button>
+                </div>
+                
                 <Button
                   variant="outline"
+                  className="w-full"
                   onClick={() => window.location.href = isPublicMeeting ? "/meetings" : `/classrooms/${classroomId}`}
                 >
                   Back
@@ -1293,13 +1367,17 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
                       timestamp: message.created_at
                     });
 
-                    // Safe null checks for sender
+                    // Handle system messages (join/leave notifications)
                     if (!message.sender) {
-                      console.log('⚠️ [CHAT] No sender for message:', message.id);
+                      console.log('📢 [CHAT] System message:', message.id, message.message);
                       return (
                         <div key={message.id} className="w-full">
-                          <div className="text-sm text-red-400 italic ml-2 mb-1">
-                            [Missing sender info] {message.message}
+                          <div className="flex items-center gap-2 my-3">
+                            <div className="flex-1 border-t border-gray-600"></div>
+                            <div className="text-xs text-gray-400 bg-gray-800 px-3 py-1 rounded-full">
+                              <span className="font-semibold text-blue-400">[System]</span> {message.message}
+                            </div>
+                            <div className="flex-1 border-t border-gray-600"></div>
                           </div>
                         </div>
                       );

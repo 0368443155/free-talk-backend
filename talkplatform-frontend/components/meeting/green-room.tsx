@@ -62,35 +62,38 @@ export function GreenRoom({ onJoinMeeting, onCancel, meetingTitle, isWaitingRoom
   const [audioInputDevices, setAudioInputDevices] = useState<MediaDevice[]>([]);
   const [videoInputDevices, setVideoInputDevices] = useState<MediaDevice[]>([]);
   const [audioOutputDevices, setAudioOutputDevices] = useState<MediaDevice[]>([]);
-  
+
   // Selected devices
   const [selectedAudioInput, setSelectedAudioInput] = useState<string>('');
   const [selectedVideoInput, setSelectedVideoInput] = useState<string>('');
   const [selectedAudioOutput, setSelectedAudioOutput] = useState<string>('');
-  
+
   // Media state
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [videoEnabled, setVideoEnabled] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [permissionError, setPermissionError] = useState<string | null>(null);
-  
+
   // Audio visualization
   const [audioLevel, setAudioLevel] = useState(0);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const animationFrameRef = useRef<number>();
-  
+  const animationFrameRef = useRef<number>(0);
+
   // Virtual background
   const [virtualBackground, setVirtualBackground] = useState(false);
   const [backgroundBlur, setBackgroundBlur] = useState(0);
-  
+
   // Video preview
   const videoRef = useRef<HTMLVideoElement>(null);
-  
+
   // Test audio
   const [isTestingAudio, setIsTestingAudio] = useState(false);
   const testAudioRef = useRef<HTMLAudioElement>(null);
+
+  // Ref to track current stream for cleanup without triggering re-renders
+  const currentStreamRef = useRef<MediaStream | null>(null);
 
   const { toast } = useToast();
 
@@ -98,33 +101,33 @@ export function GreenRoom({ onJoinMeeting, onCancel, meetingTitle, isWaitingRoom
   const loadMediaDevices = useCallback(async () => {
     try {
       // Request permissions first
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: true, 
-        video: true 
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: true
       });
-      
+
       // Stop the temporary stream
       stream.getTracks().forEach(track => track.stop());
-      
+
       // Now enumerate devices (labels will be available)
       const devices = await navigator.mediaDevices.enumerateDevices();
-      
+
       const audioInputs = devices.filter(device => device.kind === 'audioinput');
       const videoInputs = devices.filter(device => device.kind === 'videoinput');
       const audioOutputs = devices.filter(device => device.kind === 'audiooutput');
-      
+
       setAudioInputDevices(audioInputs.map(d => ({
         deviceId: d.deviceId,
         label: d.label || `Microphone ${audioInputs.indexOf(d) + 1}`,
         kind: d.kind,
       })));
-      
+
       setVideoInputDevices(videoInputs.map(d => ({
         deviceId: d.deviceId,
         label: d.label || `Camera ${videoInputs.indexOf(d) + 1}`,
         kind: d.kind,
       })));
-      
+
       setAudioOutputDevices(audioOutputs.map(d => ({
         deviceId: d.deviceId,
         label: d.label || `Speaker ${audioOutputs.indexOf(d) + 1}`,
@@ -160,57 +163,11 @@ export function GreenRoom({ onJoinMeeting, onCancel, meetingTitle, isWaitingRoom
     }
   }, []);
 
-  // UC-02: Start media stream with selected devices
-  const startMediaStream = useCallback(async () => {
-    if (!selectedAudioInput || !selectedVideoInput) return;
-
-    try {
-      setIsLoading(true);
-      
-      // Stop existing stream
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-      }
-
-      // Create new stream with selected devices
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: selectedAudioInput ? { exact: selectedAudioInput } : undefined,
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-        video: {
-          deviceId: selectedVideoInput ? { exact: selectedVideoInput } : undefined,
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 30 },
-        },
-      });
-
-      setLocalStream(stream);
-
-      // UC-02: Display video preview
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-
-      // UC-02: Setup audio level visualization
-      setupAudioVisualization(stream);
-      
-      setIsLoading(false);
-
-    } catch (error) {
-      console.error('Failed to start media stream:', error);
-      setPermissionError('Unable to access selected devices. Please try different devices.');
-      setIsLoading(false);
-    }
-  }, [selectedAudioInput, selectedVideoInput, localStream]);
-
   // UC-02: Audio level visualization for microphone test
   const setupAudioVisualization = useCallback((stream: MediaStream) => {
     try {
-      if (audioContextRef.current) {
+      // Check state before closing to avoid InvalidStateError
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
         audioContextRef.current.close();
       }
 
@@ -249,6 +206,56 @@ export function GreenRoom({ onJoinMeeting, onCancel, meetingTitle, isWaitingRoom
     }
   }, []);
 
+  // UC-02: Start media stream with selected devices
+  const startMediaStream = useCallback(async () => {
+    if (!selectedAudioInput || !selectedVideoInput) return;
+
+    try {
+      setIsLoading(true);
+
+      // Stop existing stream using ref to avoid dependency loop
+      if (currentStreamRef.current) {
+        currentStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+
+      // Create new stream with selected devices
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: selectedAudioInput ? { exact: selectedAudioInput } : undefined,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+        video: {
+          deviceId: selectedVideoInput ? { exact: selectedVideoInput } : undefined,
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30 },
+        },
+      });
+
+      currentStreamRef.current = stream;
+      setLocalStream(stream);
+
+      // UC-02: Setup audio level visualization
+      setupAudioVisualization(stream);
+
+      setIsLoading(false);
+
+    } catch (error) {
+      console.error('Failed to start media stream:', error);
+      setPermissionError('Unable to access selected devices. Please try different devices.');
+      setIsLoading(false);
+    }
+  }, [selectedAudioInput, selectedVideoInput, setupAudioVisualization]);
+
+  // UC-02: Attach stream to video element when it becomes available
+  useEffect(() => {
+    if (videoRef.current && localStream) {
+      videoRef.current.srcObject = localStream;
+    }
+  }, [localStream, isLoading]);
+
   // UC-02: Toggle media tracks
   const toggleAudio = useCallback(() => {
     if (localStream) {
@@ -276,18 +283,18 @@ export function GreenRoom({ onJoinMeeting, onCancel, meetingTitle, isWaitingRoom
 
     try {
       setIsTestingAudio(true);
-      
+
       // Create test audio element
       const audio = new Audio('/test-audio.mp3'); // You need to add a test audio file
-      
+
       // Set audio output device (if supported)
       if ('setSinkId' in audio && typeof (audio as any).setSinkId === 'function') {
         await (audio as any).setSinkId(selectedAudioOutput);
       }
-      
+
       audio.volume = 0.5;
       await audio.play();
-      
+
       audio.onended = () => {
         setIsTestingAudio(false);
       };
@@ -303,7 +310,7 @@ export function GreenRoom({ onJoinMeeting, onCancel, meetingTitle, isWaitingRoom
       console.error('Failed to test audio output:', error);
       setIsTestingAudio(false);
       toast({
-        title: "Audio Test Failed", 
+        title: "Audio Test Failed",
         description: "Could not play test sound. Please check your speakers.",
         variant: "destructive",
       });
@@ -332,7 +339,7 @@ export function GreenRoom({ onJoinMeeting, onCancel, meetingTitle, isWaitingRoom
     };
 
     navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
-    
+
     return () => {
       navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
     };
@@ -352,10 +359,10 @@ export function GreenRoom({ onJoinMeeting, onCancel, meetingTitle, isWaitingRoom
   // Cleanup
   useEffect(() => {
     return () => {
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
+      if (currentStreamRef.current) {
+        currentStreamRef.current.getTracks().forEach(track => track.stop());
       }
-      if (audioContextRef.current) {
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
         audioContextRef.current.close();
       }
       if (animationFrameRef.current) {
@@ -365,7 +372,7 @@ export function GreenRoom({ onJoinMeeting, onCancel, meetingTitle, isWaitingRoom
         testAudioRef.current.pause();
       }
     };
-  }, [localStream]);
+  }, []);
 
   const handleJoinMeeting = () => {
     // UC-02: Save final device settings
@@ -424,7 +431,7 @@ export function GreenRoom({ onJoinMeeting, onCancel, meetingTitle, isWaitingRoom
           </Badge>
         )}
       </CardHeader>
-      
+
       <CardContent className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Video Preview */}
@@ -447,7 +454,7 @@ export function GreenRoom({ onJoinMeeting, onCancel, meetingTitle, isWaitingRoom
                   }}
                 />
               )}
-              
+
               {/* Video controls overlay */}
               <div className="absolute bottom-4 left-4 right-4 flex justify-center gap-2">
                 <Button
@@ -483,6 +490,7 @@ export function GreenRoom({ onJoinMeeting, onCancel, meetingTitle, isWaitingRoom
                   <Slider
                     value={[backgroundBlur]}
                     onValueChange={(value) => setBackgroundBlur(value[0])}
+                    min={0}
                     max={10}
                     step={1}
                     className="w-full"
@@ -500,8 +508,8 @@ export function GreenRoom({ onJoinMeeting, onCancel, meetingTitle, isWaitingRoom
                 <Camera className="w-4 h-4" />
                 Camera
               </Label>
-              <Select 
-                value={selectedVideoInput} 
+              <Select
+                value={selectedVideoInput}
                 onValueChange={(value) => handleDeviceChange('video', value)}
               >
                 <SelectTrigger>
@@ -523,8 +531,8 @@ export function GreenRoom({ onJoinMeeting, onCancel, meetingTitle, isWaitingRoom
                 <Mic className="w-4 h-4" />
                 Microphone
               </Label>
-              <Select 
-                value={selectedAudioInput} 
+              <Select
+                value={selectedAudioInput}
                 onValueChange={(value) => handleDeviceChange('audio', value)}
               >
                 <SelectTrigger>
@@ -538,12 +546,12 @@ export function GreenRoom({ onJoinMeeting, onCancel, meetingTitle, isWaitingRoom
                   ))}
                 </SelectContent>
               </Select>
-              
+
               {/* Audio Level Indicator */}
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">Microphone Level</Label>
-                <Progress 
-                  value={audioLevel} 
+                <Progress
+                  value={audioLevel}
                   className="h-2"
                   // Green when speaking, gray when quiet
                   style={{
@@ -559,8 +567,8 @@ export function GreenRoom({ onJoinMeeting, onCancel, meetingTitle, isWaitingRoom
                 <Headphones className="w-4 h-4" />
                 Speakers
               </Label>
-              <Select 
-                value={selectedAudioOutput} 
+              <Select
+                value={selectedAudioOutput}
                 onValueChange={(value) => handleDeviceChange('output', value)}
               >
                 <SelectTrigger>
@@ -574,7 +582,7 @@ export function GreenRoom({ onJoinMeeting, onCancel, meetingTitle, isWaitingRoom
                   ))}
                 </SelectContent>
               </Select>
-              
+
               {/* Speaker Test */}
               <Button
                 size="sm"
@@ -629,8 +637,8 @@ export function GreenRoom({ onJoinMeeting, onCancel, meetingTitle, isWaitingRoom
           <Button variant="outline" onClick={onCancel}>
             Cancel
           </Button>
-          
-          <Button 
+
+          <Button
             onClick={handleJoinMeeting}
             disabled={isLoading || (!audioEnabled && !videoEnabled)}
             className="min-w-32"

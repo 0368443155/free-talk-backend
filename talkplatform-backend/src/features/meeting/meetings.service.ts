@@ -27,7 +27,7 @@ export class MeetingsService {
     private readonly chatMessageRepository: Repository<MeetingChatMessage>,
     @InjectRepository(BlockedParticipant)
     private readonly blockedParticipantRepository: Repository<BlockedParticipant>,
-  ) {}
+  ) { }
 
 
   async createPublicMeeting(createMeetingDto: CreateMeetingDto, user: User) {
@@ -205,6 +205,15 @@ export class MeetingsService {
 
   async joinMeeting(meetingId: string, user: User) {
     const meeting = await this.findOne(meetingId, user);
+
+    // Auto-start meeting if host joins a scheduled meeting
+    const isHost = meeting.host.id === user.id;
+    if (meeting.status === MeetingStatus.SCHEDULED && isHost) {
+      meeting.status = MeetingStatus.LIVE;
+      meeting.started_at = new Date();
+      await this.meetingRepository.save(meeting);
+      console.log(`Meeting ${meetingId} auto-started by host ${user.username}`);
+    }
 
     if (meeting.status !== MeetingStatus.LIVE) {
       throw new BadRequestException('Meeting is not live');
@@ -428,10 +437,10 @@ export class MeetingsService {
         type: m.type,
         sender: m.sender
           ? {
-              id: m.sender.id,
-              name: m.sender.username,
-              avatar_url: m.sender.avatar_url,
-            }
+            id: m.sender.id,
+            name: m.sender.username,
+            avatar_url: m.sender.avatar_url,
+          }
           : null,
         metadata: m.metadata,
         created_at: m.created_at,

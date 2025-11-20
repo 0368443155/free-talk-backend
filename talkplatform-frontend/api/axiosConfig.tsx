@@ -4,10 +4,10 @@ import axios from 'axios';
 const getBaseURL = () => {
   if (typeof window !== 'undefined') {
     // Client-side: use env variable or fallback
-    return process.env.NEXT_PUBLIC_SERVER || 'http://localhost:3000/api/v1';
+    return process.env.NEXT_PUBLIC_SERVER || 'http://localhost:3000';
   }
   // Server-side: use env variable or fallback
-  return process.env.NEXT_PUBLIC_SERVER || 'http://localhost:3000/api/v1';
+  return process.env.NEXT_PUBLIC_SERVER || 'http://localhost:3000';
 };
 
 const axiosConfig = axios.create({
@@ -72,3 +72,4 @@ axiosConfig.interceptors.response.use(
 );
 
 export default axiosConfig;
+export { axiosConfig as axiosInstance };

@@ -98,12 +98,7 @@ export default function LoginPage() {
       setUserInfo(response.user);
       console.log('✅ User info set successfully');
       
-      setCookie('accessToken', response.accessToken, {
-        // httpOnly: true, // Tốt cho bảo mật, nhưng SSR axios sẽ không đọc được
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-      });
+      setCookie('accessToken', response.accessToken);
       toast({
         title: "Success",
         description: "Login successful!",
