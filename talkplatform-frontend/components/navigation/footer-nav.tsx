@@ -22,7 +22,7 @@ import {
 
 const footerLinks = {
   platform: [
-    { title: 'Free Talk Rooms', href: '/lobby' },
+    { title: 'Free Talk Rooms', href: '/meetings' },
     { title: 'Find Teachers', href: '/teachers' },
     { title: 'Featured Teachers', href: '/teachers/featured' },
     { title: 'How It Works', href: '/how-it-works' },

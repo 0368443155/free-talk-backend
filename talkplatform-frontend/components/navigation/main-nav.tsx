@@ -57,7 +57,7 @@ const navigationItems: NavItem[] = [
     },
     {
         title: 'Lobby',
-        href: '/lobby',
+        href: '/meetings',
         icon: Users,
         description: 'Find free talk rooms',
         badge: 'Popular'

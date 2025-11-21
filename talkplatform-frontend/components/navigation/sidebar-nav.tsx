@@ -60,7 +60,7 @@ const studentNavItems = [
     items: [
       {
         title: 'Free Talk Lobby',
-        href: '/lobby',
+        href: '/meetings',
         icon: Users,
         badge: 'Live',
         description: 'Join conversation rooms'
@@ -409,7 +409,7 @@ export default function SidebarNav({ className }: SidebarNavProps) {
           <Button 
             size="sm" 
             className="w-full" 
-            onClick={() => window.location.href = '/lobby'}
+            onClick={() => window.location.href = '/meetings'}
           >
             <Mic className="w-4 h-4 mr-2" />
             Quick Talk
