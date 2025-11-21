@@ -1,5 +1,5 @@
 import AdminDashboardEnhanced from '@/components/admin-dashboard-enhanced';
-import { AdminLiveKitDashboard } from '@/components/admin-livekit-dashboard';
+// import { AdminLiveKitDashboard } from '@/components/admin-livekit-dashboard';
 
 // Hàm này chạy trên server
 async function getHistoricalData() {
@@ -22,9 +22,9 @@ export default async function AdminPage() {
   return (
     <div className="container mx-auto p-6 space-y-8">
       <AdminDashboardEnhanced initialData={initialData} />
-      
+
       {/* LiveKit Dashboard */}
-      <AdminLiveKitDashboard />
+      {/* <AdminLiveKitDashboard /> */}
     </div>
   );
 }

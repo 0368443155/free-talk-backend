@@ -25,3 +25,6 @@ function Toaster() {
 }
 
 export default memo(Toaster)
+
+// Export as named export for compatibility
+export { Toaster }

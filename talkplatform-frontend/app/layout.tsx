@@ -1,37 +1,33 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import { AuthProvider } from "@/components/auth-provider";
-import Toaster from "@/components/ui/toaster";
+import { Inter } from 'next/font/google';
+import './globals.css';
+import { Toaster } from '@/components/ui/toaster';
+import AuthProvider from '@/components/auth-provider';
+import MainNav from '@/components/navigation/main-nav';
+import BreadcrumbNav from '@/components/navigation/breadcrumb-nav';
+import FooterNav from '@/components/navigation/footer-nav';
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+const inter = Inter({ subsets: ['latin'] });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-export const metadata: Metadata = {
-  title: "Talk Platform",
-  description: "Video conferencing and meeting platform",
+export const metadata = {
+  title: 'TalkConnect - Language Learning Platform',
+  description: 'Connect with teachers and practice languages through live conversations',
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-        suppressHydrationWarning
-      >
+    <html lang="en">
+      <body className={inter.className}>
         <AuthProvider>
-          {children}
+          <div className="min-h-screen bg-gray-50 flex flex-col">
+            <MainNav />
+            <BreadcrumbNav />
+            <main className="flex-1">{children}</main>
+            <FooterNav />
+          </div>
           <Toaster />
         </AuthProvider>
       </body>

@@ -14,19 +14,19 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, Users, DollarSign, Mic, Video, Clock, MapPin, Tag } from 'lucide-react';
 import { useUser } from '@/store/user-store';
 import { useToast } from '@/components/ui/use-toast';
-import { 
+import {
   createPublicMeetingApi,
-  MeetingType, 
+  MeetingType,
   MeetingLevel,
   PricingType,
-  ICreateMeeting 
+  ICreateMeeting
 } from '@/api/meeting.rest';
 
 export default function CreateMeetingPage() {
   const router = useRouter();
   const { userInfo: user, isAuthenticated } = useUser();
   const { toast } = useToast();
-  
+
   const [isLoading, setIsLoading] = useState(false);
   const [meetingData, setMeetingData] = useState<ICreateMeeting>({
     title: '',
@@ -61,7 +61,7 @@ export default function CreateMeetingPage() {
 
   const handleMeetingTypeChange = (type: MeetingType) => {
     const updatedData = { ...meetingData, meeting_type: type };
-    
+
     // Set defaults based on meeting type
     switch (type) {
       case MeetingType.FREE_TALK:
@@ -93,7 +93,7 @@ export default function CreateMeetingPage() {
         updatedData.requires_approval = true;
         break;
     }
-    
+
     setMeetingData(updatedData);
   };
 
@@ -116,7 +116,7 @@ export default function CreateMeetingPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!meetingData.title.trim()) {
       toast({
         title: "Error",
@@ -129,12 +129,12 @@ export default function CreateMeetingPage() {
     setIsLoading(true);
     try {
       const meeting = await createPublicMeetingApi(meetingData);
-      
+
       toast({
         title: "Success",
         description: "Meeting created successfully!",
       });
-      
+
       // Redirect to the new meeting
       router.push(`/meetings/${meeting.id}`);
     } catch (error: any) {
@@ -184,14 +184,14 @@ export default function CreateMeetingPage() {
               <CardTitle>Meeting Type</CardTitle>
             </CardHeader>
             <CardContent>
-              <Tabs value={meetingData.meeting_type} onValueChange={handleMeetingTypeChange}>
+              <Tabs value={meetingData.meeting_type} onValueChange={(value) => handleMeetingTypeChange(value as MeetingType)}>
                 <TabsList className="grid w-full grid-cols-4">
                   <TabsTrigger value={MeetingType.FREE_TALK}>Free Talk</TabsTrigger>
                   <TabsTrigger value={MeetingType.TEACHER_CLASS}>Teaching</TabsTrigger>
                   <TabsTrigger value={MeetingType.WORKSHOP}>Workshop</TabsTrigger>
                   <TabsTrigger value={MeetingType.PRIVATE_SESSION}>Private</TabsTrigger>
                 </TabsList>
-                
+
                 {Object.values(MeetingType).map((type) => (
                   <TabsContent key={type} value={type} className="mt-4">
                     <div className="p-4 bg-blue-50 rounded-lg">
@@ -376,7 +376,7 @@ export default function CreateMeetingPage() {
                   Add
                 </Button>
               </div>
-              
+
               {meetingData.tags && meetingData.tags.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {meetingData.tags.map((tag, index) => (

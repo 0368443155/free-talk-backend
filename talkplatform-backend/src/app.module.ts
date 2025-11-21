@@ -2,12 +2,12 @@ import { Module, ValidationPipe, ClassSerializerInterceptor } from '@nestjs/comm
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { RedisModule } from '@nestjs-modules/ioredis';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { User } from './users/user.entity';
-import { TeacherProfile } from './teachers/teacher-profile.entity';
 import { TeachersModule } from './teachers/teachers.module';
 import { MeetingsModule } from './features/meeting/meetings.module';
 import { ClassroomsModule } from './features/meeting/classrooms.module';
@@ -16,6 +16,7 @@ import { MetricsModule } from './metrics/metrics.module';
 import { EventsModule } from './events/events.module';
 import { TasksModule } from './tasks/tasks.module';
 import { LiveKitModule } from './livekit/livekit.module';
+import { MarketplaceModule } from './features/marketplace/marketplace.module';
 import { APP_PIPE, APP_INTERCEPTOR, Reflector } from '@nestjs/core';
 import { DebugController } from './debug/debug.controller';
 import { DebugPublicController } from './debug/debug-public.controller';
@@ -23,13 +24,17 @@ import { TypeOrmModule as DebugTypeOrmModule } from '@nestjs/typeorm';
 
 @Module({
     imports: [
-        // 1. Nạp ConfigModule để đọc file .env
         ConfigModule.forRoot({
-            isGlobal: true, // Giúp ConfigModule khả dụng ở mọi nơi
+            isGlobal: true,
             envFilePath: '.env',
         }),
 
-        // 2. Cấu hình kết nối TypeORM (MySQL)
+        // Serve static files from 'uploads' directory
+        ServeStaticModule.forRoot({
+            rootPath: join(__dirname, '..', 'uploads'),
+            serveRoot: '/uploads',
+        }),
+
         TypeOrmModule.forRootAsync({
             imports: [ConfigModule],
             inject: [ConfigService],
@@ -43,11 +48,10 @@ import { TypeOrmModule as DebugTypeOrmModule } from '@nestjs/typeorm';
                 entities: [__dirname + '/**/*.entity{.ts,.js}'],
                 synchronize: false,
                 autoLoadEntities: true,
-                logging: configService.get<string>('NODE_ENV') === 'development', //bật log
+                logging: configService.get<string>('NODE_ENV') === 'development',
             }),
         }),
 
-        // 3. Cấu hình kết nối Redis
         RedisModule.forRootAsync({
             imports: [ConfigModule],
             inject: [ConfigService],
@@ -61,8 +65,7 @@ import { TypeOrmModule as DebugTypeOrmModule } from '@nestjs/typeorm';
                 },
             }),
         }),
-        
-        // 4. Import các module tính năng
+
         AuthModule,
         UsersModule,
         TeachersModule,
@@ -73,61 +76,35 @@ import { TypeOrmModule as DebugTypeOrmModule } from '@nestjs/typeorm';
         EventsModule,
         TasksModule,
         LiveKitModule,
-        
-        // New enhanced modules
+        MarketplaceModule,
+
         require('./features/livekit-rooms/livekit-rooms.module').LiveKitRoomsModule,
         require('./features/credits/credits.module').CreditsModule,
         require('./features/teachers/enhanced-teachers.module').EnhancedTeachersModule,
-        
-        // Debug module
+
         DebugTypeOrmModule.forFeature([
             require('./features/meeting/entities/meeting.entity').Meeting,
             require('./metrics/livekit-metric.entity').LiveKitMetric
         ]),
     ],
-    controllers: [AppController, DebugController, DebugPublicController], // <-- THÊM MỚI
+    controllers: [AppController, DebugController, DebugPublicController],
     providers: [AppService,
-        // --- KÍCH HOẠT VALIDATIONPIPE TOÀN CỤC ---
         {
             provide: APP_PIPE,
             useValue: new ValidationPipe({
-                whitelist: true, // Tự động loại bỏ các thuộc tính không được định nghĩa trong DTO
-                forbidNonWhitelisted: true, // Ném lỗi nếu client gửi thuộc tính thừa
-                transform: true, // Tự động chuyển đổi kiểu dữ liệu (vd: string query param -> number)
+                whitelist: true,
+                forbidNonWhitelisted: true,
+                transform: true,
                 transformOptions: {
-                    enableImplicitConversion: true, // Cho phép chuyển đổi ngầm định (cẩn thận khi dùng)
+                    enableImplicitConversion: true,
                 },
-                // disableErrorMessages: true, // Ẩn thông báo lỗi chi tiết trong production
             }),
         },
-        // --- KÍCH HOẠT CLASSSERIALIZERINTERCEPTOR TOÀN CỤC ---
-        // Cần Reflector để hoạt động chính xác với các decorator khác (như @Exclude)
         {
             provide: APP_INTERCEPTOR,
-            // Quan trọng: Phải inject Reflector vào đây
             useFactory: (reflector: Reflector) => new ClassSerializerInterceptor(reflector),
             inject: [Reflector],
         },
-        // --- HẾT PHẦN KÍCH HOẠT ---
-    ], // <-- THÊM MỚI
+    ],
 })
-export class AppModule {}
-/*
-```
-
-### 5. (Database) Thiết kế và chạy Migration
-
-Bạn có hai lựa chọn ở bước này:
-
-**Lựa chọn 1 (Đơn giản nhất - Đã có file SQL):**
-
-Vì chúng ta đã có file `talkconnect_schema.sql` (từ cuộc trò chuyện trước), bạn có thể chạy file này trực tiếp vào CSDL `talkconnect` mà bạn đã tạo bằng một công cụ như DBeaver, DataGrip, hoặc MySQL Workbench.
-
-**Lựa chọn 2 (Chuẩn TypeORM - Nếu bạn muốn tạo migration từ đầu):**
-
-1.  Tạo các file entity (ví dụ: `src/users/user.entity.ts`, `src/rooms/room.entity.ts`...) dựa trên thiết kế CSDL.
-2.  Cấu hình TypeORM CLI (thêm `ormconfig.ts` hoặc cấu hình trong `package.json`).
-3.  Chạy lệnh: `npm run typeorm migration:generate -- -n InitialSchema`
-4.  Chạy lệnh: `npm run typeorm migration:run`
-
-**Khuyến nghị cho Tuần 1:** Sử dụng **Lựa chọn 1** để nhanh chóng có CSDL và tiếp tục các bước tiếp theo.*/
+export class AppModule { }

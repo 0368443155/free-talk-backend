@@ -31,3 +31,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return <>{children}</>;
 }
+
+// Export as default for compatibility
+export default AuthProvider;
