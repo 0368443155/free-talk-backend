@@ -17,6 +17,9 @@ import { EventsModule } from './events/events.module';
 import { TasksModule } from './tasks/tasks.module';
 import { LiveKitModule } from './livekit/livekit.module';
 import { APP_PIPE, APP_INTERCEPTOR, Reflector } from '@nestjs/core';
+import { DebugController } from './debug/debug.controller';
+import { DebugPublicController } from './debug/debug-public.controller';
+import { TypeOrmModule as DebugTypeOrmModule } from '@nestjs/typeorm';
 
 @Module({
     imports: [
@@ -70,8 +73,19 @@ import { APP_PIPE, APP_INTERCEPTOR, Reflector } from '@nestjs/core';
         EventsModule,
         TasksModule,
         LiveKitModule,
+        
+        // New enhanced modules
+        require('./features/livekit-rooms/livekit-rooms.module').LiveKitRoomsModule,
+        require('./features/credits/credits.module').CreditsModule,
+        require('./features/teachers/enhanced-teachers.module').EnhancedTeachersModule,
+        
+        // Debug module
+        DebugTypeOrmModule.forFeature([
+            require('./features/meeting/entities/meeting.entity').Meeting,
+            require('./metrics/livekit-metric.entity').LiveKitMetric
+        ]),
     ],
-    controllers: [AppController], // <-- THÊM MỚI
+    controllers: [AppController, DebugController, DebugPublicController], // <-- THÊM MỚI
     providers: [AppService,
         // --- KÍCH HOẠT VALIDATIONPIPE TOÀN CỤC ---
         {
