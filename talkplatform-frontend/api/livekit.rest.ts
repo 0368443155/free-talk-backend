@@ -8,14 +8,10 @@ export interface LiveKitTokenResponse {
     metadata: any;
 }
 
-export const generateLiveKitTokenApi = async (data: {
-    roomName: string;
-    participantName: string;
-    participantIdentity: string;
-}): Promise<LiveKitTokenResponse> => {
+export const generateLiveKitTokenApi = async (meetingId: string): Promise<LiveKitTokenResponse> => {
     const response = await axiosConfig.post('/livekit/token', { 
-        meetingId: data.roomName,
-        participantRole: 'participant'
+        meetingId: meetingId,
+        participantRole: 'participant' // Optional, backend will determine based on user role
     });
     return response.data;
 };

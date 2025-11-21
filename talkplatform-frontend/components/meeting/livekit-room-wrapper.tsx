@@ -580,15 +580,55 @@ export function LiveKitRoomWrapper({
   const handleJoin = async (settings: DeviceSettings) => {
     setDeviceSettings(settings);
     try {
+      console.log('🔐 Requesting LiveKit token for meeting:', meetingId);
       const data = await generateLiveKitTokenApi(meetingId);
+      
+      if (!data || !data.token || !data.wsUrl) {
+        throw new Error('Invalid token response from server');
+      }
+      
+      console.log('✅ LiveKit token received successfully');
       setLivekitToken(data.token);
       setLivekitWsUrl(data.wsUrl);
       setPhase('meeting');
-    } catch (error) {
-      console.error("Failed to get LiveKit token:", error);
+    } catch (error: any) {
+      console.error("❌ Failed to get LiveKit token:", error);
+      
+      // Extract error message
+      let errorMessage = "Failed to join meeting. Could not generate token.";
+      if (error.response) {
+        // Server responded with error
+        const status = error.response.status;
+        const data = error.response.data;
+        
+        if (status === 400) {
+          errorMessage = data?.message || "Invalid request. Please check your meeting ID.";
+        } else if (status === 401) {
+          errorMessage = "Authentication failed. Please log in again.";
+          // Clear tokens and redirect to login
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            setTimeout(() => window.location.href = '/login', 2000);
+          }
+        } else if (status === 403) {
+          errorMessage = data?.message || "Access denied. You may not have permission to join this meeting.";
+        } else if (status === 404) {
+          errorMessage = "Meeting not found. Please check the meeting ID.";
+        } else {
+          errorMessage = data?.message || `Server error (${status}). Please try again later.`;
+        }
+      } else if (error.request) {
+        // Request was made but no response received
+        errorMessage = "Network error. Please check your internet connection.";
+      } else {
+        // Something else happened
+        errorMessage = error.message || errorMessage;
+      }
+      
       toast({
         title: "Error",
-        description: "Failed to join meeting. Could not generate token.",
+        description: errorMessage,
         variant: "destructive",
       });
     }

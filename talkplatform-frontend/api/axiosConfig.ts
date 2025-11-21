@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { tokenManager } from '@/utils/token-manager';
 
 const axiosConfig = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1',
@@ -6,18 +7,26 @@ const axiosConfig = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  // ✅ OPTIMIZATION: Enable credentials for cookie-based auth (if using cookies)
+  // withCredentials: process.env.NEXT_PUBLIC_USE_COOKIES === 'true',
 });
 
 // Add request interceptor for auth tokens
+// ✅ FIX: Use tokenManager for consistent token handling
 axiosConfig.interceptors.request.use(
   (config) => {
     // Add auth token if available
-    if (typeof window !== 'undefined') {
-      const token = localStorage.getItem('authToken');
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
+    const token = tokenManager.getAccessToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    // Add refresh token if available
+    const refreshToken = tokenManager.getRefreshToken();
+    if (refreshToken) {
+      config.headers['x-refresh-token'] = refreshToken;
+    }
+    
     return config;
   },
   (error) => {
@@ -32,8 +41,13 @@ axiosConfig.interceptors.response.use(
     if (error.response?.status === 401) {
       // Handle unauthorized access
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('authToken');
-        window.location.href = '/login';
+        // Clear all tokens using tokenManager
+        tokenManager.clearTokens();
+        
+        // Only redirect if not already on login page
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
       }
     }
     return Promise.reject(error);
