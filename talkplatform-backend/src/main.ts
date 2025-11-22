@@ -4,7 +4,9 @@ import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    rawBody: true, // Enable raw body for webhook signature verification
+  });
 
   // Global validation pipe (đã được cấu hình trong AppModule nhưng có thể override ở đây)
   app.useGlobalPipes(new ValidationPipe({
@@ -23,8 +25,13 @@ async function bootstrap() {
   const port = configService.get<number>('PORT', 3000);
 
   // Set global prefix but exclude webhooks (for LiveKit Cloud to call directly)
+  // Exclude all routes starting with 'webhooks/' to allow direct access
   app.setGlobalPrefix('api/v1', {
-    exclude: ['webhooks/livekit'],
+    exclude: [
+      'webhooks/livekit',
+      'webhooks/livekit/events',
+      'webhooks/livekit/stats',
+    ],
   });
 
   await app.listen(port);

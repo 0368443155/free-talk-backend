@@ -17,6 +17,10 @@ import {
   Play,
   ArrowUp,
   ArrowDown,
+  Grid3x3,
+  Lock,
+  Unlock,
+  RefreshCw,
 } from 'lucide-react';
 
 interface MeetingControlsProps {
@@ -31,6 +35,13 @@ interface MeetingControlsProps {
   onToggleScreenShare: () => void;
   onLeave: () => void;
   
+  // New actions
+  onToggleVideoGrid?: () => void;
+  showVideoGrid?: boolean;
+  onToggleLockRoom?: () => void;
+  isRoomLocked?: boolean;
+  isHost?: boolean;
+  onRefresh?: () => void;
   
   // Bandwidth monitoring
   bandwidth?: {
@@ -54,6 +65,12 @@ export function MeetingControls({
   onToggleMicrophone,
   onToggleScreenShare,
   onLeave,
+  onToggleVideoGrid,
+  showVideoGrid = true,
+  onToggleLockRoom,
+  isRoomLocked = false,
+  isHost = false,
+  onRefresh,
   bandwidth,
   disabled = false,
 }: MeetingControlsProps) {
@@ -153,6 +170,55 @@ export function MeetingControls({
             <Monitor className="w-5 h-5" />
           )}
         </Button>
+
+        {/* Toggle Video Grid / YouTube Player */}
+        {onToggleVideoGrid && (
+          <Button
+            variant={showVideoGrid ? "default" : "outline"}
+            size="lg"
+            onClick={onToggleVideoGrid}
+            disabled={disabled}
+            className="rounded-full w-12 h-12 p-0"
+            title={showVideoGrid ? "Switch to YouTube Player" : "Switch to Video Grid"}
+          >
+            {showVideoGrid ? (
+              <Play className="w-5 h-5" />
+            ) : (
+              <Grid3x3 className="w-5 h-5" />
+            )}
+          </Button>
+        )}
+
+        {/* Lock Room (Host only) */}
+        {isHost && onToggleLockRoom && (
+          <Button
+            variant={isRoomLocked ? "default" : "outline"}
+            size="lg"
+            onClick={onToggleLockRoom}
+            disabled={disabled}
+            className="rounded-full w-12 h-12 p-0"
+            title={isRoomLocked ? "Unlock Room" : "Lock Room"}
+          >
+            {isRoomLocked ? (
+              <Lock className="w-5 h-5" />
+            ) : (
+              <Unlock className="w-5 h-5" />
+            )}
+          </Button>
+        )}
+
+        {/* Refresh Page */}
+        {onRefresh && (
+          <Button
+            variant="outline"
+            size="lg"
+            onClick={onRefresh}
+            className="rounded-full w-12 h-12 p-0"
+            title="Refresh Page"
+          >
+            <RefreshCw className="w-5 h-5" />
+          </Button>
+        )}
 
         {/* Leave button */}
         <Button

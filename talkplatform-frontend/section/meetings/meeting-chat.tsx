@@ -165,9 +165,9 @@ export function MeetingChat({ messages, isOnline, currentUserId, onSendMessage, 
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-800 relative">
+    <div className="flex flex-col h-full bg-gray-800 relative z-10">
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4">
         <div className="space-y-1 pb-4">
           {messages.length === 0 ? (
             <div className="text-center text-gray-400 py-8">
@@ -268,7 +268,7 @@ export function MeetingChat({ messages, isOnline, currentUserId, onSendMessage, 
       )}
 
       {/* Single input area - removed duplicate */}
-      <div className="border-t border-gray-700 p-4">
+      <div className="border-t border-gray-700 p-4 flex-shrink-0 relative z-20 bg-gray-800">
         <div className="flex gap-2 items-end">
           {/* Emoji picker */}
           <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>

@@ -34,6 +34,12 @@ interface LiveKitBandwidthMonitorProps {
   className?: string;
   showDetailed?: boolean;
   room?: Room | null;
+  onBandwidthUpdate?: (bandwidth: {
+    inbound: number; // KB/s
+    outbound: number; // KB/s
+    latency: number; // ms
+    quality: 'excellent' | 'good' | 'fair' | 'poor';
+  }) => void;
 }
 
 export function LiveKitBandwidthMonitor({
@@ -41,7 +47,8 @@ export function LiveKitBandwidthMonitor({
   userId,
   className,
   showDetailed = false,
-  room: externalRoom
+  room: externalRoom,
+  onBandwidthUpdate
 }: LiveKitBandwidthMonitorProps) {
   const [connectionState, setConnectionState] = useState<ConnectionState>(ConnectionState.Disconnected);
   const [localParticipant, setLocalParticipant] = useState<any>(null);
@@ -347,6 +354,16 @@ export function LiveKitBandwidthMonitor({
       const newMetrics = [...metricsRef.current, metric].slice(-60); // Keep last 60 seconds
       metricsRef.current = newMetrics;
       setMetrics(newMetrics);
+
+      // Update parent component with bandwidth data (convert bits to KB)
+      if (onBandwidthUpdate) {
+        onBandwidthUpdate({
+          inbound: Math.round((inboundBitrate || 0) / 8 / 1024), // bits/s to KB/s
+          outbound: Math.round((outboundBitrate || 0) / 8 / 1024), // bits/s to KB/s
+          latency: Math.round(rtt || 0),
+          quality: quality === 'excellent' ? 'excellent' : quality === 'good' ? 'good' : 'poor'
+        });
+      }
 
       // Send metrics to backend for dashboard tracking
       await sendMetricsToBackend(metric);

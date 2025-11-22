@@ -4,19 +4,41 @@ export class CreateEnhancedTeachingSystem1763700000000 implements MigrationInter
   name = 'CreateEnhancedTeachingSystem1763700000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // Create teacher status enum
-    await queryRunner.query(`
-      CREATE TYPE "teacher_profiles_status_enum" AS ENUM('pending', 'approved', 'suspended', 'rejected')
-    `);
+    // Note: MySQL doesn't support CREATE TYPE for ENUMs
+    // ENUMs are defined directly in column definitions (see below)
 
-    // Create teacher specialty enum
-    await queryRunner.query(`
-      CREATE TYPE "teacher_profiles_specialty_enum" AS ENUM('conversation', 'business', 'academic', 'test_prep', 'kids', 'pronunciation', 'grammar', 'writing')
-    `);
+    // Helper function to check if table exists
+    const tableExists = async (tableName: string): Promise<boolean> => {
+      const result = await queryRunner.query(`
+        SELECT COUNT(*) as count 
+        FROM information_schema.tables 
+        WHERE table_schema = DATABASE() 
+        AND table_name = ?
+      `, [tableName]);
+      return Number(result[0]?.count || 0) > 0;
+    };
 
-    // Create teacher profiles table
-    await queryRunner.query(`
-      CREATE TABLE \`teacher_profiles\` (
+    // Helper function to check if column exists
+    const columnExists = async (tableName: string, columnName: string): Promise<boolean> => {
+      const result = await queryRunner.query(`
+        SELECT COUNT(*) as count 
+        FROM information_schema.columns 
+        WHERE table_schema = DATABASE() 
+        AND table_name = ? 
+        AND column_name = ?
+      `, [tableName, columnName]);
+      return Number(result[0]?.count || 0) > 0;
+    };
+
+    // Create teacher profiles table (skip if exists - table may have been created manually)
+    const teacherProfilesExists = await tableExists('teacher_profiles');
+    let teacherProfilesHasId = false;
+    if (teacherProfilesExists) {
+      teacherProfilesHasId = await columnExists('teacher_profiles', 'id');
+    }
+    if (!teacherProfilesExists) {
+      await queryRunner.query(`
+        CREATE TABLE \`teacher_profiles\` (
         \`id\` varchar(36) NOT NULL,
         \`user_id\` varchar(36) NOT NULL,
         \`status\` enum('pending', 'approved', 'suspended', 'rejected') NOT NULL DEFAULT 'pending',
@@ -68,10 +90,12 @@ export class CreateEnhancedTeachingSystem1763700000000 implements MigrationInter
         UNIQUE INDEX \`REL_teacher_profiles_user\` (\`user_id\`),
         CONSTRAINT \`FK_teacher_profiles_user\` FOREIGN KEY (\`user_id\`) REFERENCES \`users\`(\`id\`) ON DELETE CASCADE
       ) ENGINE=InnoDB
-    `);
+      `);
+    }
 
-    // Create teacher reviews table
-    await queryRunner.query(`
+    // Create teacher reviews table (only if teacher_profiles exists with id column)
+    if (teacherProfilesHasId && !(await tableExists('teacher_reviews'))) {
+      await queryRunner.query(`
       CREATE TABLE \`teacher_reviews\` (
         \`id\` varchar(36) NOT NULL,
         \`teacher_id\` varchar(36) NOT NULL,
@@ -96,10 +120,12 @@ export class CreateEnhancedTeachingSystem1763700000000 implements MigrationInter
         CONSTRAINT \`FK_teacher_reviews_student\` FOREIGN KEY (\`student_id\`) REFERENCES \`users\`(\`id\`) ON DELETE CASCADE,
         CONSTRAINT \`FK_teacher_reviews_meeting\` FOREIGN KEY (\`meeting_id\`) REFERENCES \`meetings\`(\`id\`) ON DELETE SET NULL
       ) ENGINE=InnoDB
-    `);
+      `);
+    }
 
-    // Create teacher availability table
-    await queryRunner.query(`
+    // Create teacher availability table (only if teacher_profiles exists with id column)
+    if (teacherProfilesHasId && !(await tableExists('teacher_availability'))) {
+      await queryRunner.query(`
       CREATE TABLE \`teacher_availability\` (
         \`id\` varchar(36) NOT NULL,
         \`teacher_id\` varchar(36) NOT NULL,
@@ -119,10 +145,12 @@ export class CreateEnhancedTeachingSystem1763700000000 implements MigrationInter
         INDEX \`IDX_teacher_availability_teacher_date\` (\`teacher_id\`, \`date\`, \`availability_type\`),
         CONSTRAINT \`FK_teacher_availability_teacher\` FOREIGN KEY (\`teacher_id\`) REFERENCES \`teacher_profiles\`(\`id\`) ON DELETE CASCADE
       ) ENGINE=InnoDB
-    `);
+      `);
+    }
 
     // Create credit packages table
-    await queryRunner.query(`
+    if (!(await tableExists('credit_packages'))) {
+      await queryRunner.query(`
       CREATE TABLE \`credit_packages\` (
         \`id\` varchar(36) NOT NULL,
         \`name\` varchar(200) NOT NULL,
@@ -140,10 +168,12 @@ export class CreateEnhancedTeachingSystem1763700000000 implements MigrationInter
         \`updated_at\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
         PRIMARY KEY (\`id\`)
       ) ENGINE=InnoDB
-    `);
+      `);
+    }
 
     // Create credit transactions table
-    await queryRunner.query(`
+    if (!(await tableExists('credit_transactions'))) {
+      await queryRunner.query(`
       CREATE TABLE \`credit_transactions\` (
         \`id\` varchar(36) NOT NULL,
         \`user_id\` varchar(36) NOT NULL,
@@ -174,25 +204,63 @@ export class CreateEnhancedTeachingSystem1763700000000 implements MigrationInter
         CONSTRAINT \`FK_credit_transactions_meeting\` FOREIGN KEY (\`meeting_id\`) REFERENCES \`meetings\`(\`id\`) ON DELETE SET NULL,
         CONSTRAINT \`FK_credit_transactions_teacher\` FOREIGN KEY (\`teacher_id\`) REFERENCES \`users\`(\`id\`) ON DELETE SET NULL
       ) ENGINE=InnoDB
-    `);
+      `);
+    }
 
-    // Insert default credit packages
-    await queryRunner.query(`
+    // Insert default credit packages (only if table is empty)
+    if (await tableExists('credit_packages')) {
+      const creditPackagesCount = await queryRunner.query(`
+        SELECT COUNT(*) as count FROM \`credit_packages\`
+      `);
+      if (Number(creditPackagesCount[0]?.count || 0) === 0) {
+      await queryRunner.query(`
       INSERT INTO \`credit_packages\` (\`id\`, \`name\`, \`description\`, \`credit_amount\`, \`usd_price\`, \`bonus_credits\`, \`sort_order\`, \`features\`) VALUES
       (UUID(), 'Starter Pack', 'Perfect for trying out the platform', 10, 9.99, 0, 1, JSON_ARRAY('Basic support', '30-day validity')),
       (UUID(), 'Popular Pack', 'Most popular choice for regular learners', 50, 39.99, 5, 2, JSON_ARRAY('Priority support', '90-day validity', '+5 bonus credits')),
       (UUID(), 'Value Pack', 'Best value for frequent learners', 100, 69.99, 15, 3, JSON_ARRAY('Premium support', '180-day validity', '+15 bonus credits')),
       (UUID(), 'Premium Pack', 'For serious language learners', 200, 119.99, 40, 4, JSON_ARRAY('VIP support', 'No expiry', '+40 bonus credits', 'Priority booking'))
-    `);
+      `);
+      }
+    }
 
     // Add affiliate_code to users table if not exists
-    await queryRunner.query(`
-      ALTER TABLE \`users\` 
-      ADD COLUMN \`affiliate_code\` varchar(50) NULL,
-      ADD COLUMN \`refferrer_id\` varchar(36) NULL,
-      ADD INDEX \`IDX_users_affiliate_code\` (\`affiliate_code\`),
-      ADD INDEX \`IDX_users_refferrer\` (\`refferrer_id\`)
-    `);
+    if (!(await columnExists('users', 'affiliate_code'))) {
+      await queryRunner.query(`
+        ALTER TABLE \`users\` 
+        ADD COLUMN \`affiliate_code\` varchar(50) NULL
+      `);
+    }
+    if (!(await columnExists('users', 'refferrer_id'))) {
+      await queryRunner.query(`
+        ALTER TABLE \`users\` 
+        ADD COLUMN \`refferrer_id\` varchar(36) NULL
+      `);
+    }
+    
+    // Add indexes if they don't exist
+    const indexExists = async (tableName: string, indexName: string): Promise<boolean> => {
+      const result = await queryRunner.query(`
+        SELECT COUNT(*) as count 
+        FROM information_schema.statistics 
+        WHERE table_schema = DATABASE() 
+        AND table_name = ? 
+        AND index_name = ?
+      `, [tableName, indexName]);
+      return Number(result[0]?.count || 0) > 0;
+    };
+
+    if (!(await indexExists('users', 'IDX_users_affiliate_code'))) {
+      await queryRunner.query(`
+        ALTER TABLE \`users\` 
+        ADD INDEX \`IDX_users_affiliate_code\` (\`affiliate_code\`)
+      `);
+    }
+    if (!(await indexExists('users', 'IDX_users_refferrer'))) {
+      await queryRunner.query(`
+        ALTER TABLE \`users\` 
+        ADD INDEX \`IDX_users_refferrer\` (\`refferrer_id\`)
+      `);
+    }
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
@@ -206,8 +274,7 @@ export class CreateEnhancedTeachingSystem1763700000000 implements MigrationInter
     await queryRunner.query(`DROP TABLE \`teacher_reviews\``);
     await queryRunner.query(`DROP TABLE \`teacher_profiles\``);
 
-    // Drop enum types
-    await queryRunner.query(`DROP TYPE "teacher_profiles_specialty_enum"`);
-    await queryRunner.query(`DROP TYPE "teacher_profiles_status_enum"`);
+    // Note: MySQL doesn't have separate ENUM types to drop
+    // ENUMs are part of column definitions and are removed when tables are dropped
   }
 }

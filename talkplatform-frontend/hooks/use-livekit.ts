@@ -120,6 +120,16 @@ export function useLiveKit({
 
     // Add remote participants
     room.remoteParticipants.forEach((participant) => {
+      const screenSharePub = Array.from(participant.videoTrackPublications.values()).find(
+        pub => pub.source === Track.Source.ScreenShare
+      );
+      
+      // Ensure screen share track is subscribed if it exists
+      if (screenSharePub && !screenSharePub.isSubscribed) {
+        console.log(`📥 Subscribing to screen share track from ${participant.identity}`);
+        screenSharePub.setSubscribed(true);
+      }
+      
       result.push({
         identity: participant.identity,
         name: participant.name,
@@ -132,9 +142,7 @@ export function useLiveKit({
           video: Array.from(participant.videoTrackPublications.values()).find(
             pub => pub.source === Track.Source.Camera
           ),
-          screen: Array.from(participant.videoTrackPublications.values()).find(
-            pub => pub.source === Track.Source.ScreenShare
-          ),
+          screen: screenSharePub,
         },
       });
     });
@@ -195,6 +203,13 @@ export function useLiveKit({
 
         newRoom.on(RoomEvent.ParticipantConnected, (participant) => {
           if (!isMounted) return;
+          console.log(`👤 Participant connected: ${participant.identity}`);
+          // Subscribe to all tracks when participant connects
+          participant.trackPublications.forEach((pub) => {
+            if (pub.track) {
+              console.log(`📥 Auto-subscribing to track: ${pub.kind} from ${participant.identity}, source: ${pub.source}`);
+            }
+          });
           setParticipants(transformParticipants(newRoom));
           onParticipantConnected?.(participant);
         });
@@ -205,8 +220,24 @@ export function useLiveKit({
           onParticipantDisconnected?.(participant);
         });
 
+        // Listen for track published events to ensure screen share is available
+        newRoom.on(RoomEvent.TrackPublished, (publication, participant) => {
+          if (!isMounted) return;
+          console.log(`📤 Track published: ${publication.kind} from ${participant.identity}, source: ${publication.source}`);
+          // Update participants when new tracks are published (especially screen share)
+          setParticipants(transformParticipants(newRoom));
+        });
+
+        newRoom.on(RoomEvent.TrackUnpublished, (publication, participant) => {
+          if (!isMounted) return;
+          console.log(`📤 Track unpublished: ${publication.kind} from ${participant.identity}, source: ${publication.source}`);
+          setParticipants(transformParticipants(newRoom));
+        });
+
         newRoom.on(RoomEvent.TrackSubscribed, (track, pub, participant) => {
           if (!isMounted) return;
+          console.log(`📥 Track subscribed: ${pub.kind} from ${participant.identity}, source: ${pub.source}`);
+          // Force update participants to include newly subscribed tracks
           setParticipants(transformParticipants(newRoom));
           onTrackSubscribed?.(track, pub, participant);
         });

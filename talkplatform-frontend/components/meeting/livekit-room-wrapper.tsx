@@ -47,7 +47,11 @@ import {
   kickPublicMeetingParticipantApi, 
   blockPublicMeetingParticipantApi, 
   muteParticipantApi, 
-  mutePublicMeetingParticipantApi 
+  mutePublicMeetingParticipantApi,
+  lockMeetingApi,
+  unlockMeetingApi,
+  lockPublicMeetingApi,
+  unlockPublicMeetingApi
 } from '@/api/meeting.rest';
 import { generateLiveKitTokenApi } from '@/api/livekit.rest';
 import {
@@ -77,6 +81,8 @@ import {
   PhoneOff,
   Video,
   Mic,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 interface LiveKitRoomWrapperProps {
@@ -126,6 +132,8 @@ export function LiveKitRoomWrapper({
   const [showParticipants, setShowParticipants] = useState(false);
   const [showPlayControls, setShowPlayControls] = useState(false);
   const [showVideoGrid, setShowVideoGrid] = useState(true);
+  const [isRoomLocked, setIsRoomLocked] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [chatMessages, setChatMessages] = useState<IMeetingChatMessage[]>([]);
   const [bandwidth, setBandwidth] = useState({
     inbound: 0,
@@ -212,16 +220,9 @@ export function LiveKitRoomWrapper({
         const data = JSON.parse(decoder.decode(payload));
 
         if (data.type === 'chat') {
-          setChatMessages(prev => [...prev, {
-            id: Date.now().toString(),
-            message: data.message,
-            sender: {
-              user_id: participant?.identity || 'unknown',
-              name: participant?.name || 'Unknown',
-            },
-            created_at: new Date(data.timestamp).toISOString(),
-            type: MessageType.TEXT
-          }]);
+          // Skip LiveKit data channel chat messages - we only use Socket.IO for chat
+          // This prevents duplicate messages
+          return;
         } else if (data.type === 'reaction') {
           addReaction(data.emoji, user.id);
         }
@@ -380,7 +381,7 @@ export function LiveKitRoomWrapper({
     type?: string;
   }) => {
     const newMsg: IMeetingChatMessage = {
-      id: data.id,
+      id: data.id || `socket-${Date.now()}-${data.senderId}`,
       message: data.message,
       sender: {
         user_id: data.senderId,
@@ -393,12 +394,20 @@ export function LiveKitRoomWrapper({
     } as any;
 
     setChatMessages(prev => {
+      // Check if message already exists by ID (like meeting-room.tsx)
       const exists = prev.some(msg => msg.id === newMsg.id);
-      if (exists) return prev;
+      if (exists) {
+        console.log('💬 [CHAT] Message already exists, skipping:', newMsg.id);
+        return prev;
+      }
       
-      return [...prev, newMsg].sort((a, b) => 
+      console.log('💬 [CHAT] Adding new message to state');
+      // Add new message and sort by timestamp (like meeting-room.tsx)
+      const updated = [...prev, newMsg].sort((a, b) => 
         new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       );
+      
+      return updated;
     });
   }, []);
 
@@ -553,28 +562,8 @@ export function LiveKitRoomWrapper({
   useEffect(() => {
     if (!room || !isLiveKitConnected) return;
 
-    const interval = setInterval(async () => {
-      try {
-        const mockInbound = Math.random() * 1000000 + 200000;
-        const mockOutbound = Math.random() * 500000 + 100000;
-        const mockLatency = Math.random() * 100 + 20;
-        
-        let quality: 'excellent' | 'good' | 'poor' = 'good';
-        if (mockInbound > 500000 && mockLatency < 100) quality = 'excellent';
-        else if (mockInbound < 100000 || mockLatency > 300) quality = 'poor';
-
-        setBandwidth({
-          inbound: Math.round(mockInbound),
-          outbound: Math.round(mockOutbound),
-          latency: Math.round(mockLatency),
-          quality
-        });
-      } catch (e) {
-        console.error('Failed to get stats:', e);
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
+    // Bandwidth is now updated via LiveKitBandwidthMonitor callback
+    // No need for mock data interval
   }, [room, isLiveKitConnected]);
 
   const handleJoin = async (settings: DeviceSettings) => {
@@ -694,21 +683,13 @@ export function LiveKitRoomWrapper({
     if (!trimmedMessage) return;
 
     try {
+      // Only send via Socket.IO (like meeting-room.tsx)
+      // Server will broadcast back with proper ID, so we don't need optimistic update
       socket.emit('chat:message', { message: trimmedMessage });
-      // Also send via LiveKit data channel as backup
-      await sendLiveKitChatMessage(trimmedMessage);
       
-      // Optimistically add to local state
-      setChatMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        message: trimmedMessage,
-        sender: {
-          user_id: user.id,
-          name: user.username || 'You',
-        },
-        created_at: new Date().toISOString(),
-        type: MessageType.TEXT
-      }]);
+      // Note: We removed optimistic update and LiveKit data channel
+      // to match the working logic from meeting-room.tsx
+      // The message will appear when server broadcasts it back via 'chat:message' event
     } catch (error) {
       toast({
         title: "Send Failed",
@@ -716,7 +697,7 @@ export function LiveKitRoomWrapper({
         variant: "destructive",
       });
     }
-  }, [socket, sendLiveKitChatMessage, user.id, user.username, toast]);
+  }, [socket, toast]);
 
   const handleSendReaction = async (emoji: string) => {
     await sendReaction(emoji);
@@ -770,6 +751,46 @@ export function LiveKitRoomWrapper({
       youtubePlayerRef.current.handleToggleMute();
     }
     setYoutubeVolume(prev => (prev === 0 ? 50 : 0));
+  };
+
+  // Toggle video grid / YouTube player
+  const handleToggleVideoGrid = () => {
+    setShowVideoGrid(prev => !prev);
+  };
+
+  // Toggle lock room (host only)
+  const handleToggleLockRoom = async () => {
+    if (!isHost) return;
+    try {
+      if (isRoomLocked) {
+        if (isPublicMeeting) {
+          await unlockPublicMeetingApi(meetingId);
+        } else {
+          await unlockMeetingApi(classroomId!, meetingId);
+        }
+        setIsRoomLocked(false);
+        toast({ title: "Success", description: "Meeting unlocked" });
+      } else {
+        if (isPublicMeeting) {
+          await lockPublicMeetingApi(meetingId);
+        } else {
+          await lockMeetingApi(classroomId!, meetingId);
+        }
+        setIsRoomLocked(true);
+        toast({ title: "Success", description: "Meeting locked" });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || "Failed to toggle lock",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Refresh page
+  const handleRefresh = () => {
+    window.location.reload();
   };
 
   // Host participant management
@@ -982,25 +1003,17 @@ export function LiveKitRoomWrapper({
       )}
 
       <div className="flex-1 flex flex-col">
-        {/* Header */}
-        <div className="p-4 bg-gray-800 flex justify-between items-center border-b border-gray-700">
-          <div className="flex items-center gap-4">
-            <h1 className="text-lg font-semibold">Meeting {meetingId}</h1>
+        {/* Header - Like image 1 */}
+        <div className="px-4 py-2 bg-gray-800 flex items-center justify-between border-b border-gray-700">
+          <div className="flex items-center gap-4 flex-1 min-w-0">
+            <h1 className="text-sm font-semibold truncate">Meeting {meetingId}</h1>
             
-            {/* LiveKit Bandwidth Monitor */}
-            <LiveKitBandwidthMonitor
-              meetingId={meetingId}
-              userId={user.id}
-              showDetailed={false}
-              className="flex items-center"
-              room={room}
-            />
-
-            {/* Connection status */}
-            <div className="flex items-center gap-2">
+            {/* LiveKit Connection Status - Rounded rectangle like image 1 */}
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-700 rounded-lg border border-gray-600">
+              <span className="text-xs text-gray-300">LiveKit Connection</span>
               <div className={`w-2 h-2 rounded-full ${isSocketConnected && isLiveKitConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-              <span className="text-xs text-gray-400">
-                {isSocketConnected && isLiveKitConnected ? 'Connected' : 'Connecting...'}
+              <span className="text-xs font-medium text-white">
+                Status: {isSocketConnected && isLiveKitConnected ? 'connected' : 'connecting'}
               </span>
             </div>
           </div>
@@ -1009,7 +1022,15 @@ export function LiveKitRoomWrapper({
           <div className="flex items-center">
             <button
               className={`px-4 py-2 text-sm font-medium transition-colors ${showParticipants ? 'text-white bg-gray-700' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
-              onClick={() => { setShowParticipants(true); setShowChat(false); setShowYouTubeSearch(false); }}
+              onClick={() => { 
+                setShowParticipants(true); 
+                setShowChat(false); 
+                setShowYouTubeSearch(false);
+                // Auto-open sidebar if collapsed
+                if (isSidebarCollapsed) {
+                  setIsSidebarCollapsed(false);
+                }
+              }}
             >
               <Users className="w-4 h-4 mr-1 inline" />
               Participants
@@ -1017,7 +1038,15 @@ export function LiveKitRoomWrapper({
             <div className="w-px h-4 bg-gray-600"></div>
             <button
               className={`px-4 py-2 text-sm font-medium transition-colors ${showChat ? 'text-white bg-gray-700' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
-              onClick={() => { setShowChat(true); setShowParticipants(false); setShowYouTubeSearch(false); }}
+              onClick={() => { 
+                setShowChat(true); 
+                setShowParticipants(false); 
+                setShowYouTubeSearch(false);
+                // Auto-open sidebar if collapsed
+                if (isSidebarCollapsed) {
+                  setIsSidebarCollapsed(false);
+                }
+              }}
             >
               <MessageSquare className="w-4 h-4 mr-1 inline" />
               Chat
@@ -1025,7 +1054,15 @@ export function LiveKitRoomWrapper({
             <div className="w-px h-4 bg-gray-600"></div>
             <button
               className={`px-4 py-2 text-sm font-medium transition-colors ${showYouTubeSearch ? 'text-white bg-gray-700' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
-              onClick={() => { setShowYouTubeSearch(!showYouTubeSearch); setShowParticipants(false); setShowChat(false); }}
+              onClick={() => { 
+                setShowYouTubeSearch(!showYouTubeSearch); 
+                setShowParticipants(false); 
+                setShowChat(false);
+                // Auto-open sidebar if collapsed
+                if (isSidebarCollapsed) {
+                  setIsSidebarCollapsed(false);
+                }
+              }}
             >
               <Play className="w-4 h-4 mr-1 inline" />
               Play
@@ -1034,7 +1071,7 @@ export function LiveKitRoomWrapper({
         </div>
 
         {/* Main Content Area */}
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex overflow-hidden relative">
           {/* Video/YouTube Area */}
           <div className="flex-1 bg-gray-900 flex flex-col">
             {livekitError ? (
@@ -1045,17 +1082,79 @@ export function LiveKitRoomWrapper({
                 </Card>
               </div>
             ) : (
-              <div className="flex-1 overflow-auto p-4">
+              <div className="flex-1 overflow-hidden">
                 {/* Video Grid */}
-                <div className={showVideoGrid ? "h-full" : "hidden"}>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {livekitParticipants.map((participant) => (
-                      <ParticipantTile
-                        key={participant.identity}
-                        participant={participant}
-                      />
-                    ))}
-                  </div>
+                <div className={showVideoGrid ? "h-full flex" : "hidden"}>
+                  {(() => {
+                    // Find screen share participant - check tracks.screen (separate from camera video)
+                    // Check both local and remote participants for screen share
+                    const screenShareParticipant = livekitParticipants.find(p => {
+                      const screenTrack = p.tracks.screen;
+                      const hasScreenTrack = screenTrack && screenTrack.track;
+                      if (hasScreenTrack) {
+                        console.log(`🖥️ Found screen share from ${p.identity}, track subscribed: ${screenTrack.isSubscribed}`);
+                      }
+                      return hasScreenTrack && screenTrack.isSubscribed;
+                    });
+                    const hasScreenShare = !!screenShareParticipant;
+                    // Regular participants are all participants (screen share is shown separately)
+                    const regularParticipants = livekitParticipants;
+
+                    if (hasScreenShare) {
+                      // Layout with screen share: Screen share left, participants right of screen share
+                      // Exclude the screen share participant from regular participants list
+                      const participantsWithoutScreenShare = regularParticipants.filter(
+                        p => p.identity !== screenShareParticipant.identity
+                      );
+                      
+                      return (
+                        <div className="flex-1 flex h-full gap-2 p-2">
+                          {/* Screen Share - Full size on left */}
+                          <div className={`flex-1 min-w-0 transition-all duration-300`}>
+                            <div className="h-full w-full">
+                              <ParticipantTile
+                                key={`screen-${screenShareParticipant.identity}`}
+                                participant={screenShareParticipant}
+                                isScreenShare={true}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Participants Grid - Vertical on right of screen share */}
+                          {participantsWithoutScreenShare.length > 0 && (
+                            <div className={`flex-shrink-0 flex flex-col gap-2 overflow-y-auto transition-all duration-300 ${
+                              isSidebarCollapsed 
+                                ? 'w-80' // Expand when sidebar is collapsed
+                                : 'w-64' // Normal width when sidebar is open
+                            }`}>
+                              {participantsWithoutScreenShare.map((participant) => (
+                                <div key={participant.identity} className="flex-shrink-0">
+                                  <ParticipantTile
+                                    participant={participant}
+                                    isCompact={true}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    } else {
+                      // Normal grid layout when no screen share
+                      return (
+                        <div className="h-full overflow-auto p-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {regularParticipants.map((participant) => (
+                              <ParticipantTile
+                                key={participant.identity}
+                                participant={participant}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    }
+                  })()}
                 </div>
 
                 {/* YouTube Player */}
@@ -1076,10 +1175,31 @@ export function LiveKitRoomWrapper({
 
           {/* Sidebar */}
           {(showChat || showParticipants || showYouTubeSearch) && (
-            <div className="w-80 bg-gray-800 border-l border-gray-700 flex flex-col flex-shrink-0">
+            <>
+              {/* Sidebar Toggle Button - Positioned between content and sidebar */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`absolute top-1/2 -translate-y-1/2 z-20 h-10 w-10 rounded-full bg-gray-700 hover:bg-gray-600 border border-gray-600 shadow-lg ${
+                  isSidebarCollapsed 
+                    ? 'right-2' 
+                    : 'right-[320px]' // 80 * 4 = 320px (w-80)
+                } transition-all duration-300`}
+                onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              >
+                {isSidebarCollapsed ? (
+                  <ChevronLeft className="w-5 h-5" />
+                ) : (
+                  <ChevronRight className="w-5 h-5" />
+                )}
+              </Button>
+
+              <div className={`bg-gray-800 border-l border-gray-700 flex flex-col flex-shrink-0 transition-all duration-300 ${
+                isSidebarCollapsed ? 'w-0 overflow-hidden' : 'w-80'
+              } h-full`}>
               {/* Participants Panel */}
               {showParticipants && (
-                <ScrollArea className="flex-1 p-4">
+                <ScrollArea className="flex-1 p-4 min-h-0">
                   <div className="space-y-2">
                     {participants.map((participant) => {
                       const participantUserId = participant.user?.id || (participant.user as any)?.user_id;
@@ -1172,14 +1292,14 @@ export function LiveKitRoomWrapper({
 
               {/* Chat Panel */}
               {showChat && (
-                <div className="flex-1 flex flex-col">
-                  <div className="flex items-center justify-between p-4 border-b border-gray-700">
+                <div className="flex-1 flex flex-col h-full min-h-0 relative z-10">
+                  <div className="flex items-center justify-between p-4 border-b border-gray-700 flex-shrink-0">
                     <h3 className="font-semibold">Meeting Chat</h3>
                     <Button variant="ghost" size="sm" onClick={() => setShowChat(false)}>
                       <X className="w-4 h-4" />
                     </Button>
                   </div>
-                  <div className="flex-1 overflow-hidden">
+                  <div className="flex-1 min-h-0 overflow-hidden relative">
                     <MeetingChat
                       messages={chatMessages}
                       isOnline={isOnline}
@@ -1270,7 +1390,8 @@ export function LiveKitRoomWrapper({
                   </div>
                 </div>
               )}
-            </div>
+              </div>
+            </>
           )}
         </div>
 
@@ -1285,6 +1406,12 @@ export function LiveKitRoomWrapper({
             onToggleMicrophone={handleToggleMicrophone}
             onToggleScreenShare={handleToggleScreenShare}
             onLeave={handleLeave}
+            onToggleVideoGrid={handleToggleVideoGrid}
+            showVideoGrid={showVideoGrid}
+            onToggleLockRoom={handleToggleLockRoom}
+            isRoomLocked={isRoomLocked}
+            isHost={isHost}
+            onRefresh={handleRefresh}
             bandwidth={bandwidth}
             disabled={!isLiveKitConnected}
           />
@@ -1349,36 +1476,44 @@ export function LiveKitRoomWrapper({
 /**
  * Individual participant video tile component
  */
-function ParticipantTile({ participant }: { participant: LiveKitParticipant }) {
+function ParticipantTile({ participant, isScreenShare = false, isCompact = false }: { participant: LiveKitParticipant; isScreenShare?: boolean; isCompact?: boolean }) {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const audioRef = React.useRef<HTMLAudioElement>(null);
   const [hasVideo, setHasVideo] = React.useState(false);
 
+  // Determine which track to use: screen share track or camera video track
+  const trackPublication = isScreenShare 
+    ? participant.tracks.screen  // Use screen share track when isScreenShare=true
+    : participant.tracks.video;  // Use camera video track otherwise
+
   // Attach video track to video element
   useEffect(() => {
-    const videoPublication = participant.tracks.video;
-    if (videoRef.current && videoPublication?.track) {
+    if (videoRef.current && trackPublication?.track) {
       try {
-        videoPublication.track.attach(videoRef.current);
+        trackPublication.track.attach(videoRef.current);
         setHasVideo(true);
+        console.log(`✅ Attached ${isScreenShare ? 'screen share' : 'video'} track for ${participant.identity}`);
       } catch (error) {
-        console.error(`Failed to attach video track for ${participant.identity}:`, error);
+        console.error(`Failed to attach ${isScreenShare ? 'screen share' : 'video'} track for ${participant.identity}:`, error);
         setHasVideo(false);
       }
 
       return () => {
-        if (videoPublication.track && videoRef.current) {
+        if (trackPublication.track && videoRef.current) {
           try {
-            videoPublication.track.detach(videoRef.current);
+            trackPublication.track.detach(videoRef.current);
           } catch (error) {
-            console.error(`Failed to detach video track for ${participant.identity}:`, error);
+            console.error(`Failed to detach ${isScreenShare ? 'screen share' : 'video'} track for ${participant.identity}:`, error);
           }
         }
       };
     } else {
       setHasVideo(false);
+      if (isScreenShare) {
+        console.log(`⚠️ No screen share track available for ${participant.identity}`);
+      }
     }
-  }, [participant.tracks.video, participant.identity]);
+  }, [trackPublication, participant.identity, isScreenShare]);
 
   // Attach audio track to audio element
   useEffect(() => {
@@ -1403,7 +1538,9 @@ function ParticipantTile({ participant }: { participant: LiveKitParticipant }) {
   }, [participant.tracks.audio, participant.identity]);
 
   return (
-    <Card className="relative overflow-hidden bg-gray-800 border-gray-700 aspect-video">
+    <Card className={`relative overflow-hidden bg-gray-800 border-gray-700 ${
+      isScreenShare ? 'h-full w-full' : isCompact ? 'aspect-video w-full' : 'aspect-video'
+    }`}>
       <CardContent className="p-0 h-full flex items-center justify-center relative">
         {/* Video Element */}
         <video

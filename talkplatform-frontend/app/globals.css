@@ -47,3 +47,15 @@ body {
 .animation-delay-4000 {
   animation-delay: 4s;
 }
+
+/* Hide header and footer when in meeting room */
+body.in-meeting-room nav,
+body.in-meeting-room [data-breadcrumb],
+body.in-meeting-room footer {
+  display: none !important;
+}
+
+body.in-meeting-room main {
+  height: 100vh;
+  overflow: hidden;
+}
