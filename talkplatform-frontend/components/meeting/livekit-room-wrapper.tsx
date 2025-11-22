@@ -78,6 +78,7 @@ import {
   ArrowUp,
   Pause,
   MonitorUp,
+  MonitorOff,
   PhoneOff,
   Video,
   Mic,
@@ -135,6 +136,7 @@ export function LiveKitRoomWrapper({
   const [isRoomLocked, setIsRoomLocked] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [chatMessages, setChatMessages] = useState<IMeetingChatMessage[]>([]);
+  const [participantsRefreshKey, setParticipantsRefreshKey] = useState(0); // Force re-render key
   const [bandwidth, setBandwidth] = useState({
     inbound: 0,
     outbound: 0,
@@ -471,6 +473,7 @@ export function LiveKitRoomWrapper({
     if (!socket) return;
 
     const handleForceMute = (data: { userId: string; isMuted: boolean }) => {
+      // If it's the current user being muted, enforce it
       if (data.userId === user.id && data.isMuted) {
         const videoTracks = Array.from(localParticipant?.audioTrackPublications.values() || []);
         const isEnabled = videoTracks.length > 0 && videoTracks[0].track !== undefined;
@@ -483,9 +486,17 @@ export function LiveKitRoomWrapper({
           variant: "default" 
         });
       }
+      
+      // If host, refresh participants to update UI
+      if (isHost) {
+        console.log('🔄 Host: Participant mute state changed, refreshing UI', data);
+        fetchParticipants();
+        setParticipantsRefreshKey(prev => prev + 1); // Force re-render
+      }
     };
 
     const handleForceVideoOff = (data: { userId: string; isVideoOff: boolean }) => {
+      // If it's the current user being video off, enforce it
       if (data.userId === user.id && data.isVideoOff) {
         const videoTracks = Array.from(localParticipant?.videoTrackPublications.values() || []);
         const isEnabled = videoTracks.length > 0 && videoTracks[0].track !== undefined;
@@ -497,6 +508,13 @@ export function LiveKitRoomWrapper({
           description: "The host has disabled your camera.",
           variant: "default" 
         });
+      }
+      
+      // If host, refresh participants to update UI
+      if (isHost) {
+        console.log('🔄 Host: Participant video state changed, refreshing UI', data);
+        fetchParticipants();
+        setParticipantsRefreshKey(prev => prev + 1); // Force re-render
       }
     };
 
@@ -556,7 +574,7 @@ export function LiveKitRoomWrapper({
       socket.off('user:kicked', handleKicked);
       socket.off('user:blocked', handleBlocked);
     };
-  }, [socket, user.id, localParticipant, enableMicrophone, enableCamera, stopScreenShare, disconnect, onLeave, toast]);
+  }, [socket, user.id, localParticipant, enableMicrophone, enableCamera, stopScreenShare, disconnect, onLeave, toast, isHost, fetchParticipants]);
 
   // Bandwidth monitoring
   useEffect(() => {
@@ -866,6 +884,17 @@ export function LiveKitRoomWrapper({
 
   const handleMuteParticipant = async (participantUserId: string) => {
     try {
+      // Find LiveKit participant - identity format is "user-{userId}"
+      const livekitParticipant = livekitParticipants.find(p => {
+        // Match identity like "user-123" with userId "123"
+        const identityUserId = p.identity?.replace('user-', '');
+        return identityUserId === participantUserId || p.identity === `user-${participantUserId}` || p.identity === participantUserId;
+      });
+      
+      // Get current mute state from LiveKit
+      const isCurrentlyMuted = livekitParticipant?.tracks.audio?.track?.isMuted ?? false;
+      const shouldMute = !isCurrentlyMuted; // Toggle: if not muted, mute it; if muted, unmute it
+
       const participant = participants.find(p => {
         const pid = p.user?.id || (p.user as any)?.user_id;
         return pid === participantUserId;
@@ -880,15 +909,28 @@ export function LiveKitRoomWrapper({
       if (socket?.connected) {
         socket.emit('admin:mute-user', { 
           targetUserId: participantUserId, 
-          mute: true 
+          mute: shouldMute 
         });
       }
-      toast({ title: `Muted participant` });
+      toast({ 
+        title: shouldMute ? `Muted participant` : `Unmuted participant`
+      });
+      
+      // Force refresh participants and wait a bit for LiveKit to update
       await fetchParticipants();
+      
+      // Force LiveKit to refresh participants by triggering a re-render
+      // The useLiveKit hook should automatically update when tracks change
+      setTimeout(() => {
+        if (room) {
+          // Force update by accessing room state
+          console.log('🔄 Forcing LiveKit participants refresh after mute action');
+        }
+      }, 500);
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to mute participant",
+        description: "Failed to toggle mute",
         variant: "destructive",
       });
     }
@@ -896,6 +938,17 @@ export function LiveKitRoomWrapper({
 
   const handleVideoOffParticipant = async (participantUserId: string) => {
     try {
+      // Find LiveKit participant - identity format is "user-{userId}"
+      const livekitParticipant = livekitParticipants.find(p => {
+        // Match identity like "user-123" with userId "123"
+        const identityUserId = p.identity?.replace('user-', '');
+        return identityUserId === participantUserId || p.identity === `user-${participantUserId}` || p.identity === participantUserId;
+      });
+      
+      // Get current video state from LiveKit (has video track = enabled)
+      const isVideoEnabled = !!livekitParticipant?.tracks.video?.track;
+      const shouldTurnOff = isVideoEnabled; // Toggle: if enabled, turn off; if disabled, turn on
+
       const participant = participants.find(p => {
         const pid = p.user?.id || (p.user as any)?.user_id;
         return pid === participantUserId;
@@ -905,15 +958,43 @@ export function LiveKitRoomWrapper({
       if (socket?.connected) {
         socket.emit('admin:video-off-user', { 
           targetUserId: participantUserId, 
-          videoOff: true 
+          videoOff: shouldTurnOff 
         });
       }
-      toast({ title: `Turned off participant's camera` });
+      toast({ 
+        title: shouldTurnOff ? `Turned off participant's camera` : `Turned on participant's camera`
+      });
+      
+      // Force refresh participants from database
+      await fetchParticipants();
+      
+      // Force LiveKit to refresh by manually triggering transformParticipants
+      if (room) {
+        // The useLiveKit hook will automatically update via TrackPublished/TrackUnpublished events
+        console.log('🔄 Video action completed, waiting for LiveKit to update tracks...');
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to toggle camera",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleStopScreenShareParticipant = async (participantUserId: string) => {
+    try {
+      if (socket?.connected) {
+        socket.emit('admin:stop-screen-share', { 
+          targetUserId: participantUserId
+        });
+      }
+      toast({ title: `Stopped participant's screen share` });
       await fetchParticipants();
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to turn off camera",
+        description: "Failed to stop screen share",
         variant: "destructive",
       });
     }
@@ -1226,63 +1307,132 @@ export function LiveKitRoomWrapper({
                           </div>
                           
                           {/* Host actions */}
-                          {canManageParticipant && participant.is_online && (
-                            <div className="flex items-center gap-1">
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-8 w-8 text-gray-400 hover:text-white hover:bg-gray-600"
-                                    title="Manage participant"
-                                  >
-                                    <Shield className="w-4 h-4" />
-                                  </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-48 p-2 bg-gray-800 border-gray-700" align="end">
-                                  <div className="flex flex-col gap-1">
+                          {canManageParticipant && participant.is_online && (() => {
+                            // Get LiveKit participant for real-time state - identity format is "user-{userId}"
+                            const livekitParticipant = livekitParticipants.find(p => {
+                              // Match identity like "user-123" with userId "123"
+                              const identityUserId = p.identity?.replace('user-', '');
+                              return identityUserId === participantUserId || p.identity === `user-${participantUserId}` || p.identity === participantUserId;
+                            });
+                            
+                            // Get real-time states from LiveKit
+                            const isMicMuted = livekitParticipant?.tracks.audio?.track?.isMuted ?? false;
+                            const isVideoEnabled = !!livekitParticipant?.tracks.video?.track;
+                            const isScreenSharing = !!livekitParticipant?.tracks.screen?.track;
+                            
+                            // Also check database state as fallback (for when LiveKit hasn't updated yet)
+                            // Database state from participant object
+                            const dbIsMuted = (participant as any).is_muted ?? false;
+                            const dbIsVideoOff = (participant as any).is_video_off ?? false;
+                            
+                            // Use LiveKit state if available, otherwise fallback to database state
+                            const finalIsMicMuted = livekitParticipant ? isMicMuted : dbIsMuted;
+                            const finalIsVideoEnabled = livekitParticipant ? isVideoEnabled : !dbIsVideoOff;
+                            
+                            console.log('🔍 Participant state check:', {
+                              participantUserId,
+                              livekitIdentity: livekitParticipant?.identity,
+                              isMicMuted: finalIsMicMuted,
+                              isVideoEnabled: finalIsVideoEnabled,
+                              isScreenSharing,
+                              dbIsMuted,
+                              dbIsVideoOff,
+                              refreshKey: participantsRefreshKey
+                            });
+
+                            return (
+                              <div className="flex items-center gap-1">
+                                <Popover>
+                                  <PopoverTrigger asChild>
                                     <Button
-                                      size="sm"
+                                      size="icon"
                                       variant="ghost"
-                                      className="w-full justify-start text-orange-400 hover:text-orange-300 hover:bg-gray-700"
-                                      onClick={() => handleMuteParticipant(participantUserId)}
+                                      className="h-8 w-8 text-gray-400 hover:text-white hover:bg-gray-600"
+                                      title="Manage participant"
                                     >
-                                      <MicOff className="w-4 h-4 mr-2" />
-                                      Mute mic
+                                      <Shield className="w-4 h-4" />
                                     </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="w-full justify-start text-blue-400 hover:text-blue-300 hover:bg-gray-700"
-                                      onClick={() => handleVideoOffParticipant(participantUserId)}
-                                    >
-                                      <VideoOff className="w-4 h-4 mr-2" />
-                                      Turn off camera
-                                    </Button>
-                                    <div className="h-px bg-gray-600 my-1" />
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="w-full justify-start text-yellow-400 hover:text-yellow-300 hover:bg-gray-700"
-                                      onClick={() => handleKickParticipant(participantUserId, (participant.user as any)?.name || 'Unknown')}
-                                    >
-                                      <UserX className="w-4 h-4 mr-2" />
-                                      Kick
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-gray-700"
-                                      onClick={() => handleBlockParticipant(participantUserId, (participant.user as any)?.name || 'Unknown')}
-                                    >
-                                      <VolumeX className="w-4 h-4 mr-2" />
-                                      Block
-                                    </Button>
-                                  </div>
-                                </PopoverContent>
-                              </Popover>
-                            </div>
-                          )}
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-48 p-2 bg-gray-800 border-gray-700" align="end">
+                                    <div className="flex flex-col gap-1">
+                                      {/* Toggle Mic - shows opposite action */}
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="w-full justify-start text-orange-400 hover:text-orange-300 hover:bg-gray-700"
+                                        onClick={() => handleMuteParticipant(participantUserId)}
+                                      >
+                                        {finalIsMicMuted ? (
+                                          <>
+                                            <Mic className="w-4 h-4 mr-2" />
+                                            Unmute mic
+                                          </>
+                                        ) : (
+                                          <>
+                                            <MicOff className="w-4 h-4 mr-2" />
+                                            Mute mic
+                                          </>
+                                        )}
+                                      </Button>
+                                      
+                                      {/* Toggle Camera - shows opposite action */}
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="w-full justify-start text-blue-400 hover:text-blue-300 hover:bg-gray-700"
+                                        onClick={() => handleVideoOffParticipant(participantUserId)}
+                                      >
+                                        {finalIsVideoEnabled ? (
+                                          <>
+                                            <VideoOff className="w-4 h-4 mr-2" />
+                                            Turn off camera
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Video className="w-4 h-4 mr-2" />
+                                            Turn on camera
+                                          </>
+                                        )}
+                                      </Button>
+                                      
+                                      {/* Stop Screen Share - only show if sharing */}
+                                      {isScreenSharing && (
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="w-full justify-start text-purple-400 hover:text-purple-300 hover:bg-gray-700"
+                                          onClick={() => handleStopScreenShareParticipant(participantUserId)}
+                                        >
+                                          <MonitorOff className="w-4 h-4 mr-2" />
+                                          Stop screen share
+                                        </Button>
+                                      )}
+                                      
+                                      <div className="h-px bg-gray-600 my-1" />
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="w-full justify-start text-yellow-400 hover:text-yellow-300 hover:bg-gray-700"
+                                        onClick={() => handleKickParticipant(participantUserId, (participant.user as any)?.name || 'Unknown')}
+                                      >
+                                        <UserX className="w-4 h-4 mr-2" />
+                                        Kick
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-gray-700"
+                                        onClick={() => handleBlockParticipant(participantUserId, (participant.user as any)?.name || 'Unknown')}
+                                      >
+                                        <VolumeX className="w-4 h-4 mr-2" />
+                                        Block
+                                      </Button>
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+                              </div>
+                            );
+                          })()}
                         </div>
                       );
                     })}

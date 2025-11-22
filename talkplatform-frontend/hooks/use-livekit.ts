@@ -248,6 +248,26 @@ export function useLiveKit({
           onTrackUnsubscribed?.(track, pub, participant);
         });
 
+        // Listen for participant metadata changes (when tracks are muted/unmuted)
+        newRoom.on(RoomEvent.ParticipantMetadataChanged, (metadata, participant) => {
+          if (!isMounted) return;
+          console.log(`📝 Participant metadata changed: ${participant.identity}`);
+          setParticipants(transformParticipants(newRoom));
+        });
+
+        // Listen for track muted/unmuted events
+        newRoom.on(RoomEvent.TrackMuted, (pub, participant) => {
+          if (!isMounted) return;
+          console.log(`🔇 Track muted: ${pub.kind} from ${participant.identity}`);
+          setParticipants(transformParticipants(newRoom));
+        });
+
+        newRoom.on(RoomEvent.TrackUnmuted, (pub, participant) => {
+          if (!isMounted) return;
+          console.log(`🔊 Track unmuted: ${pub.kind} from ${participant.identity}`);
+          setParticipants(transformParticipants(newRoom));
+        });
+
         newRoom.on(RoomEvent.DataReceived, (payload, participant) => {
           if (!isMounted) return;
           onDataReceived?.(payload, participant);
