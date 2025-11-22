@@ -30,24 +30,19 @@ import { MeetingChat } from '../../section/meetings/meeting-chat';
 import { LiveKitBandwidthMonitor } from './livekit-bandwidth-monitor';
 import { YouTubePlayer, YouTubePlayerHandle } from '../../section/meetings/youtube-player';
 import { YouTubeSearchModal } from '../youtube-search-modal';
+import { MeetingDialogs } from './meeting-dialogs';
+import { useMeetingYouTube } from '@/hooks/use-meeting-youtube';
+import { useMeetingChat } from '@/hooks/use-meeting-chat';
+import { useMeetingParticipants } from '@/hooks/use-meeting-participants';
 import { 
   IMeetingChatMessage, 
   MessageType, 
   IMeetingParticipant, 
   ParticipantRole, 
-  getMeetingParticipantsApi, 
-  getPublicMeetingParticipantsApi, 
-  getMeetingChatApi, 
-  getPublicMeetingChatApi, 
   joinMeetingApi, 
   joinPublicMeetingApi, 
   leaveMeetingApi, 
   leavePublicMeetingApi, 
-  kickParticipantApi, 
-  kickPublicMeetingParticipantApi, 
-  blockPublicMeetingParticipantApi, 
-  muteParticipantApi, 
-  mutePublicMeetingParticipantApi,
   lockMeetingApi,
   unlockMeetingApi,
   lockPublicMeetingApi,
@@ -146,25 +141,22 @@ export function LiveKitRoomWrapper({
 
   // YouTube Player state
   const [showYouTubeSearch, setShowYouTubeSearch] = useState(false);
-  const [youtubeVideoId, setYoutubeVideoId] = useState<string | null>(null);
-  const [youtubeIsPlaying, setYoutubeIsPlaying] = useState(false);
-  const [youtubeCurrentTime, setYoutubeCurrentTime] = useState(0);
   const [youtubeVolume, setYoutubeVolume] = useState(50);
   const youtubePlayerRef = useRef<YouTubePlayerHandle | null>(null);
 
-  // Participants state
-  const [participants, setParticipants] = useState<IMeetingParticipant[]>([]);
-  const [isJoining, setIsJoining] = useState(false);
-  const [participantsFetched, setParticipantsFetched] = useState(false);
+  // Dialog states
   const [confirmKickOpen, setConfirmKickOpen] = useState(false);
   const [confirmBlockOpen, setConfirmBlockOpen] = useState(false);
   const [targetParticipant, setTargetParticipant] = useState<{ id: string; name: string } | null>(null);
 
-  // Chat input state
+  // Chat input state (for MeetingChatPanel)
   const [newMessage, setNewMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const chatInputRef = useRef<HTMLInputElement>(null);
+  
+  // Local state
+  const [isJoining, setIsJoining] = useState(false);
 
   const { toast } = useToast();
   const { addReaction, ReactionOverlay: ReactionComponent } = useReactions();
@@ -187,6 +179,51 @@ export function LiveKitRoomWrapper({
     userId: user.id,
     isOnline,
   });
+
+  // Use shared participants hook
+  const {
+    participants,
+    setParticipants,
+    participantsFetched,
+    setParticipantsFetched,
+    fetchParticipants,
+    handleKickParticipant: handleKickParticipantApi,
+    handleBlockParticipant: handleBlockParticipantApi,
+    handleMuteParticipant: handleMuteParticipantApi,
+  } = useMeetingParticipants({
+    meetingId,
+    isPublicMeeting,
+    classroomId,
+  });
+
+  // Use shared chat hook
+  const {
+    chatMessages,
+    setChatMessages,
+    handleSendMessage: handleSendChatMessage,
+    fetchChatMessages,
+  } = useMeetingChat({
+    socket,
+    meetingId,
+    isPublicMeeting,
+    classroomId,
+    isOnline,
+  });
+
+  // Use shared YouTube hook
+  const {
+    youtubeVideoId,
+    youtubeIsPlaying,
+    youtubeCurrentTime,
+    setYoutubeVideoId,
+    setYoutubeIsPlaying,
+    setYoutubeCurrentTime,
+  } = useMeetingYouTube({
+    socket,
+  });
+
+  // Local state
+  const [isJoining, setIsJoining] = useState(false);
 
   // LiveKit hook
   const {
@@ -234,44 +271,7 @@ export function LiveKitRoomWrapper({
     }
   });
 
-  // Fetch participants
-  const fetchParticipants = useCallback(async () => {
-    try {
-      const data = isPublicMeeting
-        ? await getPublicMeetingParticipantsApi(meetingId)
-        : await getMeetingParticipantsApi(classroomId!, meetingId);
-      setParticipants(data);
-      setParticipantsFetched(true);
-    } catch (error) {
-      console.error("Failed to fetch participants:", error);
-      setParticipantsFetched(true);
-    }
-  }, [meetingId, isPublicMeeting, classroomId]);
-
-  // Fetch chat messages
-  const fetchChatMessages = useCallback(async () => {
-    try {
-      const response = isPublicMeeting
-        ? await getPublicMeetingChatApi(meetingId, { page: 1, limit: 100 })
-        : await getMeetingChatApi(classroomId!, meetingId, { page: 1, limit: 100 });
-      
-      setChatMessages(prevMessages => {
-        const fetchedMessages = response.data.reverse();
-        const existingIds = new Set(prevMessages.map(msg => msg.id));
-        const newMessages = fetchedMessages.filter(msg => !existingIds.has(msg.id));
-        
-        if (newMessages.length > 0) {
-          const allMessages = [...prevMessages, ...newMessages].sort((a, b) => 
-            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-          );
-          return allMessages;
-        }
-        return prevMessages;
-      });
-    } catch (error) {
-      console.error("Failed to fetch chat messages:", error);
-    }
-  }, [meetingId, isPublicMeeting, classroomId]);
+  // fetchParticipants and fetchChatMessages are now provided by hooks
 
   // Join meeting API
   const handleJoinMeeting = useCallback(async () => {
@@ -318,120 +318,7 @@ export function LiveKitRoomWrapper({
     }
   }, [participantsFetched, currentParticipant, isJoining, phase, handleJoinMeeting]);
 
-  // Socket.IO: YouTube sync events
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleYouTubeSync = (data: { videoId: string; currentTime: number; isPlaying: boolean }) => {
-      setYoutubeVideoId(data.videoId || null);
-      setYoutubeCurrentTime(typeof data.currentTime === "number" ? data.currentTime : 0);
-      setYoutubeIsPlaying(!!data.isPlaying);
-    };
-
-    const handleYouTubePlay = (data: { videoId?: string; currentTime: number }) => {
-      if (data.videoId) {
-        setYoutubeVideoId(data.videoId);
-      }
-      if (typeof data.currentTime === "number") {
-        setYoutubeCurrentTime(data.currentTime);
-      }
-      setYoutubeIsPlaying(true);
-    };
-
-    const handleYouTubePause = (data: { currentTime: number }) => {
-      if (typeof data.currentTime === "number") {
-        setYoutubeCurrentTime(data.currentTime);
-      }
-      setYoutubeIsPlaying(false);
-    };
-
-    const handleYouTubeSeek = (data: { currentTime: number }) => {
-      if (typeof data.currentTime === "number") {
-        setYoutubeCurrentTime(data.currentTime);
-      }
-    };
-
-    const handleYouTubeClear = () => {
-      setYoutubeVideoId(null);
-      setYoutubeIsPlaying(false);
-      setYoutubeCurrentTime(0);
-    };
-
-    socket.on("youtube:sync", handleYouTubeSync);
-    socket.on("youtube:play", handleYouTubePlay);
-    socket.on("youtube:pause", handleYouTubePause);
-    socket.on("youtube:seek", handleYouTubeSeek);
-    socket.on("youtube:clear", handleYouTubeClear);
-
-    return () => {
-      socket.off("youtube:sync", handleYouTubeSync);
-      socket.off("youtube:play", handleYouTubePlay);
-      socket.off("youtube:pause", handleYouTubePause);
-      socket.off("youtube:seek", handleYouTubeSeek);
-      socket.off("youtube:clear", handleYouTubeClear);
-    };
-  }, [socket]);
-
-  // Socket.IO: Chat events
-  const handleChatMessage = useCallback((data: {
-    id: string;
-    message: string;
-    senderId: string;
-    senderName: string;
-    senderAvatar?: string;
-    timestamp: string;
-    type?: string;
-  }) => {
-    const newMsg: IMeetingChatMessage = {
-      id: data.id || `socket-${Date.now()}-${data.senderId}`,
-      message: data.message,
-      sender: {
-        user_id: data.senderId,
-        name: data.senderName || 'Unknown User',
-        avatar_url: data.senderAvatar || '',
-      } as any,
-      type: (data.type as MessageType) || MessageType.TEXT,
-      created_at: data.timestamp || new Date().toISOString(),
-      metadata: null,
-    } as any;
-
-    setChatMessages(prev => {
-      // Check if message already exists by ID (like meeting-room.tsx)
-      const exists = prev.some(msg => msg.id === newMsg.id);
-      if (exists) {
-        console.log('💬 [CHAT] Message already exists, skipping:', newMsg.id);
-        return prev;
-      }
-      
-      console.log('💬 [CHAT] Adding new message to state');
-      // Add new message and sort by timestamp (like meeting-room.tsx)
-      const updated = [...prev, newMsg].sort((a, b) => 
-        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      );
-      
-      return updated;
-    });
-  }, []);
-
-  const handleChatError = useCallback((data: { message: string }) => {
-    toast({
-      title: "Chat Error",
-      description: data.message,
-      variant: "destructive",
-    });
-  }, [toast]);
-
-  useEffect(() => {
-    if (!socket) return;
-
-    socket.on('chat:message', handleChatMessage);
-    socket.on('chat:error', handleChatError);
-
-    return () => {
-      socket.off('chat:message', handleChatMessage);
-      socket.off('chat:error', handleChatError);
-    };
-  }, [socket, handleChatMessage, handleChatError]);
+  // YouTube and Chat handlers are now in shared hooks - no need for duplicate code
 
   // Socket.IO: Participant updates
   useEffect(() => {
@@ -687,35 +574,7 @@ export function LiveKitRoomWrapper({
     }
   };
 
-  const handleSendChatMessage = useCallback(async (message: string) => {
-    if (!socket?.connected) {
-      toast({
-        title: "Connection Error",
-        description: "Please wait for connection...",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const trimmedMessage = message.trim();
-    if (!trimmedMessage) return;
-
-    try {
-      // Only send via Socket.IO (like meeting-room.tsx)
-      // Server will broadcast back with proper ID, so we don't need optimistic update
-      socket.emit('chat:message', { message: trimmedMessage });
-      
-      // Note: We removed optimistic update and LiveKit data channel
-      // to match the working logic from meeting-room.tsx
-      // The message will appear when server broadcasts it back via 'chat:message' event
-    } catch (error) {
-      toast({
-        title: "Send Failed",
-        description: "Failed to send message.",
-        variant: "destructive",
-      });
-    }
-  }, [socket, toast]);
+  // handleSendChatMessage is now provided by useMeetingChat hook
 
   const handleSendReaction = async (emoji: string) => {
     await sendReaction(emoji);
@@ -812,6 +671,7 @@ export function LiveKitRoomWrapper({
   };
 
   // Host participant management
+  // UI handlers for opening dialogs
   const handleKickParticipant = (participantId: string, participantName: string) => {
     setTargetParticipant({ id: participantId, name: participantName });
     setConfirmKickOpen(true);
@@ -819,31 +679,15 @@ export function LiveKitRoomWrapper({
 
   const confirmKickParticipant = async () => {
     if (!targetParticipant) return;
-    try {
-      if (isPublicMeeting) {
-        await kickPublicMeetingParticipantApi(meetingId, targetParticipant.id);
-      } else {
-        await kickParticipantApi(classroomId!, meetingId, targetParticipant.id);
-      }
-      if (socket?.connected) {
-        socket.emit('admin:kick-user', { 
-          targetUserId: targetParticipant.id, 
-          reason: 'Kicked by host' 
-        });
-      }
-      toast({
-        title: "Participant Kicked",
-        description: `${targetParticipant.name} has been removed from the meeting.`,
-        variant: "default",
-      });
-      await fetchParticipants();
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to kick participant",
-        variant: "destructive",
+    // Emit socket event for real-time notification
+    if (socket?.connected) {
+      socket.emit('admin:kick-user', { 
+        targetUserId: targetParticipant.id, 
+        reason: 'Kicked by host' 
       });
     }
+    // Call API to actually kick
+    await handleKickParticipantApi(targetParticipant.id, targetParticipant.name);
     setConfirmKickOpen(false);
     setTargetParticipant(null);
   };
@@ -855,29 +699,15 @@ export function LiveKitRoomWrapper({
 
   const confirmBlockParticipant = async () => {
     if (!targetParticipant) return;
-    try {
-      if (isPublicMeeting) {
-        await blockPublicMeetingParticipantApi(meetingId, targetParticipant.id);
-      }
-      if (socket?.connected) {
-        socket.emit('admin:block-user', { 
-          targetUserId: targetParticipant.id, 
-          reason: 'Blocked by host' 
-        });
-      }
-      toast({
-        title: "Participant Blocked",
-        description: `${targetParticipant.name} has been blocked from the meeting.`,
-        variant: "default",
-      });
-      await fetchParticipants();
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to block participant",
-        variant: "destructive",
+    // Emit socket event for real-time notification
+    if (socket?.connected) {
+      socket.emit('admin:block-user', { 
+        targetUserId: targetParticipant.id, 
+        reason: 'Blocked by host' 
       });
     }
+    // Call API to actually block
+    await handleBlockParticipantApi(targetParticipant.id, targetParticipant.name);
     setConfirmBlockOpen(false);
     setTargetParticipant(null);
   };
@@ -901,17 +731,15 @@ export function LiveKitRoomWrapper({
       });
       if (!participant) return;
 
-      if (isPublicMeeting) {
-        await mutePublicMeetingParticipantApi(meetingId, participant.id);
-      } else {
-        await muteParticipantApi(classroomId!, meetingId, participant.id);
-      }
+      // Emit socket event for real-time notification
       if (socket?.connected) {
         socket.emit('admin:mute-user', { 
           targetUserId: participantUserId, 
           mute: shouldMute 
         });
       }
+      // Use shared hook function
+      await handleMuteParticipantApi(participant.id, participantUserId);
       toast({ 
         title: shouldMute ? `Muted participant` : `Unmuted participant`
       });
@@ -1568,57 +1396,28 @@ export function LiveKitRoomWrapper({
         </div>
       </div>
 
-      {/* Leave Dialog */}
-      <AlertDialog open={showLeaveDialog} onOpenChange={setShowLeaveDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Leave Meeting?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to leave the meeting? You can rejoin at any time.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <Button variant="outline" onClick={() => setShowLeaveDialog(false)}>
-              Cancel
-            </Button>
-            <AlertDialogAction onClick={confirmLeave}>
-              Leave Meeting
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Kick Dialog */}
-      <Dialog open={confirmKickOpen} onOpenChange={setConfirmKickOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Kick participant?</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to remove <strong>{targetParticipant?.name}</strong> from this meeting? They will be able to rejoin later.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setConfirmKickOpen(false); setTargetParticipant(null); }}>Cancel</Button>
-            <Button variant="destructive" onClick={confirmKickParticipant}>Kick</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Block Dialog */}
-      <Dialog open={confirmBlockOpen} onOpenChange={setConfirmBlockOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Block participant?</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to block <strong>{targetParticipant?.name}</strong>? They will be removed and cannot rejoin this meeting.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setConfirmBlockOpen(false); setTargetParticipant(null); }}>Cancel</Button>
-            <Button variant="destructive" onClick={confirmBlockParticipant}>Block</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Shared Dialogs Component */}
+      <MeetingDialogs
+        confirmLeaveOpen={showLeaveDialog}
+        setConfirmLeaveOpen={setShowLeaveDialog}
+        onConfirmLeave={confirmLeave}
+        confirmKickOpen={confirmKickOpen}
+        setConfirmKickOpen={setConfirmKickOpen}
+        targetParticipant={targetParticipant}
+        onConfirmKick={confirmKickParticipant}
+        setTargetParticipant={setTargetParticipant}
+        confirmBlockOpen={confirmBlockOpen}
+        setConfirmBlockOpen={setConfirmBlockOpen}
+        onConfirmBlock={confirmBlockParticipant}
+        showRoomFullDialog={false}
+        setShowRoomFullDialog={() => {}}
+        onlineParticipantsCount={participants.filter(p => p.is_online).length}
+        maxParticipants={100}
+        isPublicMeeting={isPublicMeeting}
+        blockedModalOpen={false}
+        blockedMessage=""
+        setBlockedModalOpen={() => {}}
+      />
     </div>
   );
 }

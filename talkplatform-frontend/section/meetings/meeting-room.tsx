@@ -28,6 +28,14 @@ import { YouTubePlayer, YouTubePlayerHandle } from "./youtube-player";
 import { YouTubeSearchModal } from "@/components/youtube-search-modal";
 import { LiveKitRoomWrapper } from "@/components/meeting/livekit-room-wrapper";
 import { GreenRoom } from "@/components/meeting/green-room";
+import { MeetingJoinOptions } from "@/components/meeting/meeting-join-options";
+import { MeetingParticipantsPanel } from "@/components/meeting/meeting-participants-panel";
+import { MeetingChatPanel } from "@/components/meeting/meeting-chat-panel";
+import { MeetingHeader } from "@/components/meeting/meeting-header";
+import { MeetingDialogs } from "@/components/meeting/meeting-dialogs";
+import { useMeetingYouTube } from "@/hooks/use-meeting-youtube";
+import { useMeetingChat } from "@/hooks/use-meeting-chat";
+import { useMeetingParticipants } from "@/hooks/use-meeting-participants";
 import { Slider } from "@/components/ui/slider";
 import { MeetingBandwidthMonitor } from "@/components/meeting-bandwidth-monitor";
 import {
@@ -96,34 +104,63 @@ interface MeetingRoomProps {
 
 export function MeetingRoom({ meeting, user, classroomId, onReconnect }: MeetingRoomProps) {
   // Meeting state
-  const [participants, setParticipants] = useState<IMeetingParticipant[]>([]);
+  // Use shared participants hook
+  const {
+    participants,
+    setParticipants,
+    participantsFetched,
+    setParticipantsFetched,
+    fetchParticipants,
+    handleKickParticipant: handleKickParticipantApi,
+    handleBlockParticipant: handleBlockParticipantApi,
+    handleMuteParticipant: handleMuteParticipantApi,
+  } = useMeetingParticipants({
+    meetingId: meeting.id,
+    isPublicMeeting: !classroomId,
+    classroomId,
+  });
+
+  // Dialog states
   const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
   const [confirmKickOpen, setConfirmKickOpen] = useState(false);
   const [confirmBlockOpen, setConfirmBlockOpen] = useState(false);
   const [targetParticipant, setTargetParticipant] = useState<{ id: string; name: string } | null>(null);
   const [blockedModalOpen, setBlockedModalOpen] = useState(false);
   const [blockedMessage, setBlockedMessage] = useState('');
-  const [chatMessages, setChatMessages] = useState<IMeetingChatMessage[]>([]);
+  const [showRoomFullDialog, setShowRoomFullDialog] = useState(false);
+  
+  // UI states
   const [showParticipants, setShowParticipants] = useState(false);
   const [showChat, setShowChat] = useState(true);
   const [showFunctions, setShowFunctions] = useState(false);
   const [showVideoGrid, setShowVideoGrid] = useState(true);
   const [isJoining, setIsJoining] = useState(false);
   const [autoJoinAttempted, setAutoJoinAttempted] = useState(false);
-  const [participantsFetched, setParticipantsFetched] = useState(false);
-  const [showRoomFullDialog, setShowRoomFullDialog] = useState(false);
   const [showYouTubeSearch, setShowYouTubeSearch] = useState(false);
   const [youtubeVolume, setYoutubeVolume] = useState(50);
   const youtubePlayerRef = useRef<YouTubePlayerHandle | null>(null);
-  const [youtubeVideoId, setYoutubeVideoId] = useState<string | null>(meeting.youtube_video_id ?? null);
-  const [youtubeIsPlaying, setYoutubeIsPlaying] = useState<boolean>(!!meeting.youtube_is_playing);
-  const [youtubeCurrentTime, setYoutubeCurrentTime] = useState<number>(meeting.youtube_current_time ?? 0);
+  
+  // Use shared YouTube hook
+  const {
+    youtubeVideoId,
+    youtubeIsPlaying,
+    youtubeCurrentTime,
+    setYoutubeVideoId,
+    setYoutubeIsPlaying,
+    setYoutubeCurrentTime,
+  } = useMeetingYouTube({
+    socket,
+    initialVideoId: meeting.youtube_video_id ?? null,
+    initialIsPlaying: !!meeting.youtube_is_playing,
+    initialCurrentTime: meeting.youtube_current_time ?? 0,
+  });
   const { toast } = useToast();
   const router = useRouter();
   const [spotlightUserId, setSpotlightUserId] = useState<string | null>(null);
 
-  // LiveKit integration state
-  const [useLiveKit, setUseLiveKit] = useState(true); // Enable LiveKit by default
+  // Meeting type selection state
+  const [meetingTypeSelected, setMeetingTypeSelected] = useState(false);
+  const [useLiveKit, setUseLiveKit] = useState<boolean | null>(null); // null = not selected yet
   const [livekitPhase, setLivekitPhase] = useState<'green-room' | 'meeting'>('green-room');
   const [showGreenRoom, setShowGreenRoom] = useState(false);
   
@@ -146,19 +183,60 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   const isHost = meeting.host?.id === user.id;
   const isPublicMeeting = !classroomId;
 
-  // LiveKit handlers
+  // Meeting type selection handlers
   const handleJoinWithLiveKit = useCallback(() => {
     setUseLiveKit(true);
+    setMeetingTypeSelected(true);
     setLivekitPhase('green-room');
     setShowGreenRoom(true);
   }, []);
 
-  const handleJoinWithoutLiveKit = useCallback(() => {
+  const handleJoinWithTraditional = useCallback(async () => {
     setUseLiveKit(false);
+    setMeetingTypeSelected(true);
     setShowGreenRoom(false);
-    // Continue with traditional meeting flow
-    handleJoinMeeting();
-  }, []);
+    // Continue with traditional meeting flow - will be called after handleJoinMeeting is defined
+    setIsJoining(true);
+    try {
+      if (isPublicMeeting) {
+        const joinResult = await safeJoinPublicMeetingApi(meeting.id);
+        if (!joinResult.success) {
+          if (joinResult.blocked) {
+            setBlockedMessage(joinResult.message || 'You have been blocked from this meeting');
+            setBlockedModalOpen(true);
+            setIsJoining(false);
+            return;
+          }
+          throw new Error(joinResult.message || 'Failed to join meeting');
+        }
+      } else {
+        await joinMeetingApi(classroomId!, meeting.id);
+      }
+      toast({ title: "Success", description: "Joined meeting successfully" });
+      await fetchParticipants();
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.message || "";
+      const statusCode = error.response?.status;
+      if (statusCode === 409) {
+        const isRoomFull = errorMessage.toLowerCase().includes("full") || 
+                          errorMessage.toLowerCase().includes("đầy") ||
+                          errorMessage.toLowerCase().includes("maximum") ||
+                          errorMessage.toLowerCase().includes("tối đa");
+        if (isRoomFull) {
+          setIsJoining(false);
+          setShowRoomFullDialog(true);
+          return;
+        }
+      }
+      toast({
+        title: "Error",
+        description: errorMessage || "Failed to join meeting",
+        variant: "destructive",
+      });
+    } finally {
+      setIsJoining(false);
+    }
+  }, [isPublicMeeting, meeting.id, classroomId, toast, fetchParticipants]);
 
   const handleLiveKitJoinMeeting = useCallback(() => {
     setLivekitPhase('meeting');
@@ -166,11 +244,16 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   }, []);
 
   const handleLiveKitLeave = useCallback(() => {
-    setUseLiveKit(false);
+    setUseLiveKit(null);
+    setMeetingTypeSelected(false);
     setLivekitPhase('green-room');
     setShowGreenRoom(false);
     router.push('/dashboard');
   }, [router]);
+
+  const handleBackFromJoinOptions = useCallback(() => {
+    router.push(isPublicMeeting ? "/meetings" : `/classrooms/${classroomId}`);
+  }, [router, isPublicMeeting, classroomId]);
 
   // 🔥 FIX: Memoize current participant lookup to prevent unnecessary re-computations
   const currentParticipant = useMemo(() => {
@@ -195,6 +278,20 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   const { socket, isConnected, connectionError } = useMeetingSocket({
     meetingId: meeting.id,
     userId: user.id, // 🔥 FIX: Use user.id instead of user.user_id
+    isOnline,
+  });
+
+  // Use shared chat hook
+  const {
+    chatMessages,
+    setChatMessages,
+    handleSendMessage,
+    fetchChatMessages,
+  } = useMeetingChat({
+    socket,
+    meetingId: meeting.id,
+    isPublicMeeting: !classroomId,
+    classroomId,
     isOnline,
   });
 
@@ -311,6 +408,7 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     }
   }, [isOnline, localStream, startLocalStream, toast]);
 
+  // Fetch initial data
   useEffect(() => {
     fetchParticipants();
     fetchChatMessages();
@@ -321,133 +419,9 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     }, 10000); // Increase polling interval from 5s to 10s to reduce latency
 
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchParticipants, fetchChatMessages]);
 
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleYouTubeSync = (data: { videoId: string; currentTime: number; isPlaying: boolean }) => {
-      setYoutubeVideoId(data.videoId || null);
-      setYoutubeCurrentTime(typeof data.currentTime === "number" ? data.currentTime : 0);
-      setYoutubeIsPlaying(!!data.isPlaying);
-    };
-
-    const handleYouTubePlay = (data: { videoId?: string; currentTime: number }) => {
-      if (data.videoId) {
-        setYoutubeVideoId(data.videoId);
-      }
-      if (typeof data.currentTime === "number") {
-        setYoutubeCurrentTime(data.currentTime);
-      }
-      setYoutubeIsPlaying(true);
-    };
-
-    const handleYouTubePause = (data: { currentTime: number }) => {
-      if (typeof data.currentTime === "number") {
-        setYoutubeCurrentTime(data.currentTime);
-      }
-      setYoutubeIsPlaying(false);
-    };
-
-    const handleYouTubeSeek = (data: { currentTime: number }) => {
-      if (typeof data.currentTime === "number") {
-        setYoutubeCurrentTime(data.currentTime);
-      }
-    };
-
-    const handleYouTubeClear = () => {
-      setYoutubeVideoId(null);
-      setYoutubeIsPlaying(false);
-      setYoutubeCurrentTime(0);
-    };
-
-    socket.on("youtube:sync", handleYouTubeSync);
-    socket.on("youtube:play", handleYouTubePlay);
-    socket.on("youtube:pause", handleYouTubePause);
-    socket.on("youtube:seek", handleYouTubeSeek);
-    socket.on("youtube:clear", handleYouTubeClear);
-
-    return () => {
-      socket.off("youtube:sync", handleYouTubeSync);
-      socket.off("youtube:play", handleYouTubePlay);
-      socket.off("youtube:pause", handleYouTubePause);
-      socket.off("youtube:seek", handleYouTubeSeek);
-      socket.off("youtube:clear", handleYouTubeClear);
-    };
-  }, [socket]);
-
-  // 🔥 FIX: Optimized chat setup with useCallback for event handlers
-  const handleChatMessage = useCallback((data: {
-    id: string;
-    message: string;
-    senderId: string;
-    senderName: string;
-    senderAvatar?: string;
-    timestamp: string;
-    type?: string;
-  }) => {
-    console.log('💬 [CHAT] Received message:', data.id, 'from', data.senderName);
-
-    // Ensure proper sender object structure
-    const newMsg: IMeetingChatMessage = {
-      id: data.id,
-      message: data.message,
-      sender: {
-        user_id: data.senderId,
-        name: data.senderName || 'Unknown User',
-        avatar_url: data.senderAvatar || '',
-      } as any,
-      type: (data.type as MessageType) || MessageType.TEXT,
-      created_at: data.timestamp || new Date().toISOString(),
-      metadata: null,
-    } as any;
-
-    console.log('💬 [CHAT] Processed message:', {
-      id: newMsg.id,
-      message: newMsg.message,
-      senderName: newMsg.sender?.name,
-      senderId: newMsg.sender?.user_id,
-      timestamp: newMsg.created_at
-    });
-
-    setChatMessages(prev => {
-      const exists = prev.some(msg => msg.id === newMsg.id);
-      if (exists) {
-        console.log('💬 [CHAT] Message already exists, skipping:', newMsg.id);
-        return prev;
-      }
-      
-      console.log('💬 [CHAT] Adding new message to state');
-      // Add new message and sort by timestamp
-      const updated = [...prev, newMsg].sort((a, b) => 
-        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      );
-      
-      return updated;
-    });
-  }, []);
-
-  const handleChatError = useCallback((data: { message: string }) => {
-    console.error('❌ [CHAT] Error:', data.message);
-    toast({
-      title: "Chat Error",
-      description: data.message,
-      variant: "destructive",
-    });
-  }, [toast]);
-
-  // 🔥 FIX: Simplified chat effect with stable dependencies
-  useEffect(() => {
-    if (!socket) return;
-
-    socket.on('chat:message', handleChatMessage);
-    socket.on('chat:error', handleChatError);
-
-    return () => {
-      socket.off('chat:message', handleChatMessage);
-      socket.off('chat:error', handleChatError);
-    };
-  }, [socket, handleChatMessage, handleChatError]);
+  // Chat handlers are now in useMeetingChat hook - no need for duplicate code
 
   // Realtime participants updates via socket (joined/left)
   useEffect(() => {
@@ -626,86 +600,10 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     chatInputRef.current?.focus();
   }, []);
 
-  // Auto-join logic
-  useEffect(() => {
-    const isOnlineCheck = currentParticipant?.is_online;
-    console.log("Auto-join check:", {
-      autoJoinAttempted,
-      participantsFetched,
-      hasCurrentParticipant: !!currentParticipant,
-      isOnlineCheck,
-      isJoining
-    });
+  // Auto-join logic - REMOVED: No longer auto-join, user must choose meeting type
+  // The join options screen will be shown instead
 
-    if (!autoJoinAttempted && participantsFetched && (!currentParticipant || !isOnlineCheck) && !isJoining) {
-      console.log("Triggering auto-join with LiveKit...");
-      setUseLiveKit(true);
-      setLivekitPhase("meeting");
-      setShowGreenRoom(false);
-      setAutoJoinAttempted(true);
-      handleJoinMeeting();
-    }
-  }, [participantsFetched, currentParticipant, autoJoinAttempted, isJoining]);
-
-  const fetchParticipants = async () => {
-    try {
-      const data = isPublicMeeting
-        ? await getPublicMeetingParticipantsApi(meeting.id)
-        : await getMeetingParticipantsApi(classroomId!, meeting.id);
-
-      // Remove excessive participant logging
-      // console.log("✅ Fetched participants:", {
-      //   total: data.length,
-      //   online: data.filter((p: any) => p.is_online).length,
-      //   currentUser: data.find((p: any) => p.user.id === user.id || p.user.user_id === user.id),
-      //   allParticipants: data.map((p: any) => ({
-      //     id: p.id,
-      //     userId: p.user?.id,
-      //     userUserId: p.user?.user_id,
-      //     name: p.user?.name,
-      //     online: p.is_online,
-      //   })),
-      // });
-
-      setParticipants(data);
-      setParticipantsFetched(true);
-    } catch (error) {
-      console.error("Failed to fetch participants:", error);
-      setParticipantsFetched(true);
-    }
-  };
-
-  const fetchChatMessages = async () => {
-    try {
-      const response = isPublicMeeting
-        ? await getPublicMeetingChatApi(meeting.id, { page: 1, limit: 100 })
-        : await getMeetingChatApi(classroomId!, meeting.id, { page: 1, limit: 100 });
-      
-      console.log("✅ Fetched chat messages:", response.data.length);
-      
-      // Smart merge: Only add messages that don't exist in current state
-      setChatMessages(prevMessages => {
-        const fetchedMessages = response.data.reverse();
-        const existingIds = new Set(prevMessages.map(msg => msg.id));
-        
-        // Filter out messages we already have
-        const newMessages = fetchedMessages.filter(msg => !existingIds.has(msg.id));
-        
-        // Only update if we have new messages, otherwise keep current state
-        if (newMessages.length > 0) {
-          // Merge and sort by timestamp
-          const allMessages = [...prevMessages, ...newMessages].sort((a, b) => 
-            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-          );
-          return allMessages;
-        }
-        
-        return prevMessages; // No changes, keep current state
-      });
-    } catch (error) {
-      console.error("Failed to fetch chat messages:", error);
-    }
-  };
+  // fetchParticipants and fetchChatMessages are now provided by hooks
 
   const handleJoinMeeting = useCallback(async () => {
     console.log("🚪 [JOIN] Attempting to join meeting:", {
@@ -907,22 +805,21 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     }
   };
 
+  // UI handlers for opening dialogs
   const handleKickParticipant = (participantId: string, participantName: string) => {
     setTargetParticipant({ id: participantId, name: participantName });
     setConfirmKickOpen(true);
   };
 
-  const confirmKickParticipant = () => {
+  const confirmKickParticipant = async () => {
     if (!targetParticipant) return;
+    // Emit socket event for real-time notification
     socket?.emit('admin:kick-user', { 
       targetUserId: targetParticipant.id, 
       reason: 'Kicked by host' 
     });
-    toast({
-      title: "Participant Kicked",
-      description: `${targetParticipant.name} has been removed from the meeting.`,
-      variant: "default",
-    });
+    // Call API to actually kick
+    await handleKickParticipantApi(targetParticipant.id, targetParticipant.name);
     setConfirmKickOpen(false);
     setTargetParticipant(null);
   };
@@ -932,17 +829,15 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     setConfirmBlockOpen(true);
   };
 
-  const confirmBlockParticipant = () => {
+  const confirmBlockParticipant = async () => {
     if (!targetParticipant) return;
+    // Emit socket event for real-time notification
     socket?.emit('admin:block-user', { 
       targetUserId: targetParticipant.id, 
       reason: 'Blocked by host' 
     });
-    toast({
-      title: "Participant Blocked",
-      description: `${targetParticipant.name} has been blocked from the meeting.`,
-      variant: "default",
-    });
+    // Call API to actually block
+    await handleBlockParticipantApi(targetParticipant.id, targetParticipant.name);
     setConfirmBlockOpen(false);
     setTargetParticipant(null);
   };
@@ -953,6 +848,39 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     if (role === ParticipantRole.MODERATOR) return <Shield className="w-4 h-4 text-blue-500" />;
     return null;
   };
+
+  // Show join options screen if meeting type not selected yet
+  if (!meetingTypeSelected && (!currentParticipant || !currentParticipant.is_online)) {
+    // Show loading while fetching participants
+    if (!participantsFetched) {
+      return (
+        <div className="h-screen flex items-center justify-center bg-gray-900">
+          <Card className="bg-gray-800 border-gray-700">
+            <CardContent className="p-8 flex flex-col items-center gap-4">
+              <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+              <p className="text-white">Loading meeting...</p>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
+    // Show join options
+    return (
+      <>
+        <MeetingJoinOptions
+          meeting={meeting}
+          isHost={isHost}
+          onlineParticipantsCount={onlineParticipantsCount}
+          isJoining={isJoining}
+          isLocked={meeting.is_locked}
+          onJoinTraditional={handleJoinWithTraditional}
+          onJoinLiveKit={handleJoinWithLiveKit}
+          onBack={handleBackFromJoinOptions}
+        />
+      </>
+    );
+  }
 
   // LiveKit Integration - Show Green Room or LiveKit Meeting
   if (useLiveKit && showGreenRoom && livekitPhase === 'green-room') {
@@ -973,11 +901,12 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
         user={user}
         onLeave={handleLiveKitLeave}
         isHost={isHost}
+        isPublicMeeting={isPublicMeeting}
       />
     );
   }
 
-  // 🔥 FIX: Show loading while joining
+  // Show loading while joining traditional meeting
   if (!currentParticipant || !currentParticipant.is_online) {
     if ((isJoining || (autoJoinAttempted && participants.length > 0)) && !showRoomFullDialog) {
       return (
@@ -991,62 +920,13 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
         </div>
       );
     }
+  }
 
-    return (
-      <>
-        <div className="h-screen flex items-center justify-center bg-gray-900">
-          <Card className="bg-gray-800 border-gray-700 max-w-md w-full">
-            <CardHeader>
-              <CardTitle className="text-white text-center">{meeting.title}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="text-center text-gray-400">
-                <p className="mb-2">Meeting is live</p>
-                <p className="text-sm">
-                  {onlineParticipantsCount} / {meeting.max_participants} participants
-                </p>
-                {meeting.is_locked && (
-                  <Badge variant="destructive" className="mt-2">Meeting is locked</Badge>
-                )}
-              </div>
-              <div className="space-y-3">
-                {/* LiveKit Options */}
-                <div className="space-y-2">
-                  <p className="text-sm text-gray-300 text-center">Choose your meeting experience:</p>
-                  
-                  <Button
-                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white border-none"
-                    onClick={handleJoinWithLiveKit}
-                    disabled={meeting.is_locked && !isHost}
-                  >
-                    <Video className="w-4 h-4 mr-2" />
-                    Join with LiveKit (Enhanced Video)
-                  </Button>
-                  
-                  <Button
-                    variant="outline"
-                    className="w-full border-gray-600 text-gray-300 hover:bg-gray-700"
-                    onClick={handleJoinWithoutLiveKit}
-                    disabled={isJoining || (meeting.is_locked && !isHost)}
-                  >
-                    <Users className="w-4 h-4 mr-2" />
-                    {isJoining ? "Joining..." : "Join Traditional Meeting"}
-                  </Button>
-                </div>
-                
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => window.location.href = isPublicMeeting ? "/meetings" : `/classrooms/${classroomId}`}
-                >
-                  Back
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-        {/* Room Full Dialog */}
-        <AlertDialog open={showRoomFullDialog} onOpenChange={setShowRoomFullDialog}>
+  // Traditional Meeting Room
+  return (
+    <>
+      {/* Room Full Dialog */}
+      <AlertDialog open={showRoomFullDialog} onOpenChange={setShowRoomFullDialog}>
           <AlertDialogContent className="sm:max-w-[425px]">
             <AlertDialogHeader>
               <div className="flex flex-col items-center gap-4 mb-2">
@@ -1088,64 +968,32 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-      </>
-    );
-  }
 
-  return (
+      <div className="h-screen flex flex-col bg-gray-900">
     <div className="h-screen flex flex-col bg-gray-900">
-      {/* Header - Fixed at top (narrowed to exclude sidebar) */}
-      <div className="bg-gray-800 px-4 py-2 flex items-center justify-between flex-shrink-0 border-b border-gray-700">
-        <div className="flex items-center gap-4">
-          <h1 className="text-base font-bold text-white">{meeting.title} - {onlineParticipantsCount} / {meeting.max_participants} participants</h1>
-          <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-            <span className="text-xs text-gray-400">
-              {isConnected ? 'Connected' : 'Connecting...'}
-            </span>
-          </div>
+      {/* Header */}
+      <MeetingHeader
+        meetingTitle={meeting.title}
+        onlineParticipantsCount={onlineParticipantsCount}
+        maxParticipants={meeting.max_participants}
+        isConnected={isConnected}
+        showParticipants={showParticipants}
+        showChat={showChat}
+        showYouTubeSearch={showYouTubeSearch}
+        onToggleParticipants={() => { setShowParticipants(true); setShowChat(false); setShowFunctions(false); }}
+        onToggleChat={() => { setShowChat(true); setShowParticipants(false); setShowFunctions(false); setShowYouTubeSearch(false); }}
+        onToggleYouTubeSearch={() => { 
+          setShowYouTubeSearch(!showYouTubeSearch); 
+          setShowParticipants(false); 
+          setShowChat(false); 
+          setShowFunctions(false); 
+        }}
+      />
+      {showConnectionBanner && (
+        <div className="bg-yellow-600 text-white px-4 py-2 text-sm flex items-center justify-between">
+          <span>⚠️ Connection lost. Reconnecting...</span>
         </div>
-        
-        {/* 3 nút san phẳng vào header - không border, hòa làm một */}
-        <div className="flex items-center">
-          <button
-            className={`px-4 py-2 text-sm font-medium transition-colors ${showParticipants ? 'text-white bg-gray-700' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
-            title="Participants"
-            onClick={() => { setShowParticipants(true); setShowChat(false); setShowFunctions(false); }}
-          >
-            <Users className="w-4 h-4 mr-1 inline" />
-            Participants
-          </button>
-          <div className="w-px h-4 bg-gray-600"></div>
-          <button
-            className={`px-4 py-2 text-sm font-medium transition-colors ${showChat ? 'text-white bg-gray-700' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
-            title="Chat"
-            onClick={() => { setShowChat(true); setShowParticipants(false); setShowFunctions(false); setShowYouTubeSearch(false); }}
-          >
-            <MessageSquare className="w-4 h-4 mr-1 inline" />
-            Chat
-          </button>
-          <div className="w-px h-4 bg-gray-600"></div>
-          <button
-            className={`px-4 py-2 text-sm font-medium transition-colors ${showYouTubeSearch ? 'text-white bg-gray-700' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
-            title="Play"
-            onClick={() => { 
-              setShowYouTubeSearch(!showYouTubeSearch); 
-              setShowParticipants(false); 
-              setShowChat(false); 
-              setShowFunctions(false); 
-            }}
-          >
-            <Play className="w-4 h-4 mr-1 inline" />
-            Play
-          </button>
-        </div>
-        {showConnectionBanner && (
-          <div className="bg-yellow-600 text-white px-4 py-2 text-sm flex items-center justify-between">
-            <span>⚠️ Connection lost. Reconnecting...</span>
-          </div>
-        )}
-      </div>
+      )}
 
       {/* Main Content - Between header and controls */}
       <div className="flex-1 flex overflow-hidden min-h-0">
@@ -1229,196 +1077,23 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
           {/* Tab content - Fill remaining space */}
           <div className="flex-1 flex flex-col overflow-hidden min-h-0">
             {showParticipants && (
-              <ScrollArea className="flex-1 p-4">
-                <div className="space-y-2">
-                  {participants.map((participant) => {
-                    const participantUserId = participant.user.id || participant.user.user_id;
-                    const isCurrentUser = participantUserId === user.id;
-                    const canManageParticipant = isHost && !isCurrentUser && participant.role !== ParticipantRole.HOST;
-
-                    return (
-                      <div key={participant.id} className="flex items-center justify-between p-2 bg-gray-700 rounded">
-                        <div className="flex items-center gap-2 flex-1">
-                          <Avatar className="w-8 h-8">
-                            <AvatarImage src={participant.user.avatar_url} />
-                            <AvatarFallback>{participant.user.name[0]}</AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1">
-                            <div className="flex items-center gap-1">
-                              {getRoleIcon(participant.role)}
-                              <span className="text-sm text-white">{participant.user.name}</span>
-                              {isCurrentUser && <span className="text-xs text-gray-400">(You)</span>}
-                            </div>
-                            <Badge variant={participant.is_online ? "default" : "secondary"} className="text-xs">
-                              {participant.is_online ? "Online" : "Offline"}
-                            </Badge>
-                          </div>
-                        </div>
-                        
-                        {/* Host actions: Kick and Block buttons */}
-                        {canManageParticipant && participant.is_online && (
-                          <div className="flex items-center gap-1">
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-8 w-8 text-gray-400 hover:text-white hover:bg-gray-600"
-                                  title="Manage participant"
-                                >
-                                  <Shield className="w-4 h-4" />
-                                </Button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-48 p-2 bg-gray-800 border-gray-700" align="end">
-                                <div className="flex flex-col gap-1">
-                                  {/* Media controls */}
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="w-full justify-start text-orange-400 hover:text-orange-300 hover:bg-gray-700"
-                                    onClick={() => {
-                                      socket?.emit('admin:mute-user', { 
-                                        targetUserId: participantUserId, 
-                                        mute: true 
-                                      });
-                                      toast({ title: `Muted ${participant.user.name}` });
-                                    }}
-                                  >
-                                    <MicOff className="w-4 h-4 mr-2" />
-                                    Mute mic
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="w-full justify-start text-blue-400 hover:text-blue-300 hover:bg-gray-700"
-                                    onClick={() => {
-                                      socket?.emit('admin:video-off-user', { 
-                                        targetUserId: participantUserId, 
-                                        videoOff: true 
-                                      });
-                                      toast({ title: `Turned off ${participant.user.name}'s camera` });
-                                    }}
-                                  >
-                                    <VideoOff className="w-4 h-4 mr-2" />
-                                    Turn off camera
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="w-full justify-start text-purple-400 hover:text-purple-300 hover:bg-gray-700"
-                                    onClick={() => {
-                                      socket?.emit('admin:stop-share-user', { 
-                                        targetUserId: participantUserId 
-                                      });
-                                      toast({ title: `Stopped ${participant.user.name}'s screen share` });
-                                    }}
-                                  >
-                                    <MonitorUp className="w-4 h-4 mr-2" />
-                                    Stop screen share
-                                  </Button>
-                                  
-                                  {/* Separator */}
-                                  <div className="h-px bg-gray-600 my-1" />
-                                  
-                                  {/* Room management */}
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="w-full justify-start text-yellow-400 hover:text-yellow-300 hover:bg-gray-700"
-                                    onClick={() => handleKickParticipant(participantUserId, participant.user.name)}
-                                  >
-                                    <UserX className="w-4 h-4 mr-2" />
-                                    Kick
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-gray-700"
-                                    onClick={() => handleBlockParticipant(participantUserId, participant.user.name)}
-                                  >
-                                    <VolumeX className="w-4 h-4 mr-2" />
-                                    Block
-                                  </Button>
-                                </div>
-                              </PopoverContent>
-                            </Popover>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </ScrollArea>
+              <MeetingParticipantsPanel
+                participants={participants}
+                currentUserId={user.id}
+                isHost={isHost}
+                socket={socket}
+                onKickParticipant={handleKickParticipant}
+                onBlockParticipant={handleBlockParticipant}
+              />
             )}
 
             {showChat && (
-              <>
-                {!isOnline && (
-                  <div className="bg-gray-700 px-3 py-2 text-xs text-yellow-300 text-center flex-shrink-0">
-                    Chat disconnected. Messages will send when reconnected.
-                  </div>
-                )}
-                {/* Group chat style display */}
-                <div className="flex-1 overflow-y-auto p-3 space-y-1 min-h-0">
-                  {chatMessages.map((message, index) => {
-                    console.log('🎨 [CHAT] Rendering message:', {
-                      id: message.id,
-                      hasSender: !!message.sender,
-                      senderName: message.sender?.name,
-                      senderId: message.sender?.user_id,
-                      message: message.message.substring(0, 50) + '...',
-                      timestamp: message.created_at
-                    });
-
-                    // Handle system messages (join/leave notifications)
-                    if (!message.sender) {
-                      console.log('📢 [CHAT] System message:', message.id, message.message);
-                      return (
-                        <div key={message.id} className="w-full">
-                          <div className="flex items-center gap-2 my-3">
-                            <div className="flex-1 border-t border-gray-600"></div>
-                            <div className="text-xs text-gray-400 bg-gray-800 px-3 py-1 rounded-full">
-                              <span className="font-semibold text-blue-400">[System]</span> {message.message}
-                            </div>
-                            <div className="flex-1 border-t border-gray-600"></div>
-                          </div>
-                        </div>
-                      );
-                    }
-                    
-                    const prevMessage = index > 0 ? chatMessages[index - 1] : null;
-                    const showHeader = !prevMessage || prevMessage.sender?.user_id !== message.sender.user_id;
-                    const messageTime = new Date(message.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-
-                    return (
-                      <div key={message.id} className="w-full">
-                        {/* User name and time header */}
-                        {showHeader && (
-                          <div className="flex items-baseline gap-2 mb-1 mt-3">
-                            <span className="text-sm font-semibold text-blue-400">
-                              [{message.sender?.name || 'Unknown User'}]
-                            </span>
-                            <span className="text-xs text-gray-400">
-                              - {messageTime}
-                            </span>
-                          </div>
-                        )}
-                        
-                        {/* Message content */}
-                        <div className="text-sm text-gray-200 ml-2 mb-1 break-words">
-                          {message.message}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  
-                  {chatMessages.length === 0 && (
-                    <div className="text-center text-gray-400 text-sm py-8">
-                      Start the conversation!
-                    </div>
-                  )}
-                </div>
-              </>
+              <MeetingChatPanel
+                messages={chatMessages}
+                isOnline={isOnline}
+                currentUserId={user.id}
+                onSendMessage={handleSendMessage}
+              />
             )}
 
             {showYouTubeSearch && (
@@ -1730,81 +1405,8 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Confirm Leave Modal */}
-      <Dialog open={confirmLeaveOpen} onOpenChange={setConfirmLeaveOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Leave meeting?</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to leave this meeting now?
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmLeaveOpen(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleLeaveMeeting}>Leave</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Confirm Kick Modal */}
-      <Dialog open={confirmKickOpen} onOpenChange={setConfirmKickOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Kick participant?</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to remove <strong>{targetParticipant?.name}</strong> from this meeting? They will be able to rejoin later.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setConfirmKickOpen(false); setTargetParticipant(null); }}>Cancel</Button>
-            <Button variant="destructive" onClick={confirmKickParticipant}>Kick</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Confirm Block Modal */}
-      <Dialog open={confirmBlockOpen} onOpenChange={setConfirmBlockOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Block participant?</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to block <strong>{targetParticipant?.name}</strong>? They will be removed and cannot rejoin this meeting.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setConfirmBlockOpen(false); setTargetParticipant(null); }}>Cancel</Button>
-            <Button variant="destructive" onClick={confirmBlockParticipant}>Block</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Blocked User Modal */}
-      <Dialog open={blockedModalOpen} onOpenChange={() => {}} modal={true}>
-        <DialogContent 
-          className="max-w-md"
-          onPointerDownOutside={(e) => e.preventDefault()}
-          onEscapeKeyDown={(e) => e.preventDefault()}
-          onInteractOutside={(e) => e.preventDefault()}
-        >
-          <DialogHeader>
-            <DialogTitle className="text-red-600 text-xl font-bold">Access Denied</DialogTitle>
-            <DialogDescription className="text-gray-700 whitespace-pre-line mt-2">
-              {blockedMessage || 'You have been blocked from this meeting and cannot join.'}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="mt-6">
-            <Button 
-              onClick={() => {
-                setBlockedModalOpen(false);
-                window.location.href = '/dashboard';
-              }} 
-              className="w-full bg-blue-600 hover:bg-blue-700"
-            >
-              Back to Dashboard
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+        {/* Dialogs are now in MeetingDialogs component */}
+      </div>
+    </>
   );
 }
