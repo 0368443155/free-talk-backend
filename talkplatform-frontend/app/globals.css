@@ -51,11 +51,24 @@ body {
 /* Hide header and footer when in meeting room */
 body.in-meeting-room nav,
 body.in-meeting-room [data-breadcrumb],
-body.in-meeting-room footer {
+body.in-meeting-room footer,
+body.in-meeting-room > div > div > nav:first-child,
+body.in-meeting-room > div > div > footer:last-child {
   display: none !important;
 }
 
 body.in-meeting-room main {
   height: 100vh;
   overflow: hidden;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* More specific selectors for header and footer */
+body.in-meeting-room header,
+body.in-meeting-room .main-nav,
+body.in-meeting-room .footer-nav,
+body.in-meeting-room [class*="main-nav"],
+body.in-meeting-room [class*="footer-nav"] {
+  display: none !important;
 }
