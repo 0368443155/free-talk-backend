@@ -7,8 +7,8 @@ import {
     Get,
     Param,
     Req,
-    RawBodyRequest,
 } from '@nestjs/common';
+import type { RawBodyRequest } from '@nestjs/common';
 import { Request } from 'express';
 import { WebhookReceiver } from 'livekit-server-sdk';
 import { ConfigService } from '@nestjs/config';
