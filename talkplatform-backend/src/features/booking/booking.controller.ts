@@ -58,6 +58,15 @@ export class BookingController {
   ) {
     return await this.bookingService.cancelBooking(id, req.user.id, dto);
   }
+
+  /**
+   * Lấy danh sách bookings của teacher
+   * GET /api/v1/bookings/teacher-bookings
+   */
+  @Get('teacher-bookings')
+  async getTeacherBookings(@Request() req) {
+    return await this.bookingService.getMyBookings(req.user.id, 'teacher');
+  }
 }
 
 

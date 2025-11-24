@@ -220,12 +220,12 @@ export default function TeachersPage() {
 
               {/* Filters */}
               <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                <Select value={filters.language} onValueChange={(value) => setFilters(prev => ({ ...prev, language: value }))}>
+                <Select value={filters.language || "all"} onValueChange={(value) => setFilters(prev => ({ ...prev, language: value === "all" ? "" : value }))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Language" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Languages</SelectItem>
+                    <SelectItem value="all">All Languages</SelectItem>
                     <SelectItem value="English">English</SelectItem>
                     <SelectItem value="Spanish">Spanish</SelectItem>
                     <SelectItem value="Mandarin">Mandarin</SelectItem>
@@ -234,12 +234,12 @@ export default function TeachersPage() {
                   </SelectContent>
                 </Select>
 
-                <Select value={filters.specialty} onValueChange={(value) => setFilters(prev => ({ ...prev, specialty: value }))}>
+                <Select value={filters.specialty || "all"} onValueChange={(value) => setFilters(prev => ({ ...prev, specialty: value === "all" ? "" : value }))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Specialty" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Specialties</SelectItem>
+                    <SelectItem value="all">All Specialties</SelectItem>
                     <SelectItem value="Conversation">Conversation</SelectItem>
                     <SelectItem value="Business">Business</SelectItem>
                     <SelectItem value="Grammar">Grammar</SelectItem>
@@ -248,24 +248,24 @@ export default function TeachersPage() {
                   </SelectContent>
                 </Select>
 
-                <Select value={filters.minRating} onValueChange={(value) => setFilters(prev => ({ ...prev, minRating: value }))}>
+                <Select value={filters.minRating || "all"} onValueChange={(value) => setFilters(prev => ({ ...prev, minRating: value === "all" ? "" : value }))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Min Rating" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Any Rating</SelectItem>
+                    <SelectItem value="all">Any Rating</SelectItem>
                     <SelectItem value="4.5">4.5+ Stars</SelectItem>
                     <SelectItem value="4.0">4.0+ Stars</SelectItem>
                     <SelectItem value="3.5">3.5+ Stars</SelectItem>
                   </SelectContent>
                 </Select>
 
-                <Select value={filters.maxPrice} onValueChange={(value) => setFilters(prev => ({ ...prev, maxPrice: value }))}>
+                <Select value={filters.maxPrice || "all"} onValueChange={(value) => setFilters(prev => ({ ...prev, maxPrice: value === "all" ? "" : value }))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Max Price" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Any Price</SelectItem>
+                    <SelectItem value="all">Any Price</SelectItem>
                     <SelectItem value="10">Under $10/hr</SelectItem>
                     <SelectItem value="15">Under $15/hr</SelectItem>
                     <SelectItem value="20">Under $20/hr</SelectItem>
@@ -273,12 +273,12 @@ export default function TeachersPage() {
                   </SelectContent>
                 </Select>
 
-                <Select value={filters.availability} onValueChange={(value) => setFilters(prev => ({ ...prev, availability: value }))}>
+                <Select value={filters.availability || "all"} onValueChange={(value) => setFilters(prev => ({ ...prev, availability: value === "all" ? "" : value }))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Availability" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Any Time</SelectItem>
+                    <SelectItem value="all">Any Time</SelectItem>
                     <SelectItem value="online">Online Now</SelectItem>
                     <SelectItem value="available">Available Now</SelectItem>
                     <SelectItem value="today">Available Today</SelectItem>
