@@ -8,7 +8,7 @@ export class DocumentDto {
 
   @IsNotEmpty()
   @IsString()
-  key: string; // Storage key hoặc URL
+  key: string; // Storage key hoặc URL (deprecated, use file_url instead)
 
   @IsOptional()
   @IsNumber()
@@ -17,6 +17,40 @@ export class DocumentDto {
   @IsOptional()
   @IsString()
   issuer?: string;
+}
+
+// DTO cho degree certificates (sử dụng file_url)
+export class DegreeCertificateDto {
+  @IsNotEmpty()
+  @IsString()
+  name: string;
+
+  @IsNotEmpty()
+  @IsString()
+  file_url: string; // URL to uploaded image file
+
+  @IsOptional()
+  @IsNumber()
+  year?: number;
+}
+
+// DTO cho teaching certificates (sử dụng file_url)
+export class TeachingCertificateDto {
+  @IsNotEmpty()
+  @IsString()
+  name: string;
+
+  @IsOptional()
+  @IsString()
+  issuer?: string;
+
+  @IsNotEmpty()
+  @IsString()
+  file_url: string; // URL to uploaded image file
+
+  @IsOptional()
+  @IsNumber()
+  year?: number;
 }
 
 export class ReferenceDto {
@@ -47,24 +81,15 @@ export class SubmitVerificationDto {
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => DocumentDto)
-  degree_certificates?: Array<{
-    name: string;
-    file_url: string; // URL to uploaded image file
-    year?: number;
-  }>;
+  @Type(() => DegreeCertificateDto)
+  degree_certificates?: DegreeCertificateDto[];
 
   // Teaching Certificates (URLs to uploaded files)
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => DocumentDto)
-  teaching_certificates?: Array<{
-    name: string;
-    issuer?: string;
-    file_url: string; // URL to uploaded image file
-    year?: number;
-  }>;
+  @Type(() => TeachingCertificateDto)
+  teaching_certificates?: TeachingCertificateDto[];
 
   // CV/Resume (URL to uploaded PDF file)
   @IsOptional()

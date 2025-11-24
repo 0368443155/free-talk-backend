@@ -109,8 +109,8 @@ export class TeacherVerificationService {
     // Cập nhật các cột riêng biệt (lưu URLs thay vì base64)
     verification.identity_card_front = dto.identity_card_front; // URL
     verification.identity_card_back = dto.identity_card_back; // URL
-    verification.cv_url = dto.cv_url; // URL
-    verification.years_of_experience = dto.years_of_experience;
+    verification.cv_url = dto.cv_url || null; // URL (có thể undefined)
+    verification.years_of_experience = dto.years_of_experience ?? null; // Có thể undefined
     verification.previous_platforms = dto.previous_platforms || [];
 
     verification.status = VerificationStatus.PENDING;

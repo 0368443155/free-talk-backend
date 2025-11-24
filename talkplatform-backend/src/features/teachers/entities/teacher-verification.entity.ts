@@ -65,13 +65,13 @@ export class TeacherVerification {
    * CV/Resume - File path in uploads/teacher-verification/document/
    */
   @Column({ type: 'varchar', length: 500, nullable: true, comment: 'File path in uploads/teacher-verification/document/' })
-  cv_url: string;
+  cv_url: string | null;
 
   /**
    * Additional Information
    */
   @Column({ type: 'int', nullable: true, comment: 'Years of teaching experience' })
-  years_of_experience: number;
+  years_of_experience: number | null;
 
   @Column({ type: 'json', nullable: true, comment: 'Array of previous platform names' })
   previous_platforms: string[];
