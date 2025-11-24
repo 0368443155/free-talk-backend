@@ -7,11 +7,11 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TeacherVerification, VerificationStatus } from './entities/teacher-verification.entity';
-import { TeacherProfile } from './entities/teacher-profile.entity';
-import { User } from '../../users/user.entity';
+import { TeacherProfile, TeacherStatus } from './entities/teacher-profile.entity';
+import { User, UserRole } from '../../users/user.entity';
 import { SubmitVerificationDto } from './dto/submit-verification.dto';
 import { Inject } from '@nestjs/common';
-import { IStorageService } from '../../core/storage/storage.interface';
+import type { IStorageService } from '../../core/storage/storage.interface';
 
 /**
  * Teacher Verification Service (KYC)
@@ -66,8 +66,17 @@ export class TeacherVerificationService {
     verification.documents = {
       identity_card_front: dto.identity_card_front,
       identity_card_back: dto.identity_card_back,
-      degree_certificates: dto.degree_certificates || [],
-      teaching_certificates: dto.teaching_certificates || [],
+      degree_certificates: dto.degree_certificates?.map((d) => ({
+        name: d.name,
+        key: d.key,
+        year: d.year || new Date().getFullYear(),
+      })) || [],
+      teaching_certificates: dto.teaching_certificates?.map((d) => ({
+        name: d.name,
+        issuer: d.issuer || 'Unknown',
+        key: d.key,
+        year: d.year || new Date().getFullYear(),
+      })) || [],
       cv_url: dto.cv_url,
     };
 
@@ -135,7 +144,9 @@ export class TeacherVerificationService {
     verification.status = VerificationStatus.APPROVED;
     verification.verified_at = new Date();
     verification.reviewed_by = adminId;
-    verification.admin_notes = notes;
+    if (notes) {
+      verification.admin_notes = notes;
+    }
 
     await this.verificationRepository.save(verification);
 
@@ -146,7 +157,7 @@ export class TeacherVerificationService {
 
     if (profile) {
       profile.is_verified = true;
-      profile.status = 'approved';
+      profile.status = TeacherStatus.APPROVED;
       await this.teacherProfileRepository.save(profile);
     }
 
@@ -155,8 +166,8 @@ export class TeacherVerificationService {
       where: { id: verification.user_id },
     });
 
-    if (user && user.role !== 'teacher') {
-      user.role = 'teacher';
+    if (user && user.role !== UserRole.TEACHER) {
+      user.role = UserRole.TEACHER;
       await this.userRepository.save(user);
     }
 

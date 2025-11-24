@@ -130,7 +130,6 @@ export function LiveKitRoomWrapper({
   const [showVideoGrid, setShowVideoGrid] = useState(true);
   const [isRoomLocked, setIsRoomLocked] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [chatMessages, setChatMessages] = useState<IMeetingChatMessage[]>([]);
   const [participantsRefreshKey, setParticipantsRefreshKey] = useState(0); // Force re-render key
   const [bandwidth, setBandwidth] = useState({
     inbound: 0,
@@ -161,26 +160,11 @@ export function LiveKitRoomWrapper({
   const { toast } = useToast();
   const { addReaction, ReactionOverlay: ReactionComponent } = useReactions();
 
-  // Check if user is online participant
-  const currentParticipant = useMemo(() => {
-    return participants.find(p => {
-      const participantUserId = p.user?.id || (p.user as any)?.user_id;
-      return participantUserId === user.id;
-    });
-  }, [participants, user.id]);
-
-  const isOnline = useMemo(() => {
-    return currentParticipant ? (currentParticipant.is_online !== false) : false;
-  }, [currentParticipant]);
-
   // Socket.IO connection for chat, YouTube sync, and participant management
-  const { socket, isConnected: isSocketConnected, connectionError: socketError } = useMeetingSocket({
-    meetingId: meetingId,
-    userId: user.id,
-    isOnline,
-  });
+  // Note: isOnline will be calculated after participants hook
+  const [isOnline, setIsOnline] = useState(false);
 
-  // Use shared participants hook
+  // Use shared participants hook - MUST be declared before useMemo that uses participants
   const {
     participants,
     setParticipants,
@@ -194,6 +178,26 @@ export function LiveKitRoomWrapper({
     meetingId,
     isPublicMeeting,
     classroomId,
+  });
+
+  // Check if user is online participant - MUST be after participants hook
+  const currentParticipant = useMemo(() => {
+    return participants.find(p => {
+      const participantUserId = p.user?.id || (p.user as any)?.user_id;
+      return participantUserId === user.id;
+    });
+  }, [participants, user.id]);
+
+  // Update isOnline when currentParticipant changes
+  useEffect(() => {
+    setIsOnline(currentParticipant ? (currentParticipant.is_online !== false) : false);
+  }, [currentParticipant]);
+
+  // Socket.IO connection - MUST be after isOnline is set
+  const { socket, isConnected: isSocketConnected, connectionError: socketError } = useMeetingSocket({
+    meetingId: meetingId,
+    userId: user.id,
+    isOnline,
   });
 
   // Use shared chat hook
@@ -221,9 +225,6 @@ export function LiveKitRoomWrapper({
   } = useMeetingYouTube({
     socket,
   });
-
-  // Local state
-  const [isJoining, setIsJoining] = useState(false);
 
   // LiveKit hook
   const {

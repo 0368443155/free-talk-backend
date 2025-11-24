@@ -26,7 +26,13 @@ import { CloudStorageService } from './cloud-storage.service';
         switch (provider) {
           case StorageProvider.CLOUDFLARE_R2:
           case StorageProvider.AWS_S3:
-            return new CloudStorageService(configService);
+            // Chỉ khởi tạo CloudStorageService khi thực sự cần
+            try {
+              return new CloudStorageService(configService);
+            } catch (error) {
+              console.warn('Failed to initialize CloudStorageService, falling back to LocalStorage:', error.message);
+              return new LocalStorageService(configService);
+            }
 
           case StorageProvider.LOCAL:
           default:
@@ -35,9 +41,26 @@ import { CloudStorageService } from './cloud-storage.service';
       },
       inject: [ConfigService],
     },
-    // Export cả 2 services để có thể inject trực tiếp nếu cần
+    // Export LocalStorageService (luôn available)
     LocalStorageService,
-    CloudStorageService,
+    // CloudStorageService - chỉ khởi tạo khi cần (optional)
+    {
+      provide: CloudStorageService,
+      useFactory: (configService: ConfigService) => {
+        const provider = configService.get<string>('STORAGE_PROVIDER', 'local') as StorageProvider;
+        if (provider === StorageProvider.CLOUDFLARE_R2 || provider === StorageProvider.AWS_S3) {
+          try {
+            return new CloudStorageService(configService);
+          } catch (error) {
+            // Nếu không có config, trả về null thay vì throw error
+            console.warn('CloudStorageService not initialized:', error.message);
+            return null;
+          }
+        }
+        return null; // Không khởi tạo nếu không cần
+      },
+      inject: [ConfigService],
+    },
   ],
   exports: ['IStorageService', LocalStorageService, CloudStorageService],
 })

@@ -12,8 +12,6 @@ import { BookingSlot } from './entities/booking-slot.entity';
 import { User } from '../../users/user.entity';
 import { Meeting } from '../meeting/entities/meeting.entity';
 import { CreateBookingDto, CancelBookingDto } from './dto/create-booking.dto';
-import { CreditsService } from '../credits/credits.service';
-import { TypeORMError } from 'typeorm';
 
 /**
  * Booking Service
@@ -32,9 +30,10 @@ export class BookingService {
     private readonly slotRepository: Repository<BookingSlot>,
     @InjectRepository(Meeting)
     private readonly meetingRepository: Repository<Meeting>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
     @InjectDataSource()
     private readonly dataSource: DataSource,
-    private readonly creditsService: CreditsService,
   ) {}
 
   /**
@@ -75,15 +74,14 @@ export class BookingService {
       }
 
       // 5. Tạo Meeting cho booking
-      const meeting = manager.create(Meeting, {
-        title: `Class with ${teacher.name}`,
-        description: dto.student_notes || '',
-        host_id: teacher.id,
-        meeting_type: 'classroom',
-        max_participants: 10,
-        scheduled_at: new Date(`${slot.date.toISOString().split('T')[0]}T${slot.start_time}`),
-        status: 'scheduled',
-      });
+      const meeting = new Meeting();
+      meeting.title = `Class with ${teacher.name || teacher.username}`;
+      meeting.description = dto.student_notes || '';
+      meeting.host = teacher; // Set relation instead of host_id
+      meeting.meeting_type = 'teacher_class' as any;
+      meeting.max_participants = 10;
+      meeting.scheduled_at = new Date(`${slot.date.toISOString().split('T')[0]}T${slot.start_time}`);
+      meeting.status = 'scheduled' as any;
 
       const savedMeeting = await manager.save(Meeting, meeting);
 
@@ -106,13 +104,12 @@ export class BookingService {
       slot.student_id = student.id;
       await manager.save(BookingSlot, slot);
 
-      // 8. Trừ credits (sử dụng CreditsService nếu có transaction support)
-      await this.creditsService.deductCredits(
-        student.id,
-        slot.price_credits,
-        `Booking: ${savedMeeting.title}`,
-        { booking_id: savedBooking.id, meeting_id: savedMeeting.id },
-      );
+      // 8. Trừ credits - tạo transaction trực tiếp
+      const studentUser = await manager.findOne(User, { where: { id: student.id } });
+      if (studentUser) {
+        studentUser.credit_balance = (studentUser.credit_balance || 0) - slot.price_credits;
+        await manager.save(User, studentUser);
+      }
 
       this.logger.log(
         `✅ Booking created: ${savedBooking.id} for student ${student.id}, slot ${slot.id}`,
@@ -165,14 +162,15 @@ export class BookingService {
 
     await this.bookingRepository.save(booking);
 
-    // Hoàn credits
+    // Hoàn credits - cập nhật trực tiếp
     if (refundAmount > 0) {
-      await this.creditsService.addCredits(
-        booking.student_id,
-        refundAmount,
-        `Refund for cancelled booking: ${booking.meeting.title}`,
-        { booking_id: booking.id },
-      );
+      const student = await this.userRepository.findOne({
+        where: { id: booking.student_id },
+      });
+      if (student) {
+        student.credit_balance = (student.credit_balance || 0) + refundAmount;
+        await this.userRepository.save(student);
+      }
     }
 
     // Cập nhật slot
@@ -182,8 +180,8 @@ export class BookingService {
 
     if (slot) {
       slot.is_booked = false;
-      slot.booking_id = null;
-      slot.student_id = null;
+      slot.booking_id = null as any;
+      slot.student_id = null as any;
       await this.slotRepository.save(slot);
     }
 

@@ -30,9 +30,18 @@ import { TypeOrmModule as DebugTypeOrmModule } from '@nestjs/typeorm';
         }),
 
         // Serve static files from 'uploads' directory
+        // Note: This will serve files from /uploads/* URLs
+        // Make sure STORAGE_LOCAL_DIR matches this path
         ServeStaticModule.forRoot({
             rootPath: join(__dirname, '..', 'uploads'),
             serveRoot: '/uploads',
+            serveStaticOptions: {
+                index: false, // Disable directory listing
+                setHeaders: (res, path) => {
+                    // Set cache headers for better performance
+                    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+                },
+            },
         }),
 
         TypeOrmModule.forRootAsync({

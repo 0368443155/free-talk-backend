@@ -28,7 +28,7 @@ import { IStorageService } from './storage.interface';
 @Injectable()
 export class CloudStorageService implements IStorageService {
   private readonly logger = new Logger(CloudStorageService.name);
-  private readonly s3Client: S3Client;
+  private s3Client?: S3Client;
   private readonly bucketName: string;
   private readonly publicUrl?: string;
   private readonly provider: 'r2' | 's3';
@@ -38,42 +38,44 @@ export class CloudStorageService implements IStorageService {
     this.publicUrl = this.configService.get<string>('STORAGE_PUBLIC_URL');
     this.provider = (this.configService.get<string>('STORAGE_PROVIDER') || 'r2') as 'r2' | 's3';
 
-    if (!this.bucketName) {
-      throw new Error('STORAGE_BUCKET_NAME is required for cloud storage');
+    // Chỉ khởi tạo S3Client nếu có đủ config
+    // Nếu không có config, sẽ throw error khi gọi methods (lazy validation)
+    if (this.bucketName) {
+      // Cấu hình S3Client
+      const endpoint = this.configService.get<string>('STORAGE_ENDPOINT');
+      const region = this.configService.get<string>('STORAGE_REGION') || (this.provider === 'r2' ? 'auto' : 'us-east-1');
+      const accessKeyId = this.configService.get<string>('STORAGE_ACCESS_KEY_ID');
+      const secretAccessKey = this.configService.get<string>('STORAGE_SECRET_ACCESS_KEY');
+
+      if (!accessKeyId || !secretAccessKey) {
+        this.logger.warn('STORAGE_ACCESS_KEY_ID and STORAGE_SECRET_ACCESS_KEY are not set. Cloud storage will not work.');
+      } else {
+        const clientConfig: any = {
+          region,
+          credentials: {
+            accessKeyId,
+            secretAccessKey,
+          },
+        };
+
+        // R2 yêu cầu endpoint rõ ràng
+        if (this.provider === 'r2' && endpoint) {
+          clientConfig.endpoint = endpoint;
+        } else if (this.provider === 's3' && endpoint) {
+          // S3 có thể dùng custom endpoint (ví dụ: DigitalOcean Spaces)
+          clientConfig.endpoint = endpoint;
+          clientConfig.forcePathStyle = true; // Cho S3-compatible services
+        }
+
+        this.s3Client = new S3Client(clientConfig);
+
+        this.logger.log(
+          `✅ Cloud Storage initialized: ${this.provider.toUpperCase()} (Bucket: ${this.bucketName})`,
+        );
+      }
+    } else {
+      this.logger.warn('STORAGE_BUCKET_NAME is not set. Cloud storage will not work. Use STORAGE_PROVIDER=local for local storage.');
     }
-
-    // Cấu hình S3Client
-    const endpoint = this.configService.get<string>('STORAGE_ENDPOINT');
-    const region = this.configService.get<string>('STORAGE_REGION') || (this.provider === 'r2' ? 'auto' : 'us-east-1');
-    const accessKeyId = this.configService.get<string>('STORAGE_ACCESS_KEY_ID');
-    const secretAccessKey = this.configService.get<string>('STORAGE_SECRET_ACCESS_KEY');
-
-    if (!accessKeyId || !secretAccessKey) {
-      throw new Error('STORAGE_ACCESS_KEY_ID and STORAGE_SECRET_ACCESS_KEY are required for cloud storage');
-    }
-
-    const clientConfig: any = {
-      region,
-      credentials: {
-        accessKeyId,
-        secretAccessKey,
-      },
-    };
-
-    // R2 yêu cầu endpoint rõ ràng
-    if (this.provider === 'r2' && endpoint) {
-      clientConfig.endpoint = endpoint;
-    } else if (this.provider === 's3' && endpoint) {
-      // S3 có thể dùng custom endpoint (ví dụ: DigitalOcean Spaces)
-      clientConfig.endpoint = endpoint;
-      clientConfig.forcePathStyle = true; // Cho S3-compatible services
-    }
-
-    this.s3Client = new S3Client(clientConfig);
-
-    this.logger.log(
-      `✅ Cloud Storage initialized: ${this.provider.toUpperCase()} (Bucket: ${this.bucketName})`,
-    );
   }
 
   async uploadFile(
@@ -82,6 +84,10 @@ export class CloudStorageService implements IStorageService {
     mimeType: string,
     metadata?: Record<string, string>,
   ): Promise<string> {
+    if (!this.bucketName || !this.s3Client) {
+      throw new Error('Cloud storage is not properly configured. Please set STORAGE_BUCKET_NAME, STORAGE_ACCESS_KEY_ID, and STORAGE_SECRET_ACCESS_KEY in .env, or use STORAGE_PROVIDER=local');
+    }
+
     const command = new PutObjectCommand({
       Bucket: this.bucketName,
       Key: key,
@@ -105,6 +111,10 @@ export class CloudStorageService implements IStorageService {
     mimeType: string,
     expiresIn: number = 3600,
   ): Promise<string> {
+    if (!this.bucketName || !this.s3Client) {
+      throw new Error('Cloud storage is not properly configured. Please set STORAGE_BUCKET_NAME, STORAGE_ACCESS_KEY_ID, and STORAGE_SECRET_ACCESS_KEY in .env, or use STORAGE_PROVIDER=local');
+    }
+
     const command = new PutObjectCommand({
       Bucket: this.bucketName,
       Key: key,
@@ -119,6 +129,10 @@ export class CloudStorageService implements IStorageService {
   }
 
   async getPresignedDownloadUrl(key: string, expiresIn: number = 3600): Promise<string> {
+    if (!this.bucketName || !this.s3Client) {
+      throw new Error('Cloud storage is not properly configured. Please set STORAGE_BUCKET_NAME, STORAGE_ACCESS_KEY_ID, and STORAGE_SECRET_ACCESS_KEY in .env, or use STORAGE_PROVIDER=local');
+    }
+
     const command = new GetObjectCommand({
       Bucket: this.bucketName,
       Key: key,
@@ -132,6 +146,10 @@ export class CloudStorageService implements IStorageService {
   }
 
   async deleteFile(key: string): Promise<void> {
+    if (!this.bucketName || !this.s3Client) {
+      throw new Error('Cloud storage is not properly configured. Please set STORAGE_BUCKET_NAME, STORAGE_ACCESS_KEY_ID, and STORAGE_SECRET_ACCESS_KEY in .env, or use STORAGE_PROVIDER=local');
+    }
+
     const command = new DeleteObjectCommand({
       Bucket: this.bucketName,
       Key: key,
@@ -143,6 +161,10 @@ export class CloudStorageService implements IStorageService {
   }
 
   async fileExists(key: string): Promise<boolean> {
+    if (!this.bucketName || !this.s3Client) {
+      throw new Error('Cloud storage is not properly configured. Please set STORAGE_BUCKET_NAME, STORAGE_ACCESS_KEY_ID, and STORAGE_SECRET_ACCESS_KEY in .env, or use STORAGE_PROVIDER=local');
+    }
+
     try {
       const command = new HeadObjectCommand({
         Bucket: this.bucketName,
@@ -165,6 +187,10 @@ export class CloudStorageService implements IStorageService {
     lastModified: Date;
     etag?: string;
   }> {
+    if (!this.bucketName || !this.s3Client) {
+      throw new Error('Cloud storage is not properly configured. Please set STORAGE_BUCKET_NAME, STORAGE_ACCESS_KEY_ID, and STORAGE_SECRET_ACCESS_KEY in .env, or use STORAGE_PROVIDER=local');
+    }
+
     const command = new HeadObjectCommand({
       Bucket: this.bucketName,
       Key: key,
@@ -181,6 +207,10 @@ export class CloudStorageService implements IStorageService {
   }
 
   async copyFile(sourceKey: string, destinationKey: string): Promise<void> {
+    if (!this.bucketName || !this.s3Client) {
+      throw new Error('Cloud storage is not properly configured. Please set STORAGE_BUCKET_NAME, STORAGE_ACCESS_KEY_ID, and STORAGE_SECRET_ACCESS_KEY in .env, or use STORAGE_PROVIDER=local');
+    }
+
     const command = new CopyObjectCommand({
       Bucket: this.bucketName,
       CopySource: `${this.bucketName}/${sourceKey}`,

@@ -140,20 +140,6 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   const [youtubeVolume, setYoutubeVolume] = useState(50);
   const youtubePlayerRef = useRef<YouTubePlayerHandle | null>(null);
   
-  // Use shared YouTube hook
-  const {
-    youtubeVideoId,
-    youtubeIsPlaying,
-    youtubeCurrentTime,
-    setYoutubeVideoId,
-    setYoutubeIsPlaying,
-    setYoutubeCurrentTime,
-  } = useMeetingYouTube({
-    socket,
-    initialVideoId: meeting.youtube_video_id ?? null,
-    initialIsPlaying: !!meeting.youtube_is_playing,
-    initialCurrentTime: meeting.youtube_current_time ?? 0,
-  });
   const { toast } = useToast();
   const router = useRouter();
   const [spotlightUserId, setSpotlightUserId] = useState<string | null>(null);
@@ -274,11 +260,26 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     return participants.filter(p => p.is_online).length;
   }, [participants]);
 
-  // Meeting socket connection
+  // Meeting socket connection - MUST be declared before useMeetingYouTube
   const { socket, isConnected, connectionError } = useMeetingSocket({
     meetingId: meeting.id,
     userId: user.id, // 🔥 FIX: Use user.id instead of user.user_id
     isOnline,
+  });
+
+  // Use shared YouTube hook - requires socket
+  const {
+    youtubeVideoId,
+    youtubeIsPlaying,
+    youtubeCurrentTime,
+    setYoutubeVideoId,
+    setYoutubeIsPlaying,
+    setYoutubeCurrentTime,
+  } = useMeetingYouTube({
+    socket,
+    initialVideoId: meeting.youtube_video_id ?? null,
+    initialIsPlaying: !!meeting.youtube_is_playing,
+    initialCurrentTime: meeting.youtube_current_time ?? 0,
   });
 
   // Use shared chat hook
@@ -542,31 +543,6 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     };
   }, [socket, user.id, isMuted, isVideoOff, isScreenSharing, toggleMute, toggleVideo, toggleScreenShare, toast]);
 
-  // 🔥 FIX: Optimized handleSendMessage with stable dependencies
-  const handleSendMessage = useCallback(async (message: string) => {
-    if (!socket?.connected) {
-      toast({
-        title: "Connection Error",
-        description: "Please wait for connection...",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const trimmedMessage = message.trim();
-    if (!trimmedMessage) return;
-
-    try {
-      socket.emit('chat:message', { message: trimmedMessage });
-    } catch (error) {
-      toast({
-        title: "Send Failed",
-        description: "Failed to send message.",
-        variant: "destructive",
-      });
-    }
-  }, [socket, toast]);
-
   // Handle chat input send
   const handleChatInputSend = useCallback(async () => {
     const trimmedMessage = newMessage.trim();
@@ -753,7 +729,7 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
       }
     }
 
-    setYoutubeIsPlaying(prev => !prev);
+    setYoutubeIsPlaying(!youtubeIsPlaying);
   };
 
   const handleYoutubeClear = () => {
@@ -970,7 +946,6 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
         </AlertDialog>
 
       <div className="h-screen flex flex-col bg-gray-900">
-    <div className="h-screen flex flex-col bg-gray-900">
       {/* Header */}
       <MeetingHeader
         meetingTitle={meeting.title}
@@ -1361,51 +1336,28 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
 
 
 
-      {/* Room Full Dialog */}
-      <AlertDialog open={showRoomFullDialog} onOpenChange={setShowRoomFullDialog}>
-        <AlertDialogContent className="sm:max-w-[425px]">
-          <AlertDialogHeader>
-            <div className="flex flex-col items-center gap-4 mb-2">
-              <div className="w-16 h-16 rounded-full bg-orange-100 dark:bg-orange-900/20 flex items-center justify-center">
-                <Users className="w-8 h-8 text-orange-600 dark:text-orange-400" />
-              </div>
-              <div className="text-center">
-                <AlertDialogTitle className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                  Phòng đã đầy
-                </AlertDialogTitle>
-                <AlertDialogDescription className="text-base text-gray-600 dark:text-gray-300">
-                  Phòng này đã đạt số lượng người tham gia tối đa
-                </AlertDialogDescription>
-              </div>
-              <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-                <div className="flex items-center justify-center gap-2">
-                  <Users className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-                  <span className="text-lg font-semibold text-gray-900 dark:text-white">
-                    {onlineParticipantsCount} / {meeting.max_participants} người
-                  </span>
-                </div>
-              </div>
-              <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
-                Vui lòng thử lại sau hoặc tham gia phòng khác
-              </p>
-            </div>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="sm:justify-center mt-4">
-            <AlertDialogAction
-              onClick={() => {
-                setShowRoomFullDialog(false);
-                router.push("/meetings");
-              }}
-              className="w-full sm:w-auto !bg-blue-600 hover:!bg-blue-700 !text-white font-medium px-6 py-3 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-md"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Quay về danh sách phòng
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-        {/* Dialogs are now in MeetingDialogs component */}
+      {/* MeetingDialogs component handles all dialogs (including Room Full Dialog) */}
+      <MeetingDialogs
+        confirmLeaveOpen={confirmLeaveOpen}
+        setConfirmLeaveOpen={setConfirmLeaveOpen}
+        onConfirmLeave={handleLeaveMeeting}
+        confirmKickOpen={confirmKickOpen}
+        setConfirmKickOpen={setConfirmKickOpen}
+        targetParticipant={targetParticipant}
+        setTargetParticipant={setTargetParticipant}
+        onConfirmKick={confirmKickParticipant}
+        confirmBlockOpen={confirmBlockOpen}
+        setConfirmBlockOpen={setConfirmBlockOpen}
+        onConfirmBlock={confirmBlockParticipant}
+        showRoomFullDialog={showRoomFullDialog}
+        setShowRoomFullDialog={setShowRoomFullDialog}
+        onlineParticipantsCount={onlineParticipantsCount}
+        maxParticipants={meeting.max_participants}
+        isPublicMeeting={isPublicMeeting}
+        blockedModalOpen={blockedModalOpen}
+        blockedMessage={blockedMessage}
+        setBlockedModalOpen={setBlockedModalOpen}
+      />
       </div>
     </>
   );

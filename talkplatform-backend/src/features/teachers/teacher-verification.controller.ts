@@ -11,7 +11,8 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { RolesGuard } from '../../core/auth/guards/roles.guard';
-import { Roles } from '../../core/auth/decorators/roles.decorator';
+import { Roles } from '../../auth/roles.decorator';
+import { UserRole } from '../../users/user.entity';
 import { TeacherVerificationService } from './teacher-verification.service';
 import { SubmitVerificationDto } from './dto/submit-verification.dto';
 
@@ -46,7 +47,7 @@ export class TeacherVerificationController {
    */
   @Patch(':id/approve')
   @UseGuards(RolesGuard)
-  @Roles('admin')
+  @Roles(UserRole.ADMIN)
   async approveVerification(
     @Param('id') id: string,
     @Query('notes') notes: string,
@@ -61,7 +62,7 @@ export class TeacherVerificationController {
    */
   @Patch(':id/reject')
   @UseGuards(RolesGuard)
-  @Roles('admin')
+  @Roles(UserRole.ADMIN)
   async rejectVerification(
     @Param('id') id: string,
     @Body('reason') reason: string,
@@ -76,7 +77,7 @@ export class TeacherVerificationController {
    */
   @Patch(':id/request-info')
   @UseGuards(RolesGuard)
-  @Roles('admin')
+  @Roles(UserRole.ADMIN)
   async requestInfo(
     @Param('id') id: string,
     @Body('notes') notes: string,
@@ -91,7 +92,7 @@ export class TeacherVerificationController {
    */
   @Get(':id/document/:documentKey')
   @UseGuards(RolesGuard)
-  @Roles('admin')
+  @Roles(UserRole.ADMIN)
   async getDocumentUrl(
     @Param('id') id: string,
     @Param('documentKey') documentKey: string,
