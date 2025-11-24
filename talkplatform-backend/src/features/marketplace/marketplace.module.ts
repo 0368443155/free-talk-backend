@@ -9,6 +9,7 @@ import { StudentMaterialController } from './controllers/student-material.contro
 import { TeacherMaterialController } from './controllers/teacher-material.controller';
 import { AdminMaterialController } from './controllers/admin-material.controller';
 import { UploadService } from './services/upload.service';
+import { WalletModule } from '../wallet/wallet.module';
 
 @Module({
     imports: [
@@ -18,6 +19,7 @@ import { UploadService } from './services/upload.service';
             MaterialPurchase,
             MaterialReview,
         ]),
+        WalletModule,
     ],
     controllers: [
         StudentMaterialController,

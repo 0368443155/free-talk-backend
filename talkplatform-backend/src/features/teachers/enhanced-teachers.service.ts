@@ -550,6 +550,15 @@ export class EnhancedTeachersService {
     };
   }
 
+  /**
+   * Cập nhật rating stats với Bayesian Average
+   * 
+   * Formula: WR = (v/(v+m)) * R + (m/(v+m)) * C
+   * - v: số lượng reviews của giáo viên
+   * - m: ngưỡng tối thiểu (minimum threshold)
+   * - R: điểm trung bình của giáo viên
+   * - C: điểm trung bình của toàn hệ thống
+   */
   private async updateTeacherRatingStats(teacherId: string) {
     const stats = await this.reviewRepository
       .createQueryBuilder('review')
@@ -558,10 +567,63 @@ export class EnhancedTeachersService {
       .where('review.teacher_id = :teacherId', { teacherId })
       .getRawOne();
 
+    const avgRating = parseFloat(stats.avg_rating) || 0;
+    const totalReviews = parseInt(stats.total_reviews) || 0;
+
+    // Tính Bayesian Average
+    const bayesianRating = this.calculateBayesianRating(avgRating, totalReviews);
+
     await this.teacherProfileRepository.update(teacherId, {
-      average_rating: parseFloat(stats.avg_rating) || 0,
-      total_reviews: parseInt(stats.total_reviews) || 0
+      average_rating: bayesianRating, // Lưu Bayesian rating thay vì raw average
+      total_reviews: totalReviews,
+      // Lưu thêm raw average để tham khảo
+      // (có thể thêm field raw_average_rating nếu cần)
     });
+  }
+
+  /**
+   * Tính Bayesian Average Rating
+   * 
+   * @param teacherRating Điểm trung bình của giáo viên
+   * @param reviewCount Số lượng reviews
+   * @param minimumThreshold Ngưỡng tối thiểu (mặc định: 5)
+   * @param systemAverage Điểm trung bình hệ thống (mặc định: 4.5)
+   */
+  private calculateBayesianRating(
+    teacherRating: number,
+    reviewCount: number,
+    minimumThreshold: number = 5,
+    systemAverage: number = 4.5,
+  ): number {
+    const v = reviewCount; // Số lượng reviews
+    const m = minimumThreshold; // Ngưỡng tối thiểu
+    const R = teacherRating; // Điểm trung bình của giáo viên
+    const C = systemAverage; // Điểm trung bình hệ thống
+
+    // Nếu chưa có review, trả về system average
+    if (v === 0) {
+      return C;
+    }
+
+    // Formula: WR = (v/(v+m)) * R + (m/(v+m)) * C
+    const weight = v / (v + m);
+    const bayesianRating = weight * R + (1 - weight) * C;
+
+    // Làm tròn đến 2 chữ số thập phân
+    return Math.round(bayesianRating * 100) / 100;
+  }
+
+  /**
+   * Lấy system average rating (điểm trung bình của tất cả giáo viên)
+   */
+  private async getSystemAverageRating(): Promise<number> {
+    const result = await this.teacherProfileRepository
+      .createQueryBuilder('profile')
+      .select('AVG(profile.average_rating)', 'system_avg')
+      .where('profile.total_reviews > 0')
+      .getRawOne();
+
+    return parseFloat(result?.system_avg) || 4.5; // Default 4.5 nếu chưa có data
   }
 
   private async getRatingBreakdown(teacherId: string) {

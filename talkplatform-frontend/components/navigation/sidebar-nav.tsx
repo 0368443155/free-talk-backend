@@ -60,7 +60,7 @@ const studentNavItems = [
     items: [
       {
         title: 'Free Talk Lobby',
-        href: '/meetings',
+        href: '/lobby',
         icon: Users,
         badge: 'Live',
         description: 'Join conversation rooms'
@@ -72,16 +72,22 @@ const studentNavItems = [
         description: 'Browse teacher marketplace'
       },
       {
-        title: 'My Classes',
-        href: '/my-classes',
+        title: 'Marketplace',
+        href: '/marketplace',
         icon: BookOpen,
-        description: 'Your enrolled classes'
+        description: 'Buy learning materials'
       },
       {
-        title: 'Schedule',
-        href: '/schedule',
+        title: 'My Bookings',
+        href: '/bookings',
         icon: Calendar,
-        description: 'Upcoming lessons'
+        description: 'Your class bookings'
+      },
+      {
+        title: 'My Purchases',
+        href: '/marketplace/my-purchases',
+        icon: BookOpen,
+        description: 'Purchased materials'
       }
     ]
   },
@@ -138,22 +144,28 @@ const teacherNavItems = [
         description: 'Teaching analytics'
       },
       {
-        title: 'My Students',
-        href: '/teacher/students',
-        icon: Users,
-        description: 'Manage students'
-      },
-      {
-        title: 'Classes',
-        href: '/teacher/classes',
+        title: 'My Materials',
+        href: '/teacher/materials',
         icon: BookOpen,
-        description: 'Your teaching schedule'
+        description: 'Manage your materials'
       },
       {
         title: 'Availability',
         href: '/teacher/availability',
         icon: Clock,
         description: 'Set your schedule'
+      },
+      {
+        title: 'My Bookings',
+        href: '/bookings',
+        icon: Calendar,
+        description: 'Student bookings'
+      },
+      {
+        title: 'Verification',
+        href: '/teacher/verification',
+        icon: Star,
+        description: 'Verification status'
       }
     ]
   },
@@ -301,6 +313,18 @@ export default function SidebarNav({ className }: SidebarNavProps) {
         </div>
       </div>
 
+      {/* Become Teacher Button (for non-teachers) */}
+      {!collapsed && user && !isTeacher && (
+        <div className="p-4 border-b bg-blue-50">
+          <Link href="/teacher/verification">
+            <Button className="w-full" variant="default">
+              <GraduationCap className="w-4 h-4 mr-2" />
+              Become a Teacher
+            </Button>
+          </Link>
+        </div>
+      )}
+
       {/* User Info */}
       {!collapsed && user && (
         <div className="p-4 border-b bg-gray-50">
@@ -314,7 +338,7 @@ export default function SidebarNav({ className }: SidebarNavProps) {
               <p className="font-medium text-sm truncate">{user.username}</p>
               <div className="flex items-center gap-2">
                 <Badge variant="secondary" className="text-xs">
-                  {user.role}
+                  {user.role || 'student'}
                 </Badge>
                 {user.credit_balance !== undefined && (
                   <span className="text-xs text-green-600 font-medium">

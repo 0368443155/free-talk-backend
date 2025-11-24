@@ -89,6 +89,7 @@ import { TypeOrmModule as DebugTypeOrmModule } from '@nestjs/typeorm';
 
         require('./features/livekit-rooms/livekit-rooms.module').LiveKitRoomsModule,
         require('./features/credits/credits.module').CreditsModule,
+        require('./features/wallet/wallet.module').WalletModule,
         require('./features/teachers/enhanced-teachers.module').EnhancedTeachersModule,
         require('./core/storage/storage.module').StorageModule,
         require('./features/booking/booking.module').BookingModule,

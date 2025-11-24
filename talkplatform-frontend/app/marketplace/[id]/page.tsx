@@ -1,74 +1,181 @@
+"use client";
+
+import { useState, useEffect } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useToast } from '@/components/ui/use-toast';
 import {
     Star,
     Download,
-    Eye,
     Share2,
     Flag,
     FileText,
     CheckCircle,
     Clock,
-    Calendar
+    Loader2,
+    ShoppingCart,
+    AlertCircle,
+    Play,
 } from 'lucide-react';
+import { marketplaceApi, Material } from '@/api/marketplace';
+import { getWalletBalanceApi } from '@/api/wallet.rest';
+import { useUser } from '@/store/user-store';
 
-// Mock data
-const MOCK_MATERIAL = {
-    id: '1',
-    title: 'Complete IELTS Writing Task 2 Guide',
-    description: `Master IELTS Writing Task 2 with this comprehensive guide. 
-  
-  What you'll learn:
-  - Structure of a high-scoring essay
-  - Vocabulary for different topics
-  - Grammar structures to impress examiners
-  - 50+ sample essays with analysis
-  
-  This guide is suitable for students aiming for Band 7.0+.`,
-    material_type: 'pdf',
-    price_credits: 50,
-    original_price_credits: 100,
-    rating: 4.8,
-    total_reviews: 124,
-    total_sales: 1500,
-    created_at: '2023-10-15',
-    updated_at: '2023-11-20',
-    language: 'English',
-    level: 'Advanced',
-    file_size: '15MB',
-    page_count: 120,
-    teacher: {
-        id: 't1',
-        username: 'Sarah Teacher',
-        avatar_url: 'https://github.com/shadcn.png',
-        bio: 'IELTS Examiner with 10 years of experience.',
-        rating: 4.9,
-        total_students: 5000
-    },
-    reviews: [
-        {
-            id: 'r1',
-            user: { username: 'Student A', avatar_url: '' },
-            rating: 5,
-            comment: 'This guide is amazing! I got Band 7.5 thanks to it.',
-            created_at: '2023-11-01'
-        },
-        {
-            id: 'r2',
-            user: { username: 'Student B', avatar_url: '' },
-            rating: 4,
-            comment: 'Very detailed and helpful.',
-            created_at: '2023-10-28'
+export default function MaterialDetailPage() {
+    const params = useParams();
+    const router = useRouter();
+    const { toast } = useToast();
+    const { userInfo: user, isAuthenticated } = useUser();
+
+    const materialId = params.id as string;
+
+    const [loading, setLoading] = useState(true);
+    const [purchasing, setPurchasing] = useState(false);
+    const [material, setMaterial] = useState<Material | null>(null);
+    const [hasPurchased, setHasPurchased] = useState(false);
+    const [balance, setBalance] = useState<number>(0);
+    const [balanceLoading, setBalanceLoading] = useState(true);
+
+    useEffect(() => {
+        if (materialId) {
+            loadMaterial();
+            if (isAuthenticated) {
+                loadBalance();
+                checkPurchased();
+            }
         }
-    ]
-};
+    }, [materialId, isAuthenticated]);
 
-export default function MaterialDetailPage({ params }: { params: { id: string } }) {
-    // In a real app, fetch data based on params.id
-    const material = MOCK_MATERIAL;
+    const loadMaterial = async () => {
+        try {
+            setLoading(true);
+            const data = await marketplaceApi.getMaterialById(materialId);
+            setMaterial(data);
+            if (data.has_purchased) {
+                setHasPurchased(true);
+            }
+        } catch (error: any) {
+            toast({
+                title: "Error",
+                description: "Failed to load material",
+                variant: "destructive",
+            });
+            router.push('/marketplace');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const loadBalance = async () => {
+        try {
+            setBalanceLoading(true);
+            const data = await getWalletBalanceApi();
+            setBalance(data.balance);
+        } catch (error) {
+            console.error('Failed to load balance');
+        } finally {
+            setBalanceLoading(false);
+        }
+    };
+
+    const checkPurchased = async () => {
+        try {
+            const data = await marketplaceApi.checkPurchased(materialId);
+            setHasPurchased(data.has_purchased);
+        } catch (error) {
+            // Ignore error, user might not be authenticated
+        }
+    };
+
+    const handlePurchase = async () => {
+        if (!isAuthenticated) {
+            toast({
+                title: "Login Required",
+                description: "Please login to purchase materials",
+                variant: "destructive",
+            });
+            router.push('/login');
+            return;
+        }
+
+        if (!material) return;
+
+        if (balance < material.price_credits) {
+            toast({
+                title: "Insufficient Credits",
+                description: `You need ${material.price_credits} credits but only have ${balance}`,
+                variant: "destructive",
+            });
+            router.push('/credits/purchase');
+            return;
+        }
+
+        try {
+            setPurchasing(true);
+            await marketplaceApi.purchaseMaterial(materialId);
+            
+            toast({
+                title: "Success",
+                description: "Material purchased successfully!",
+            });
+            
+            setHasPurchased(true);
+            await loadBalance();
+            await loadMaterial();
+        } catch (error: any) {
+            toast({
+                title: "Purchase Failed",
+                description: error.response?.data?.message || "Failed to purchase material",
+                variant: "destructive",
+            });
+        } finally {
+            setPurchasing(false);
+        }
+    };
+
+    const handleDownload = async () => {
+        if (!hasPurchased) {
+            toast({
+                title: "Purchase Required",
+                description: "Please purchase this material first",
+                variant: "destructive",
+            });
+            return;
+        }
+
+        try {
+            const data = await marketplaceApi.getDownloadUrl(materialId);
+            window.open(data.download_url, '_blank');
+        } catch (error: any) {
+            toast({
+                title: "Download Failed",
+                description: error.response?.data?.message || "Failed to get download URL",
+                variant: "destructive",
+            });
+        }
+    };
+
+    if (loading) {
+        return (
+            <div className="container mx-auto py-8">
+                <div className="flex items-center justify-center h-64">
+                    <Loader2 className="w-8 h-8 animate-spin" />
+                </div>
+            </div>
+        );
+    }
+
+    if (!material) {
+        return null;
+    }
+
+    const canPurchase = isAuthenticated && !hasPurchased && material.price_credits > 0;
+    const insufficientCredits = isAuthenticated && balance < material.price_credits;
 
     return (
         <div className="container mx-auto py-8 px-4">
@@ -81,37 +188,50 @@ export default function MaterialDetailPage({ params }: { params: { id: string } 
                             <Badge variant="secondary" className="capitalize">
                                 {material.material_type}
                             </Badge>
-                            <Badge variant="outline">{material.level}</Badge>
-                            <Badge variant="outline">{material.language}</Badge>
+                            {material.level && (
+                                <Badge variant="outline">{material.level}</Badge>
+                            )}
+                            {material.language && (
+                                <Badge variant="outline">{material.language}</Badge>
+                            )}
                         </div>
                         <h1 className="text-3xl font-bold text-gray-900 mb-4">{material.title}</h1>
                         <div className="flex items-center gap-6 text-sm text-gray-500">
                             <div className="flex items-center gap-1 text-yellow-500">
                                 <Star className="w-4 h-4 fill-current" />
-                                <span className="font-medium text-gray-900">{material.rating}</span>
+                                <span className="font-medium text-gray-900">{material.rating.toFixed(1)}</span>
                                 <span className="text-gray-500">({material.total_reviews} reviews)</span>
                             </div>
                             <div className="flex items-center gap-1">
                                 <Download className="w-4 h-4" />
                                 <span>{material.total_sales} sales</span>
                             </div>
-                            <div className="flex items-center gap-1">
-                                <Clock className="w-4 h-4" />
-                                <span>Updated {material.updated_at}</span>
-                            </div>
+                            {material.view_count !== undefined && (
+                                <div className="flex items-center gap-1">
+                                    <Clock className="w-4 h-4" />
+                                    <span>{material.view_count} views</span>
+                                </div>
+                            )}
                         </div>
                     </div>
 
                     {/* Preview / Thumbnail */}
                     <div className="aspect-video bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center border">
-                        <FileText className="w-20 h-20 text-gray-300" />
+                        {material.thumbnail_url ? (
+                            <img
+                                src={material.thumbnail_url}
+                                alt={material.title}
+                                className="w-full h-full object-cover"
+                            />
+                        ) : (
+                            <FileText className="w-20 h-20 text-gray-300" />
+                        )}
                     </div>
 
                     {/* Tabs */}
                     <Tabs defaultValue="description">
                         <TabsList>
                             <TabsTrigger value="description">Description</TabsTrigger>
-                            <TabsTrigger value="reviews">Reviews ({material.total_reviews})</TabsTrigger>
                             <TabsTrigger value="preview">Preview</TabsTrigger>
                         </TabsList>
                         <TabsContent value="description" className="mt-6">
@@ -119,37 +239,28 @@ export default function MaterialDetailPage({ params }: { params: { id: string } 
                                 {material.description}
                             </div>
                         </TabsContent>
-                        <TabsContent value="reviews" className="mt-6">
-                            <div className="space-y-6">
-                                {material.reviews.map((review) => (
-                                    <div key={review.id} className="flex gap-4 border-b pb-6 last:border-0">
-                                        <Avatar>
-                                            <AvatarImage src={review.user.avatar_url} />
-                                            <AvatarFallback>{review.user.username[0]}</AvatarFallback>
-                                        </Avatar>
-                                        <div>
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <span className="font-semibold">{review.user.username}</span>
-                                                <span className="text-sm text-gray-500">{review.created_at}</span>
-                                            </div>
-                                            <div className="flex text-yellow-500 mb-2">
-                                                {[...Array(5)].map((_, i) => (
-                                                    <Star
-                                                        key={i}
-                                                        className={`w-3 h-3 ${i < review.rating ? 'fill-current' : 'text-gray-300'}`}
-                                                    />
-                                                ))}
-                                            </div>
-                                            <p className="text-gray-600">{review.comment}</p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </TabsContent>
                         <TabsContent value="preview" className="mt-6">
-                            <div className="p-8 text-center bg-gray-50 rounded-lg border border-dashed">
-                                <p className="text-gray-500">Preview not available for this material.</p>
-                            </div>
+                            {material.preview_url ? (
+                                <div className="aspect-video bg-gray-100 rounded-lg overflow-hidden">
+                                    {material.material_type === 'video' ? (
+                                        <video
+                                            src={material.preview_url}
+                                            controls
+                                            className="w-full h-full"
+                                        />
+                                    ) : (
+                                        <iframe
+                                            src={material.preview_url}
+                                            className="w-full h-full"
+                                            title="Preview"
+                                        />
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="p-8 text-center bg-gray-50 rounded-lg border border-dashed">
+                                    <p className="text-gray-500">Preview not available for this material.</p>
+                                </div>
+                            )}
                         </TabsContent>
                     </Tabs>
                 </div>
@@ -161,18 +272,65 @@ export default function MaterialDetailPage({ params }: { params: { id: string } 
                         <CardContent className="p-6 space-y-6">
                             <div className="flex items-end gap-2">
                                 <span className="text-3xl font-bold text-blue-600">
-                                    {material.price_credits} Credits
+                                    {material.price_credits === 0 ? 'FREE' : `${material.price_credits} Credits`}
                                 </span>
-                                {material.original_price_credits && (
+                                {material.original_price_credits && material.original_price_credits > material.price_credits && (
                                     <span className="text-lg text-gray-400 line-through mb-1">
                                         {material.original_price_credits}
                                     </span>
                                 )}
                             </div>
 
-                            <Button className="w-full text-lg py-6">
-                                Buy Now
-                            </Button>
+                            {hasPurchased ? (
+                                <>
+                                    <Button
+                                        className="w-full text-lg py-6"
+                                        onClick={handleDownload}
+                                    >
+                                        <Download className="w-4 h-4 mr-2" />
+                                        Download
+                                    </Button>
+                                    <Alert>
+                                        <CheckCircle className="h-4 w-4" />
+                                        <AlertDescription>
+                                            You own this material. Download anytime!
+                                        </AlertDescription>
+                                    </Alert>
+                                </>
+                            ) : (
+                                <>
+                                    {isAuthenticated && (
+                                        <div className="text-sm text-gray-600">
+                                            Your balance: <strong>{balanceLoading ? '...' : `${balance} credits`}</strong>
+                                        </div>
+                                    )}
+                                    {insufficientCredits && (
+                                        <Alert variant="destructive">
+                                            <AlertCircle className="h-4 w-4" />
+                                            <AlertDescription>
+                                                Insufficient credits. <Button variant="link" className="p-0 h-auto" onClick={() => router.push('/credits/purchase')}>Buy more</Button>
+                                            </AlertDescription>
+                                        </Alert>
+                                    )}
+                                    <Button
+                                        className="w-full text-lg py-6"
+                                        onClick={handlePurchase}
+                                        disabled={purchasing || insufficientCredits || !canPurchase}
+                                    >
+                                        {purchasing ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                Processing...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <ShoppingCart className="w-4 h-4 mr-2" />
+                                                {material.price_credits === 0 ? 'Get Free' : 'Buy Now'}
+                                            </>
+                                        )}
+                                    </Button>
+                                </>
+                            )}
 
                             <div className="space-y-3 text-sm text-gray-600">
                                 <div className="flex items-center gap-2">
@@ -192,29 +350,28 @@ export default function MaterialDetailPage({ params }: { params: { id: string } 
                     </Card>
 
                     {/* Teacher Profile */}
-                    <Card>
-                        <CardContent className="p-6">
-                            <div className="flex items-center gap-4 mb-4">
-                                <Avatar className="w-12 h-12">
-                                    <AvatarImage src={material.teacher.avatar_url} />
-                                    <AvatarFallback>{material.teacher.username[0]}</AvatarFallback>
-                                </Avatar>
-                                <div>
-                                    <h3 className="font-semibold">{material.teacher.username}</h3>
-                                    <div className="flex items-center gap-1 text-sm text-yellow-500">
-                                        <Star className="w-3 h-3 fill-current" />
-                                        <span>{material.teacher.rating} Teacher Rating</span>
+                    {material.teacher && (
+                        <Card>
+                            <CardContent className="p-6">
+                                <div className="flex items-center gap-4 mb-4">
+                                    <Avatar className="w-12 h-12">
+                                        <AvatarImage src={material.teacher.avatar_url} />
+                                        <AvatarFallback>{material.teacher.username[0]?.toUpperCase()}</AvatarFallback>
+                                    </Avatar>
+                                    <div>
+                                        <h3 className="font-semibold">{material.teacher.username}</h3>
                                     </div>
                                 </div>
-                            </div>
-                            <p className="text-sm text-gray-600 mb-4">
-                                {material.teacher.bio}
-                            </p>
-                            <Button variant="outline" className="w-full">
-                                View Profile
-                            </Button>
-                        </CardContent>
-                    </Card>
+                                <Button
+                                    variant="outline"
+                                    className="w-full"
+                                    onClick={() => router.push(`/teachers/${material.teacher.id}/book`)}
+                                >
+                                    View Profile
+                                </Button>
+                            </CardContent>
+                        </Card>
+                    )}
 
                     {/* Actions */}
                     <div className="flex gap-2">

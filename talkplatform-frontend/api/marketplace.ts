@@ -1,4 +1,4 @@
-import { axiosInstance } from './axiosConfig';
+import axiosConfig from './axiosConfig';
 
 export interface Material {
     id: string;
@@ -6,17 +6,30 @@ export interface Material {
     description: string;
     material_type: 'pdf' | 'video' | 'slide' | 'audio' | 'document' | 'course' | 'ebook';
     thumbnail_url?: string;
+    preview_url?: string;
+    file_url?: string;
     price_credits: number;
     original_price_credits?: number;
     rating: number;
     total_reviews: number;
     total_sales: number;
+    download_count?: number;
+    view_count?: number;
+    language?: string;
+    level?: string;
+    tags?: string[];
     teacher: {
         id: string;
         username: string;
         avatar_url?: string;
     };
+    category?: {
+        id: string;
+        name: string;
+    };
+    has_purchased?: boolean;
     created_at: string;
+    updated_at?: string;
 }
 
 export interface FilterMaterialDto {
@@ -32,25 +45,59 @@ export interface FilterMaterialDto {
     limit?: number;
 }
 
+export interface MaterialPurchase {
+    id: string;
+    material_id: string;
+    user_id: string;
+    price_paid: number;
+    transaction_id: string;
+    download_count: number;
+    last_downloaded_at?: string;
+    purchased_at: string;
+    material?: Material;
+}
+
 export const marketplaceApi = {
     getAllMaterials: async (params: FilterMaterialDto) => {
-        const response = await axiosInstance.get('/marketplace/materials', { params });
+        const response = await axiosConfig.get('/marketplace/materials', { params });
         return response.data;
     },
 
     getMaterialById: async (id: string) => {
-        const response = await axiosInstance.get(`/marketplace/materials/${id}`);
+        const response = await axiosConfig.get(`/marketplace/materials/${id}`);
+        return response.data;
+    },
+
+    purchaseMaterial: async (materialId: string) => {
+        const response = await axiosConfig.post(`/marketplace/materials/${materialId}/purchase`);
+        return response.data;
+    },
+
+    checkPurchased: async (materialId: string) => {
+        const response = await axiosConfig.get(`/marketplace/materials/${materialId}/purchased`);
+        return response.data;
+    },
+
+    getDownloadUrl: async (materialId: string) => {
+        const response = await axiosConfig.get(`/marketplace/materials/${materialId}/download`);
+        return response.data;
+    },
+
+    getPurchasedMaterials: async (page: number = 1, limit: number = 10) => {
+        const response = await axiosConfig.get('/marketplace/materials/purchased', {
+            params: { page, limit },
+        });
         return response.data;
     },
 
     // Teacher endpoints
     createMaterial: async (data: any) => {
-        const response = await axiosInstance.post('/marketplace/teacher/materials', data);
+        const response = await axiosConfig.post('/marketplace/teacher/materials', data);
         return response.data;
     },
 
     getTeacherMaterials: async (params: { page: number; limit: number }) => {
-        const response = await axiosInstance.get('/marketplace/teacher/materials', { params });
+        const response = await axiosConfig.get('/marketplace/teacher/materials', { params });
         return response.data;
     },
 
@@ -58,7 +105,7 @@ export const marketplaceApi = {
         const formData = new FormData();
         formData.append('file', file);
 
-        const response = await axiosInstance.post('/marketplace/teacher/materials/upload', formData, {
+        const response = await axiosConfig.post('/marketplace/teacher/materials/upload', formData, {
             headers: {
                 'Content-Type': 'multipart/form-data',
             },
