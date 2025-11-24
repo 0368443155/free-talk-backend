@@ -52,9 +52,14 @@ export function useMeetingParticipants({
         : await getMeetingParticipantsApi(classroomId!, meetingId);
       setParticipants(data);
       setParticipantsFetched(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to fetch participants:", error);
-      setParticipantsFetched(true);
+      // Don't set participantsFetched to true on timeout - allow retry
+      // Only set to true if it's a non-timeout error
+      if (error.code !== 'ECONNABORTED' && !error.message?.includes('timeout')) {
+        setParticipantsFetched(true);
+      }
+      // Silently fail for timeout errors - will retry on next poll
     }
   }, [meetingId, isPublicMeeting, classroomId]);
 

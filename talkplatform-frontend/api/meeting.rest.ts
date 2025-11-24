@@ -396,23 +396,33 @@ export const unlockPublicMeetingApi = async (meetingId: string): Promise<IMeetin
 
 // Get participants
 export const getMeetingParticipantsApi = async (classroomId: string, meetingId: string): Promise<IMeetingParticipant[]> => {
-  const response = await axiosConfig.get(`classrooms/${classroomId}/meetings/${meetingId}/participants`);
+  const response = await axiosConfig.get(`classrooms/${classroomId}/meetings/${meetingId}/participants`, {
+    timeout: 30000, // 30 seconds timeout for participants API
+  });
   return response.data;
 };
 
 export const getPublicMeetingParticipantsApi = async (meetingId: string): Promise<IMeetingParticipant[]> => {
-  const response = await axiosConfig.get(`public-meetings/${meetingId}/participants`);
+  const response = await axiosConfig.get(`public-meetings/${meetingId}/participants`, {
+    timeout: 30000, // 30 seconds timeout for participants API
+  });
   return response.data;
 };
 
 // Get chat messages
 export const getMeetingChatApi = async (classroomId: string, meetingId: string, params?: { page?: number; limit?: number }): Promise<{ data: IMeetingChatMessage[]; total: number; page: number; limit: number; totalPages: number }> => {
-  const response = await axiosConfig.get(`classrooms/${classroomId}/meetings/${meetingId}/chat`, { params });
+  const response = await axiosConfig.get(`classrooms/${classroomId}/meetings/${meetingId}/chat`, { 
+    params,
+    timeout: 30000, // 30 seconds timeout for chat API
+  });
   return response.data;
 };
 
 export const getPublicMeetingChatApi = async (meetingId: string, params?: { page?: number; limit?: number }): Promise<{ data: IMeetingChatMessage[]; total: number; page: number; limit: number; totalPages: number }> => {
-  const response = await axiosConfig.get(`public-meetings/${meetingId}/chat`, { params });
+  const response = await axiosConfig.get(`public-meetings/${meetingId}/chat`, { 
+    params,
+    timeout: 30000, // 30 seconds timeout for chat API
+  });
   return response.data;
 };
 

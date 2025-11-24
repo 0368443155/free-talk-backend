@@ -117,8 +117,12 @@ export function useMeetingChat({
         }
         return prevMessages;
       });
-    } catch (error) {
-      console.error("Failed to fetch chat messages:", error);
+    } catch (error: any) {
+      // Silently fail for timeout errors - will retry on next poll
+      // Only log non-timeout errors
+      if (error.code !== 'ECONNABORTED' && !error.message?.includes('timeout')) {
+        console.error("Failed to fetch chat messages:", error);
+      }
     }
   }, [meetingId, isPublicMeeting, classroomId]);
 
