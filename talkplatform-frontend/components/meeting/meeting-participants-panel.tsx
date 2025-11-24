@@ -41,24 +41,30 @@ export function MeetingParticipantsPanel({
     return null;
   };
 
-  const handleMute = (participantUserId: string, participantName: string) => {
+  const handleMute = (participantUserId: string, participantName: string, currentIsMuted: boolean) => {
+    // Toggle: if currently muted, unmute; if not muted, mute
+    const shouldMute = !currentIsMuted;
+    
     if (socket?.connected) {
       socket.emit('admin:mute-user', { 
         targetUserId: participantUserId, 
-        mute: true 
+        mute: shouldMute 
       });
-      toast({ title: `Muted ${participantName}` });
+      toast({ title: shouldMute ? `Muted ${participantName}` : `Unmuted ${participantName}` });
     }
     onMuteParticipant?.(participantUserId);
   };
 
-  const handleVideoOff = (participantUserId: string, participantName: string) => {
+  const handleVideoOff = (participantUserId: string, participantName: string, currentIsVideoOff: boolean) => {
+    // Toggle: if currently video off, turn on; if video on, turn off
+    const shouldTurnOff = !currentIsVideoOff;
+    
     if (socket?.connected) {
       socket.emit('admin:video-off-user', { 
         targetUserId: participantUserId, 
-        videoOff: true 
+        videoOff: shouldTurnOff 
       });
-      toast({ title: `Turned off ${participantName}'s camera` });
+      toast({ title: shouldTurnOff ? `Turned off ${participantName}'s camera` : `Turned on ${participantName}'s camera` });
     }
     onVideoOffParticipant?.(participantUserId);
   };
@@ -121,19 +127,37 @@ export function MeetingParticipantsPanel({
                           size="sm"
                           variant="ghost"
                           className="w-full justify-start text-orange-400 hover:text-orange-300 hover:bg-gray-700"
-                          onClick={() => handleMute(participantUserId, participant.user.name)}
+                          onClick={() => handleMute(participantUserId, participant.user.name, participant.is_muted)}
                         >
-                          <MicOff className="w-4 h-4 mr-2" />
-                          Mute mic
+                          {participant.is_muted ? (
+                            <>
+                              <Mic className="w-4 h-4 mr-2" />
+                              Unmute mic
+                            </>
+                          ) : (
+                            <>
+                              <MicOff className="w-4 h-4 mr-2" />
+                              Mute mic
+                            </>
+                          )}
                         </Button>
                         <Button
                           size="sm"
                           variant="ghost"
                           className="w-full justify-start text-blue-400 hover:text-blue-300 hover:bg-gray-700"
-                          onClick={() => handleVideoOff(participantUserId, participant.user.name)}
+                          onClick={() => handleVideoOff(participantUserId, participant.user.name, participant.is_video_off)}
                         >
-                          <VideoOff className="w-4 h-4 mr-2" />
-                          Turn off camera
+                          {participant.is_video_off ? (
+                            <>
+                              <Video className="w-4 h-4 mr-2" />
+                              Turn on camera
+                            </>
+                          ) : (
+                            <>
+                              <VideoOff className="w-4 h-4 mr-2" />
+                              Turn off camera
+                            </>
+                          )}
                         </Button>
                         <Button
                           size="sm"

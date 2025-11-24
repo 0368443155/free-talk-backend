@@ -466,30 +466,48 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     if (!socket) return;
 
     const handleForceMute = (data: { userId: string; isMuted: boolean }) => {
-      if (data.userId === user.id && data.isMuted) {
-        // Host muted me - force mute if not already muted
-        if (!isMuted) {
+      if (data.userId === user.id) {
+        // Host changed my mute state - enforce it
+        if (data.isMuted && !isMuted) {
+          // Host muted me - force mute if not already muted
           toggleMute();
+          toast({ 
+            title: "You have been muted by the host", 
+            description: "Your microphone has been turned off.",
+            variant: "default" 
+          });
+        } else if (!data.isMuted && isMuted) {
+          // Host unmuted me - force unmute if currently muted
+          toggleMute();
+          toast({ 
+            title: "You have been unmuted by the host", 
+            description: "Your microphone has been turned on.",
+            variant: "default" 
+          });
         }
-        toast({ 
-          title: "You have been muted by the host", 
-          description: "Your microphone has been turned off.",
-          variant: "default" 
-        });
       }
     };
 
     const handleForceVideoOff = (data: { userId: string; isVideoOff: boolean }) => {
-      if (data.userId === user.id && data.isVideoOff) {
-        // Host turned off my camera - force video off if not already off
-        if (!isVideoOff) {
+      if (data.userId === user.id) {
+        // Host changed my video state - enforce it
+        if (data.isVideoOff && !isVideoOff) {
+          // Host turned off my camera - force video off if not already off
           toggleVideo();
+          toast({ 
+            title: "Your camera has been turned off", 
+            description: "The host has disabled your camera.",
+            variant: "default" 
+          });
+        } else if (!data.isVideoOff && isVideoOff) {
+          // Host turned on my camera - force video on if currently off
+          toggleVideo();
+          toast({ 
+            title: "Your camera has been turned on", 
+            description: "The host has enabled your camera.",
+            variant: "default" 
+          });
         }
-        toast({ 
-          title: "Your camera has been turned off", 
-          description: "The host has disabled your camera.",
-          variant: "default" 
-        });
       }
     };
 

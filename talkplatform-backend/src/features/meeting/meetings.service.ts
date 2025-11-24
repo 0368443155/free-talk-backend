@@ -341,7 +341,7 @@ export class MeetingsService {
     return this.meetingRepository.save(meeting);
   }
 
-  async joinMeeting(meetingId: string, user: User) {
+  async joinMeeting(meetingId: string, user: User, deviceSettings?: { audioEnabled?: boolean; videoEnabled?: boolean }) {
     const meeting = await this.findOne(meetingId, user);
 
     // Auto-start meeting if host joins a scheduled meeting
@@ -427,8 +427,23 @@ export class MeetingsService {
         role: ParticipantRole.PARTICIPANT,
         joined_at: new Date(),
         is_online: true,
-        is_muted: meeting.settings?.mute_on_join || false,
+        // Use deviceSettings if provided, otherwise use meeting default
+        is_muted: deviceSettings 
+          ? !deviceSettings.audioEnabled 
+          : (meeting.settings?.mute_on_join || false),
+        is_video_off: deviceSettings 
+          ? !deviceSettings.videoEnabled 
+          : false,
       });
+      
+      if (deviceSettings) {
+        console.log('🔄 Created participant with deviceSettings:', {
+          is_muted: participant.is_muted,
+          is_video_off: participant.is_video_off,
+          audioEnabled: deviceSettings.audioEnabled,
+          videoEnabled: deviceSettings.videoEnabled
+        });
+      }
 
       meeting.total_participants += 1;
       meeting.current_participants += 1;

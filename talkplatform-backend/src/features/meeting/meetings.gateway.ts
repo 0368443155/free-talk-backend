@@ -511,11 +511,22 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
     @MessageBody() data: { targetUserId: string; mute?: boolean },
   ) {
     if (!(await this.ensureHost(client))) return;
-    const isMuted = data.mute !== false; // default true
+    
+    // Get current state from database
+    const participant = await this.participantRepository.findOne({
+      where: { meeting: { id: client.meetingId }, user: { id: data.targetUserId } },
+    });
+    
+    if (!participant) return;
+    
+    // Toggle: if mute is explicitly provided, use it; otherwise toggle current state
+    const isMuted = data.mute !== undefined ? data.mute : !participant.is_muted;
+    
     await this.participantRepository.update(
       { meeting: { id: client.meetingId }, user: { id: data.targetUserId } },
       { is_muted: isMuted },
     );
+    
     this.server.to(client.meetingId!).emit('media:user-muted', {
       userId: data.targetUserId,
       isMuted,
@@ -528,11 +539,22 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
     @MessageBody() data: { targetUserId: string; videoOff?: boolean },
   ) {
     if (!(await this.ensureHost(client))) return;
-    const isVideoOff = data.videoOff !== false; // default true
+    
+    // Get current state from database
+    const participant = await this.participantRepository.findOne({
+      where: { meeting: { id: client.meetingId }, user: { id: data.targetUserId } },
+    });
+    
+    if (!participant) return;
+    
+    // Toggle: if videoOff is explicitly provided, use it; otherwise toggle current state
+    const isVideoOff = data.videoOff !== undefined ? data.videoOff : !participant.is_video_off;
+    
     await this.participantRepository.update(
       { meeting: { id: client.meetingId }, user: { id: data.targetUserId } },
       { is_video_off: isVideoOff },
     );
+    
     this.server.to(client.meetingId!).emit('media:user-video-off', {
       userId: data.targetUserId,
       isVideoOff,

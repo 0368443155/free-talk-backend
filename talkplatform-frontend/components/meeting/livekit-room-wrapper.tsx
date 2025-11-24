@@ -138,6 +138,10 @@ export function LiveKitRoomWrapper({
     quality: 'good' as 'excellent' | 'good' | 'poor',
   });
 
+  // Track mic/cam state from database (source of truth for UI sync)
+  const [isMicEnabledState, setIsMicEnabledState] = useState(true);
+  const [isCameraEnabledState, setIsCameraEnabledState] = useState(true);
+
   // YouTube Player state
   const [showYouTubeSearch, setShowYouTubeSearch] = useState(false);
   const [youtubeVolume, setYoutubeVolume] = useState(50);
@@ -193,6 +197,24 @@ export function LiveKitRoomWrapper({
     setIsOnline(currentParticipant ? (currentParticipant.is_online !== false) : false);
   }, [currentParticipant]);
 
+  // Sync mic/cam state from database when participant data changes
+  useEffect(() => {
+    if (currentParticipant) {
+      const dbIsMuted = (currentParticipant as any).is_muted ?? false;
+      const dbIsVideoOff = (currentParticipant as any).is_video_off ?? false;
+      
+      setIsMicEnabledState(!dbIsMuted);
+      setIsCameraEnabledState(!dbIsVideoOff);
+      
+      console.log('🔄 Synced participant state from database:', {
+        isMuted: dbIsMuted,
+        isVideoOff: dbIsVideoOff,
+        isMicEnabled: !dbIsMuted,
+        isCameraEnabled: !dbIsVideoOff
+      });
+    }
+  }, [currentParticipant]);
+
   // Socket.IO connection - MUST be after isOnline is set
   const { socket, isConnected: isSocketConnected, connectionError: socketError } = useMeetingSocket({
     meetingId: meetingId,
@@ -244,12 +266,77 @@ export function LiveKitRoomWrapper({
   } = useLiveKit({
     token: livekitToken,
     serverUrl: livekitWsUrl,
-    onConnected: () => {
+    onConnected: async () => {
       setPhase('meeting');
       toast({
         title: "Connected",
         description: "You have joined the meeting",
       });
+      
+      // Enable camera and microphone based on database state (synced from green-room)
+      // Use setTimeout to ensure localParticipant is ready
+      setTimeout(async () => {
+        if (currentParticipant && room?.localParticipant) {
+          // Get state from database (already synced from green-room via joinMeeting)
+          const dbIsMuted = (currentParticipant as any).is_muted ?? false;
+          const dbIsVideoOff = (currentParticipant as any).is_video_off ?? false;
+          
+          console.log('🎥 Enabling camera/mic based on database state:', {
+            isMuted: dbIsMuted,
+            isVideoOff: dbIsVideoOff,
+            audioEnabled: !dbIsMuted,
+            videoEnabled: !dbIsVideoOff
+          });
+          
+          try {
+            // Enable camera based on database state
+            if (!dbIsVideoOff) {
+              await enableCamera(true);
+              setIsCameraEnabledState(true);
+              console.log('✅ Camera enabled on room connect (from database)');
+            } else {
+              await enableCamera(false);
+              setIsCameraEnabledState(false);
+              console.log('❌ Camera disabled on room connect (from database)');
+            }
+            
+            // Enable microphone based on database state
+            if (!dbIsMuted) {
+              await enableMicrophone(true);
+              setIsMicEnabledState(true);
+              console.log('✅ Microphone enabled on room connect (from database)');
+            } else {
+              await enableMicrophone(false);
+              setIsMicEnabledState(false);
+              console.log('❌ Microphone disabled on room connect (from database)');
+            }
+          } catch (error) {
+            console.error('❌ Failed to enable camera/mic on room connect:', error);
+          }
+        } else if (deviceSettings && room?.localParticipant) {
+          // Fallback to deviceSettings if currentParticipant not available yet
+          console.log('🎥 Enabling camera/mic based on deviceSettings (fallback):', deviceSettings);
+          try {
+            if (deviceSettings.videoEnabled) {
+              await enableCamera(true);
+              setIsCameraEnabledState(true);
+            } else {
+              await enableCamera(false);
+              setIsCameraEnabledState(false);
+            }
+            
+            if (deviceSettings.audioEnabled) {
+              await enableMicrophone(true);
+              setIsMicEnabledState(true);
+            } else {
+              await enableMicrophone(false);
+              setIsMicEnabledState(false);
+            }
+          } catch (error) {
+            console.error('❌ Failed to enable camera/mic on room connect:', error);
+          }
+        }
+      }, 500); // Small delay to ensure localParticipant is ready
     },
     onDisconnected: () => {
       onLeave();
@@ -361,18 +448,27 @@ export function LiveKitRoomWrapper({
     if (!socket) return;
 
     const handleForceMute = (data: { userId: string; isMuted: boolean }) => {
-      // If it's the current user being muted, enforce it
-      if (data.userId === user.id && data.isMuted) {
-        const videoTracks = Array.from(localParticipant?.audioTrackPublications.values() || []);
-        const isEnabled = videoTracks.length > 0 && videoTracks[0].track !== undefined;
-        if (isEnabled) {
+      // If it's the current user, enforce the mute state
+      if (data.userId === user.id) {
+        // Update UI state immediately
+        setIsMicEnabledState(!data.isMuted);
+        
+        // Always enforce the state from server (don't check current state)
+        if (data.isMuted) {
           enableMicrophone(false);
+          toast({ 
+            title: "You have been muted by the host", 
+            description: "Your microphone has been turned off.",
+            variant: "default" 
+          });
+        } else {
+          enableMicrophone(true);
+          toast({ 
+            title: "You have been unmuted by the host", 
+            description: "Your microphone has been turned on.",
+            variant: "default" 
+          });
         }
-        toast({ 
-          title: "You have been muted by the host", 
-          description: "Your microphone has been turned off.",
-          variant: "default" 
-        });
       }
       
       // If host, refresh participants to update UI
@@ -384,18 +480,43 @@ export function LiveKitRoomWrapper({
     };
 
     const handleForceVideoOff = (data: { userId: string; isVideoOff: boolean }) => {
-      // If it's the current user being video off, enforce it
-      if (data.userId === user.id && data.isVideoOff) {
+      // If it's the current user, enforce the video state
+      if (data.userId === user.id) {
         const videoTracks = Array.from(localParticipant?.videoTrackPublications.values() || []);
-        const isEnabled = videoTracks.length > 0 && videoTracks[0].track !== undefined;
-        if (isEnabled) {
-          enableCamera(false);
-        }
-        toast({ 
-          title: "Your camera has been turned off", 
-          description: "The host has disabled your camera.",
-          variant: "default" 
+        // Filter out screen share tracks, only check camera tracks
+        const cameraTracks = videoTracks.filter(pub => pub.source !== 'screen_share');
+        const hasVideoTrack = cameraTracks.length > 0 && cameraTracks[0].track !== undefined;
+        // Check if video track is enabled (not muted and track exists)
+        const isCurrentlyEnabled = hasVideoTrack && cameraTracks[0].track && !cameraTracks[0].track.isMuted;
+        
+        // Update UI state immediately
+        setIsCameraEnabledState(!data.isVideoOff);
+        
+        console.log('🎥 Force video state check:', {
+          userId: data.userId,
+          isVideoOff: data.isVideoOff,
+          hasVideoTrack,
+          isCurrentlyEnabled,
+          trackMuted: cameraTracks[0]?.track?.isMuted,
+          uiStateUpdated: !data.isVideoOff
         });
+        
+        // Only change if state is different
+        if (data.isVideoOff && isCurrentlyEnabled) {
+          enableCamera(false);
+          toast({ 
+            title: "Your camera has been turned off", 
+            description: "The host has disabled your camera.",
+            variant: "default" 
+          });
+        } else if (!data.isVideoOff && !isCurrentlyEnabled) {
+          enableCamera(true);
+          toast({ 
+            title: "Your camera has been turned on", 
+            description: "The host has enabled your camera.",
+            variant: "default" 
+          });
+        }
       }
       
       // If host, refresh participants to update UI
@@ -475,6 +596,30 @@ export function LiveKitRoomWrapper({
   const handleJoin = async (settings: DeviceSettings) => {
     setDeviceSettings(settings);
     try {
+      // First, join meeting with deviceSettings to sync state in database
+      console.log('📝 Joining meeting with deviceSettings:', {
+        audioEnabled: settings.audioEnabled,
+        videoEnabled: settings.videoEnabled
+      });
+      
+      if (isPublicMeeting) {
+        await joinPublicMeetingApi(meetingId, {
+          audioEnabled: settings.audioEnabled,
+          videoEnabled: settings.videoEnabled
+        });
+      } else {
+        await joinMeetingApi(classroomId!, meetingId, {
+          audioEnabled: settings.audioEnabled,
+          videoEnabled: settings.videoEnabled
+        });
+      }
+      
+      // Refresh participants to get updated state from database
+      await fetchParticipants();
+      
+      console.log('✅ Meeting joined, state synced to database');
+      
+      // Then request LiveKit token
       console.log('🔐 Requesting LiveKit token for meeting:', meetingId);
       const data = await generateLiveKitTokenApi(meetingId);
       
@@ -549,17 +694,17 @@ export function LiveKitRoomWrapper({
 
   const handleToggleCamera = async () => {
     if (localParticipant) {
-      const videoTracks = Array.from(localParticipant.videoTrackPublications.values());
-      const isEnabled = videoTracks.length > 0 && videoTracks[0].track !== undefined;
-      await enableCamera(!isEnabled);
+      const newState = !isCameraEnabledState;
+      setIsCameraEnabledState(newState);
+      await enableCamera(newState);
     }
   };
 
   const handleToggleMicrophone = async () => {
     if (localParticipant) {
-      const audioTracks = Array.from(localParticipant.audioTrackPublications.values());
-      const isEnabled = audioTracks.length > 0 && audioTracks[0].track !== undefined;
-      await enableMicrophone(!isEnabled);
+      const newState = !isMicEnabledState;
+      setIsMicEnabledState(newState);
+      await enableMicrophone(newState);
     }
   };
 
@@ -715,47 +860,43 @@ export function LiveKitRoomWrapper({
 
   const handleMuteParticipant = async (participantUserId: string) => {
     try {
-      // Find LiveKit participant - identity format is "user-{userId}"
-      const livekitParticipant = livekitParticipants.find(p => {
-        // Match identity like "user-123" with userId "123"
-        const identityUserId = p.identity?.replace('user-', '');
-        return identityUserId === participantUserId || p.identity === `user-${participantUserId}` || p.identity === participantUserId;
-      });
-      
-      // Get current mute state from LiveKit
-      const isCurrentlyMuted = livekitParticipant?.tracks.audio?.track?.isMuted ?? false;
-      const shouldMute = !isCurrentlyMuted; // Toggle: if not muted, mute it; if muted, unmute it
-
+      // Find participant from database state (source of truth)
       const participant = participants.find(p => {
         const pid = p.user?.id || (p.user as any)?.user_id;
         return pid === participantUserId;
       });
       if (!participant) return;
 
-      // Emit socket event for real-time notification
+      // Get current mute state from database (source of truth)
+      const currentIsMuted = (participant as any).is_muted ?? false;
+      const shouldMute = !currentIsMuted; // Toggle: if not muted, mute it; if muted, unmute it
+
+      // Emit socket event for real-time notification and database update
+      // Socket event will handle both database update and broadcast
       if (socket?.connected) {
         socket.emit('admin:mute-user', { 
           targetUserId: participantUserId, 
           mute: shouldMute 
         });
+        
+        toast({ 
+          title: shouldMute ? `Muted participant` : `Unmuted participant`
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: "Socket not connected",
+          variant: "destructive",
+        });
+        return;
       }
-      // Use shared hook function
-      await handleMuteParticipantApi(participant.id, participantUserId);
-      toast({ 
-        title: shouldMute ? `Muted participant` : `Unmuted participant`
-      });
       
-      // Force refresh participants and wait a bit for LiveKit to update
-      await fetchParticipants();
-      
-      // Force LiveKit to refresh participants by triggering a re-render
-      // The useLiveKit hook should automatically update when tracks change
-      setTimeout(() => {
-        if (room) {
-          // Force update by accessing room state
-          console.log('🔄 Forcing LiveKit participants refresh after mute action');
-        }
-      }, 500);
+      // Force refresh participants to get updated state from database
+      // Small delay to ensure database update is complete
+      setTimeout(async () => {
+        await fetchParticipants();
+        setParticipantsRefreshKey(prev => prev + 1);
+      }, 200);
     } catch (error) {
       toast({
         title: "Error",
@@ -767,42 +908,52 @@ export function LiveKitRoomWrapper({
 
   const handleVideoOffParticipant = async (participantUserId: string) => {
     try {
-      // Find LiveKit participant - identity format is "user-{userId}"
-      const livekitParticipant = livekitParticipants.find(p => {
-        // Match identity like "user-123" with userId "123"
-        const identityUserId = p.identity?.replace('user-', '');
-        return identityUserId === participantUserId || p.identity === `user-${participantUserId}` || p.identity === participantUserId;
-      });
-      
-      // Get current video state from LiveKit (has video track = enabled)
-      const isVideoEnabled = !!livekitParticipant?.tracks.video?.track;
-      const shouldTurnOff = isVideoEnabled; // Toggle: if enabled, turn off; if disabled, turn on
-
+      // Find participant from database state (source of truth)
       const participant = participants.find(p => {
         const pid = p.user?.id || (p.user as any)?.user_id;
         return pid === participantUserId;
       });
-      if (!participant) return;
+      if (!participant) {
+        console.error('❌ Participant not found:', participantUserId);
+        return;
+      }
 
+      // Get current video state from database (source of truth)
+      const currentIsVideoOff = (participant as any).is_video_off ?? false;
+      const shouldTurnOff = !currentIsVideoOff; // Toggle: if video on, turn off; if video off, turn on
+
+      console.log('🎥 Toggling video for participant:', {
+        participantUserId,
+        currentIsVideoOff,
+        shouldTurnOff,
+        participantId: participant.id
+      });
+
+      // Emit socket event for real-time notification and database update
       if (socket?.connected) {
         socket.emit('admin:video-off-user', { 
           targetUserId: participantUserId, 
           videoOff: shouldTurnOff 
         });
+      } else {
+        console.error('❌ Socket not connected');
+        toast({
+          title: "Error",
+          description: "Socket not connected. Please refresh the page.",
+          variant: "destructive",
+        });
+        return;
       }
+      
       toast({ 
         title: shouldTurnOff ? `Turned off participant's camera` : `Turned on participant's camera`
       });
       
-      // Force refresh participants from database
+      // Force refresh participants to get updated state
       await fetchParticipants();
-      
-      // Force LiveKit to refresh by manually triggering transformParticipants
-      if (room) {
-        // The useLiveKit hook will automatically update via TrackPublished/TrackUnpublished events
-        console.log('🔄 Video action completed, waiting for LiveKit to update tracks...');
-      }
+      setParticipantsRefreshKey(prev => prev + 1);
     } catch (error) {
+      console.error('❌ Error toggling camera:', error);
       toast({
         title: "Error",
         description: "Failed to toggle camera",
@@ -1154,9 +1305,10 @@ export function LiveKitRoomWrapper({
                             const dbIsMuted = (participant as any).is_muted ?? false;
                             const dbIsVideoOff = (participant as any).is_video_off ?? false;
                             
-                            // Use LiveKit state if available, otherwise fallback to database state
-                            const finalIsMicMuted = livekitParticipant ? isMicMuted : dbIsMuted;
-                            const finalIsVideoEnabled = livekitParticipant ? isVideoEnabled : !dbIsVideoOff;
+                            // Use database state as source of truth (for host controls)
+                            // LiveKit state is for display only, but host actions should be based on database
+                            const finalIsMicMuted = dbIsMuted;
+                            const finalIsVideoEnabled = !dbIsVideoOff;
                             
                             console.log('🔍 Participant state check:', {
                               participantUserId,
@@ -1377,8 +1529,8 @@ export function LiveKitRoomWrapper({
         {/* Bottom Controls */}
         <div className="p-4 bg-gray-800">
           <MeetingControls
-            isCameraEnabled={localParticipant ? Array.from(localParticipant.videoTrackPublications.values()).length > 0 : false}
-            isMicEnabled={localParticipant ? Array.from(localParticipant.audioTrackPublications.values()).length > 0 : false}
+            isCameraEnabled={isCameraEnabledState}
+            isMicEnabled={isMicEnabledState}
             isScreenSharing={Array.from(localParticipant?.videoTrackPublications.values() || [])
               .some(pub => pub.source === 'screen_share')}
             onToggleCamera={handleToggleCamera}

@@ -165,8 +165,12 @@ export class PublicMeetingsController {
   @Post(':meetingId/join')
   @ApiOperation({ summary: 'Join meeting' })
   @ApiResponse({ status: 200, description: 'Joined meeting successfully' })
-  async joinMeeting(@Param('meetingId') meetingId: string, @Account() user: User) {
-    return this.meetingsService.joinMeeting(meetingId, user);
+  async joinMeeting(
+    @Param('meetingId') meetingId: string,
+    @Account() user: User,
+    @Body() body?: { audioEnabled?: boolean; videoEnabled?: boolean }
+  ) {
+    return this.meetingsService.joinMeeting(meetingId, user, body);
   }
 
   @Post(':meetingId/leave')

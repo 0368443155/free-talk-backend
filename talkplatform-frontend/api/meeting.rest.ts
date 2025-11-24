@@ -190,8 +190,12 @@ export const endMeetingApi = async (classroomId: string, meetingId: string): Pro
 };
 
 // Join meeting
-export const joinMeetingApi = async (classroomId: string, meetingId: string): Promise<IMeetingParticipant> => {
-  const response = await axiosConfig.post(`classrooms/${classroomId}/meetings/${meetingId}/join`);
+export const joinMeetingApi = async (
+  classroomId: string, 
+  meetingId: string,
+  deviceSettings?: { audioEnabled?: boolean; videoEnabled?: boolean }
+): Promise<IMeetingParticipant> => {
+  const response = await axiosConfig.post(`classrooms/${classroomId}/meetings/${meetingId}/join`, deviceSettings || {});
   return response.data;
 };
 
@@ -334,8 +338,11 @@ export const endPublicMeetingApi = async (meetingId: string): Promise<IMeeting> 
 };
 
 // Join public meeting
-export const joinPublicMeetingApi = async (meetingId: string): Promise<IMeetingParticipant> => {
-  const response = await axiosConfig.post(`public-meetings/${meetingId}/join`);
+export const joinPublicMeetingApi = async (
+  meetingId: string,
+  deviceSettings?: { audioEnabled?: boolean; videoEnabled?: boolean }
+): Promise<IMeetingParticipant> => {
+  const response = await axiosConfig.post(`public-meetings/${meetingId}/join`, deviceSettings || {});
   return response.data;
 };
 
