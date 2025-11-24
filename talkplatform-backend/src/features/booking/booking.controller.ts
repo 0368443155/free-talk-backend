@@ -13,7 +13,7 @@ import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { BookingService } from './booking.service';
 import { CreateBookingDto, CancelBookingDto } from './dto/create-booking.dto';
 
-@Controller('api/v1/bookings')
+@Controller('bookings')
 @UseGuards(JwtAuthGuard)
 export class BookingController {
   constructor(private readonly bookingService: BookingService) {}

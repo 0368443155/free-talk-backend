@@ -16,7 +16,7 @@ import { UserRole } from '../../users/user.entity';
 import { TeacherVerificationService } from './teacher-verification.service';
 import { SubmitVerificationDto } from './dto/submit-verification.dto';
 
-@Controller('api/v1/teachers/verification')
+@Controller('teachers/verification')
 @UseGuards(JwtAuthGuard)
 export class TeacherVerificationController {
   constructor(
@@ -35,10 +35,41 @@ export class TeacherVerificationController {
   /**
    * Lấy trạng thái verification
    * GET /api/v1/teachers/verification/status
+   * 
+   * NOTE: Route này phải được đặt TRƯỚC route có parameter (:id) để tránh conflict
    */
   @Get('status')
   async getVerificationStatus(@Request() req) {
-    return await this.verificationService.getVerificationStatus(req.user.id);
+    try {
+      const verification = await this.verificationService.getVerificationStatus(req.user.id);
+      
+      // Nếu chưa có verification, trả về null (frontend sẽ hiển thị form trống)
+      if (!verification) {
+        return null;
+      }
+      
+      return verification;
+    } catch (error) {
+      console.error('Error getting verification status:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Admin: Lấy document URL
+   * GET /api/v1/teachers/verification/:id/document/:documentKey
+   * 
+   * NOTE: Route này phải được đặt TRƯỚC các route PATCH có :id để tránh conflict
+   */
+  @Get(':id/document/:documentKey')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async getDocumentUrl(
+    @Param('id') id: string,
+    @Param('documentKey') documentKey: string,
+  ) {
+    const url = await this.verificationService.getDocumentUrl(id, documentKey);
+    return { url };
   }
 
   /**
@@ -84,21 +115,6 @@ export class TeacherVerificationController {
     @Request() req,
   ) {
     return await this.verificationService.requestInfo(id, req.user.id, notes);
-  }
-
-  /**
-   * Admin: Lấy document URL
-   * GET /api/v1/teachers/verification/:id/document/:documentKey
-   */
-  @Get(':id/document/:documentKey')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN)
-  async getDocumentUrl(
-    @Param('id') id: string,
-    @Param('documentKey') documentKey: string,
-  ) {
-    const url = await this.verificationService.getDocumentUrl(id, documentKey);
-    return { url };
   }
 }
 

@@ -4,6 +4,7 @@ import { StorageProvider } from './storage.interface';
 import { IStorageService } from './storage.interface';
 import { LocalStorageService } from './local-storage.service';
 import { CloudStorageService } from './cloud-storage.service';
+import { StorageController } from './storage.controller';
 
 /**
  * Storage Module
@@ -16,7 +17,7 @@ import { CloudStorageService } from './cloud-storage.service';
 @Global()
 @Module({
   imports: [ConfigModule],
-  controllers: [require('./storage.controller').StorageController],
+  controllers: [StorageController],
   providers: [
     {
       provide: 'IStorageService',

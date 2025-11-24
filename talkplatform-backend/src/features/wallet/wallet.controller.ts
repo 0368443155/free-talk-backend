@@ -11,7 +11,7 @@ import {
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { WalletService } from './wallet.service';
 
-@Controller('api/v1/wallet')
+@Controller('wallet')
 @UseGuards(JwtAuthGuard)
 export class WalletController {
   constructor(private readonly walletService: WalletService) {}

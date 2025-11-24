@@ -26,7 +26,7 @@ import { LocalStorageService } from './local-storage.service';
  * Endpoints để upload/download files
  * Hỗ trợ cả direct upload và pre-signed URLs
  */
-@Controller('api/v1/storage')
+@Controller('storage')
 export class StorageController {
   private readonly logger = new Logger(StorageController.name);
 
@@ -91,12 +91,15 @@ export class StorageController {
       );
     }
 
-    // Generate key nếu không có
+    // Generate key nếu không có, hoặc dùng key từ query param
     const fileKey = key || this.generateKey(file.originalname, folder);
+    
+    // Nếu có folder trong query và key không có, prepend vào key
+    const finalKey = folder && !key ? `${folder}/${fileKey}` : fileKey;
 
     // Upload file
     const url = await this.storageService.uploadFile(
-      fileKey,
+      finalKey,
       file.buffer,
       file.mimetype,
       {
@@ -106,11 +109,11 @@ export class StorageController {
       },
     );
 
-    this.logger.log(`File uploaded: ${fileKey} by user ${req?.user?.id || 'anonymous'}`);
+    this.logger.log(`File uploaded: ${finalKey} by user ${req?.user?.id || 'anonymous'}`);
 
     return {
       success: true,
-      key: fileKey,
+      key: finalKey,
       url,
       size: file.size,
       mimeType: file.mimetype,
@@ -120,25 +123,33 @@ export class StorageController {
 
   /**
    * Tạo pre-signed URL để upload từ client
-   * GET /api/v1/storage/presigned-upload?key=...&mimeType=...
+   * GET /api/v1/storage/presigned-upload?key=...&mimeType=...&folder=...
    */
   @Get('presigned-upload')
+  @UseGuards(JwtAuthGuard)
   async getPresignedUploadUrl(
     @Query('key') key: string,
     @Query('mimeType') mimeType: string,
+    @Query('folder') folder?: string,
     @Query('expiresIn') expiresIn?: string,
+    @Request() req?: any,
   ) {
     if (!key || !mimeType) {
       throw new BadRequestException('key and mimeType are required');
     }
 
+    // Nếu có folder, prepend vào key
+    const finalKey = folder ? `${folder}/${key}` : key;
+
     const expires = expiresIn ? parseInt(expiresIn, 10) : 3600;
-    const url = await this.storageService.getPresignedUploadUrl(key, mimeType, expires);
+    const url = await this.storageService.getPresignedUploadUrl(finalKey, mimeType, expires);
+
+    this.logger.log(`Presigned upload URL generated for key: ${finalKey} by user ${req?.user?.id || 'anonymous'}`);
 
     return {
       success: true,
       url,
-      key,
+      key: finalKey,
       expiresIn: expires,
     };
   }

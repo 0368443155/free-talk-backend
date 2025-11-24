@@ -89,7 +89,12 @@ export class TeacherVerificationService {
 
     verification.status = VerificationStatus.PENDING;
     verification.last_submitted_at = new Date();
-    verification.resubmission_count += 1;
+    // Chỉ increment nếu đã có verification trước đó
+    if (verification.resubmission_count === undefined || verification.resubmission_count === null) {
+      verification.resubmission_count = 0;
+    } else {
+      verification.resubmission_count += 1;
+    }
 
     const saved = await this.verificationRepository.save(verification);
 
@@ -101,21 +106,12 @@ export class TeacherVerificationService {
   /**
    * Lấy trạng thái verification
    */
-  async getVerificationStatus(userId: string): Promise<TeacherVerification> {
+  async getVerificationStatus(userId: string): Promise<TeacherVerification | null> {
     const verification = await this.verificationRepository.findOne({
       where: { user_id: userId },
     });
 
-    if (!verification) {
-      // Tạo mới nếu chưa có
-      return this.verificationRepository.create({
-        user_id: userId,
-        status: VerificationStatus.PENDING,
-        documents: {},
-        additional_info: {},
-      });
-    }
-
+    // Trả về null nếu chưa có verification (frontend sẽ xử lý)
     return verification;
   }
 

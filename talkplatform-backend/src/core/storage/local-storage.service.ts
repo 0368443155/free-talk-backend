@@ -27,10 +27,11 @@ export class LocalStorageService implements IStorageService {
     );
 
     // Base URL để tạo public URL
+    // Default: http://localhost:3000 (backend port)
     this.baseUrl =
       this.configService.get<string>('BACKEND_URL') ||
       this.configService.get<string>('STORAGE_LOCAL_BASE_URL') ||
-      'http://localhost:3001';
+      'http://localhost:3000';
 
     // Max file size (default: 100MB)
     this.maxFileSize =
@@ -98,11 +99,10 @@ export class LocalStorageService implements IStorageService {
     mimeType: string,
     expiresIn: number = 3600,
   ): Promise<string> {
-    // Local storage không cần pre-signed URL
-    // Trả về endpoint upload thông thường
-    // Trong thực tế, client sẽ upload trực tiếp lên server
+    // Local storage: trả về endpoint POST để upload trực tiếp
+    // Frontend sẽ dùng POST method với FormData
     const uploadEndpoint = `${this.baseUrl}/api/v1/storage/upload`;
-    return `${uploadEndpoint}?key=${encodeURIComponent(key)}&expires=${Date.now() + expiresIn * 1000}`;
+    return `${uploadEndpoint}?key=${encodeURIComponent(key)}&mimeType=${encodeURIComponent(mimeType)}`;
   }
 
   async getPresignedDownloadUrl(key: string, expiresIn: number = 3600): Promise<string> {

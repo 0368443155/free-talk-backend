@@ -27,7 +27,7 @@ export interface CreateBookingSlotDto {
   price_credits: number;
 }
 
-@Controller('api/v1/teachers')
+@Controller('teachers')
 @UseGuards(JwtAuthGuard)
 export class BookingSlotsController {
   constructor(

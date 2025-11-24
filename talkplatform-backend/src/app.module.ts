@@ -91,6 +91,7 @@ import { TypeOrmModule as DebugTypeOrmModule } from '@nestjs/typeorm';
         require('./features/credits/credits.module').CreditsModule,
         require('./features/wallet/wallet.module').WalletModule,
         require('./features/teachers/enhanced-teachers.module').EnhancedTeachersModule,
+        require('./features/teachers/teacher-verification.module').TeacherVerificationModule,
         require('./core/storage/storage.module').StorageModule,
         require('./features/booking/booking.module').BookingModule,
 

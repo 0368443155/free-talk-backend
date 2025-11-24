@@ -3,7 +3,7 @@ import { JwtAuthGuard } from '../../../auth/jwt-auth.guard';
 import { MaterialService } from '../services/material.service';
 import { FilterMaterialDto } from '../dto/filter-material.dto';
 
-@Controller('api/v1/marketplace/materials')
+@Controller('marketplace/materials')
 export class StudentMaterialController {
     constructor(private readonly materialService: MaterialService) { }
 
