@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Users, Video, GraduationCap, ArrowRight, ShieldCheck, Clock } from "lucide-react";
 import BecomeTeacherButton from "@/components/become-teacher-button";
+import { GlobalChatPanel } from "@/components/global-chat/global-chat-panel";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -50,7 +51,10 @@ export default function DashboardPage() {
 
   return (
     <div className="container mx-auto p-6 max-w-7xl">
-      <div className="mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Main Content - 2 columns on large screens */}
+        <div className="lg:col-span-2 space-y-6">
+          <div className="mb-8">
         <div className="flex items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold mb-2">Welcome back, {user.username}!</h1>
@@ -183,6 +187,17 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       )}
+        </div>
+
+        {/* Global Chat Panel - Right Sidebar */}
+        <div className="lg:col-span-1">
+          <Card className="h-[calc(100vh-12rem)] flex flex-col">
+            <CardContent className="p-0 flex-1 min-h-0">
+              <GlobalChatPanel className="h-full" />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }
