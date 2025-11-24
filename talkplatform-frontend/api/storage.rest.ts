@@ -27,11 +27,23 @@ export const getPresignedDownloadUrlApi = async (key: string, expiresIn?: number
 };
 
 export const uploadFileApi = async (file: File, presignedUrl: string): Promise<void> => {
-  await fetch(presignedUrl, {
-    method: 'PUT',
-    body: file,
+  // Parse URL để lấy query params
+  const url = new URL(presignedUrl);
+  
+  // Local storage: upload qua POST endpoint với FormData
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  // Upload qua axiosConfig để có JWT token tự động
+  // Extract path từ URL (bỏ domain và /api/v1 vì đã có trong baseURL)
+  // presignedUrl format: http://localhost:3000/api/v1/storage/upload?key=...
+  // baseURL: http://localhost:3000/api/v1
+  // Nên path sẽ là: /storage/upload?key=...
+  const pathWithQuery = url.pathname.replace('/api/v1', '') + url.search;
+  
+  await axiosConfig.post(pathWithQuery, formData, {
     headers: {
-      'Content-Type': file.type,
+      'Content-Type': 'multipart/form-data',
     },
   });
 };
