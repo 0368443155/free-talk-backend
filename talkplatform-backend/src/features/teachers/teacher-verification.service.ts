@@ -237,7 +237,10 @@ export class TeacherVerificationService {
       throw new NotFoundException('Verification not found');
     }
 
-    // Tìm document key trong documents
+    // Decode documentKey from URL encoding
+    const decodedKey = decodeURIComponent(documentKey);
+
+    // Tìm document key trong documents (so sánh cả encoded và decoded)
     const allKeys = [
       verification.documents?.identity_card_front,
       verification.documents?.identity_card_back,
@@ -246,12 +249,22 @@ export class TeacherVerificationService {
       ...(verification.documents?.teaching_certificates?.map((d) => d.key) || []),
     ];
 
-    if (!allKeys.includes(documentKey)) {
+    // Tìm key match (có thể là encoded hoặc decoded)
+    const matchedKey = allKeys.find(
+      (key) => key === documentKey || key === decodedKey || decodeURIComponent(key || '') === decodedKey
+    );
+
+    if (!matchedKey) {
+      this.logger.warn(`Document key not found: ${documentKey} (decoded: ${decodedKey})`);
+      this.logger.debug(`Available keys: ${JSON.stringify(allKeys)}`);
       throw new NotFoundException('Document not found');
     }
 
+    // Sử dụng matchedKey (có thể là original key từ database)
+    const finalKey = matchedKey;
+
     // Tạo pre-signed URL (expires in 1 hour)
-    return await this.storageService.getPresignedDownloadUrl(documentKey, 3600);
+    return await this.storageService.getPresignedDownloadUrl(finalKey, 3600);
   }
 }
 

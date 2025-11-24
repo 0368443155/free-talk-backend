@@ -1,91 +1,125 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Users, UserPlus, Edit, Trash2, Search, Shield, UserCheck, UserX } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { useToast } from '@/components/ui/use-toast';
+import { Users, UserPlus, Edit, Trash2, Search, Shield, UserCheck, UserX, Coins, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { 
+  adminListUsersApi, 
+  adminUpdateUserRoleApi, 
+  adminUpdateUserApi,
+  adminDeleteUserApi,
+  adminCreateUserApi,
+  adminAdjustCreditsApi,
+  IUser,
+  UserRole,
+  IUserListResponse
+} from '@/api/admin.rest';
 
-interface User {
-  id: string;
-  username: string;
-  email: string;
-  role: 'ADMIN' | 'TEACHER' | 'STUDENT';
-  isActive: boolean;
-  createdAt: string;
-  lastLogin?: string;
+interface UserWithStats extends IUser {
+  isActive?: boolean; // Derived from role or other logic
 }
 
 export function AdminUserManagement() {
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<UserWithStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
+  const [selectedUser, setSelectedUser] = useState<UserWithStats | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isCreditDialogOpen, setIsCreditDialogOpen] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [creditTargetId, setCreditTargetId] = useState<string | null>(null);
+  const [creditAction, setCreditAction] = useState<'delta' | 'setTo'>('delta');
+  const [creditValue, setCreditValue] = useState<string>('');
+  const [newUser, setNewUser] = useState({ username: '', email: '', password: '', role: 'student' as UserRole });
+  const { toast } = useToast();
 
-  // Mock data - replace with actual API calls
-  const mockUsers: User[] = [
-    {
-      id: '1',
-      username: 'admin',
-      email: 'admin@example.com',
-      role: 'ADMIN',
-      isActive: true,
-      createdAt: '2024-01-15T10:30:00Z',
-      lastLogin: '2024-01-19T14:22:00Z'
-    },
-    {
-      id: '2',
-      username: 'teacher1',
-      email: 'teacher1@example.com',
-      role: 'TEACHER',
-      isActive: true,
-      createdAt: '2024-01-16T09:15:00Z',
-      lastLogin: '2024-01-19T13:45:00Z'
-    },
-    {
-      id: '3',
-      username: 'student1',
-      email: 'student1@example.com',
-      role: 'STUDENT',
-      isActive: false,
-      createdAt: '2024-01-17T11:20:00Z',
-      lastLogin: '2024-01-18T16:30:00Z'
+  // Fetch users from API
+  const fetchUsers = useCallback(async () => {
+    try {
+      setLoading(true);
+      const params: any = {
+        page: pagination.page,
+        limit: pagination.limit,
+      };
+      
+      if (roleFilter !== 'all') {
+        params.role = roleFilter.toLowerCase();
+      }
+      
+      if (searchTerm.trim()) {
+        params.search = searchTerm.trim();
+      }
+      
+      const response: IUserListResponse = await adminListUsersApi(params);
+      setUsers(response.data.map(user => ({ ...user, isActive: true }))); // All users are active by default
+      setPagination({
+        page: response.page,
+        limit: response.limit,
+        total: response.total,
+        totalPages: response.totalPages,
+      });
+    } catch (error: any) {
+      console.error('Failed to fetch users:', error);
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || "Failed to fetch users",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
-  ];
+  }, [pagination.page, pagination.limit, roleFilter, searchTerm, toast]);
 
   useEffect(() => {
-    // Simulate API call
-    setTimeout(() => {
-      setUsers(mockUsers);
-      setLoading(false);
-    }, 1000);
-  }, []);
+    fetchUsers();
+  }, [fetchUsers]);
 
-  // Filter users based on search term, role, and status
-  const filteredUsers = users.filter(user => {
-    const matchesSearch = user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         user.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRole = roleFilter === 'all' || user.role === roleFilter;
-    const matchesStatus = statusFilter === 'all' || 
-                         (statusFilter === 'active' && user.isActive) ||
-                         (statusFilter === 'inactive' && !user.isActive);
-    
-    return matchesSearch && matchesRole && matchesStatus;
-  });
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (pagination.page === 1) {
+        fetchUsers();
+      } else {
+        setPagination(prev => ({ ...prev, page: 1 }));
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setPagination(prev => ({ ...prev, page: 1 }));
+  }, [roleFilter]);
+
+  // Calculate stats
+  const stats = {
+    total: pagination.total,
+    admins: users.filter(u => u.role === 'admin').length,
+    teachers: users.filter(u => u.role === 'teacher').length,
+    students: users.filter(u => u.role === 'student').length,
+    active: users.length, // All users are active
+  };
 
   // Get role badge variant
   const getRoleBadgeVariant = (role: string) => {
     switch (role) {
-      case 'ADMIN': return 'destructive';
-      case 'TEACHER': return 'default';
-      case 'STUDENT': return 'secondary';
+      case 'admin': return 'destructive';
+      case 'teacher': return 'default';
+      case 'student': return 'secondary';
       default: return 'outline';
     }
   };
@@ -101,66 +135,133 @@ export function AdminUserManagement() {
     });
   };
 
-  // Handle user activation/deactivation
-  const toggleUserStatus = async (userId: string, currentStatus: boolean) => {
+  // Handle role change
+  const handleUpdateRole = async (userId: string, newRole: UserRole) => {
     try {
-      // API call would go here
-      console.log(`${currentStatus ? 'Deactivating' : 'Activating'} user ${userId}`);
-      
-      setUsers(prev => prev.map(user => 
-        user.id === userId ? { ...user, isActive: !currentStatus } : user
-      ));
-    } catch (error) {
-      console.error('Failed to update user status:', error);
+      await adminUpdateUserRoleApi(userId, newRole);
+      toast({
+        title: "Success",
+        description: "User role updated successfully",
+      });
+      await fetchUsers();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || "Failed to update user role",
+        variant: "destructive",
+      });
     }
   };
 
   // Handle user deletion
-  const deleteUser = async (userId: string) => {
-    if (!confirm('Bạn có chắc chắn muốn xóa người dùng này?')) return;
+  const handleDeleteUser = async () => {
+    if (!deleteTargetId) return;
     
     try {
-      // API call would go here
-      console.log(`Deleting user ${userId}`);
-      
-      setUsers(prev => prev.filter(user => user.id !== userId));
-    } catch (error) {
-      console.error('Failed to delete user:', error);
+      await adminDeleteUserApi(deleteTargetId);
+      toast({
+        title: "Success",
+        description: "User deleted successfully",
+      });
+      setIsDeleteDialogOpen(false);
+      setDeleteTargetId(null);
+      await fetchUsers();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || "Failed to delete user",
+        variant: "destructive",
+      });
     }
   };
 
-  // Handle role change
-  const updateUserRole = async (userId: string, newRole: 'ADMIN' | 'TEACHER' | 'STUDENT') => {
-    try {
-      // API call would go here
-      console.log(`Updating user ${userId} role to ${newRole}`);
-      
-      setUsers(prev => prev.map(user => 
-        user.id === userId ? { ...user, role: newRole } : user
-      ));
-    } catch (error) {
-      console.error('Failed to update user role:', error);
-    }
-  };
-
-  const handleEditUser = (user: User) => {
+  // Handle user edit
+  const handleEditUser = (user: UserWithStats) => {
     setSelectedUser(user);
     setIsEditDialogOpen(true);
   };
 
-  const handleSaveUser = () => {
+  const handleSaveUser = async () => {
     if (!selectedUser) return;
     
-    // Update user in list
-    setUsers(prev => prev.map(user => 
-      user.id === selectedUser.id ? selectedUser : user
-    ));
-    
-    setIsEditDialogOpen(false);
-    setSelectedUser(null);
+    try {
+      await adminUpdateUserApi(selectedUser.id, {
+        username: selectedUser.username,
+        email: selectedUser.email,
+      });
+      toast({
+        title: "Success",
+        description: "User updated successfully",
+      });
+      setIsEditDialogOpen(false);
+      setSelectedUser(null);
+      await fetchUsers();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || "Failed to update user",
+        variant: "destructive",
+      });
+    }
   };
 
-  if (loading) {
+  // Handle create user
+  const handleCreateUser = async () => {
+    if (!newUser.username || !newUser.email || !newUser.password) {
+      toast({
+        title: "Error",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      await adminCreateUserApi(newUser);
+      toast({
+        title: "Success",
+        description: "User created successfully",
+      });
+      setIsCreateDialogOpen(false);
+      setNewUser({ username: '', email: '', password: '', role: 'student' });
+      await fetchUsers();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || "Failed to create user",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Handle credit adjustment
+  const handleAdjustCredits = async () => {
+    if (!creditTargetId || !creditValue) return;
+
+    try {
+      const payload = creditAction === 'delta' 
+        ? { delta: parseInt(creditValue) }
+        : { setTo: parseInt(creditValue) };
+      
+      await adminAdjustCreditsApi(creditTargetId, payload);
+      toast({
+        title: "Success",
+        description: "User credits updated successfully",
+      });
+      setIsCreditDialogOpen(false);
+      setCreditTargetId(null);
+      setCreditValue('');
+      await fetchUsers();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || "Failed to adjust credits",
+        variant: "destructive",
+      });
+    }
+  };
+
+  if (loading && users.length === 0) {
     return (
       <Card>
         <CardHeader>
@@ -171,7 +272,7 @@ export function AdminUserManagement() {
         </CardHeader>
         <CardContent>
           <div className="flex justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         </CardContent>
       </Card>
@@ -186,21 +287,24 @@ export function AdminUserManagement() {
           <h2 className="text-2xl font-bold">User Management</h2>
           <p className="text-muted-foreground">Manage system users, roles, and permissions</p>
         </div>
-        <Button className="flex items-center gap-2">
+        <Button 
+          className="flex items-center gap-2"
+          onClick={() => setIsCreateDialogOpen(true)}
+        >
           <UserPlus className="h-4 w-4" />
           Add New User
         </Button>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
               <Users className="h-4 w-4 text-blue-600" />
               <div>
                 <p className="text-sm text-muted-foreground">Total Users</p>
-                <p className="text-2xl font-bold">{users.length}</p>
+                <p className="text-2xl font-bold">{stats.total}</p>
               </div>
             </div>
           </CardContent>
@@ -212,7 +316,7 @@ export function AdminUserManagement() {
               <Shield className="h-4 w-4 text-red-600" />
               <div>
                 <p className="text-sm text-muted-foreground">Admins</p>
-                <p className="text-2xl font-bold">{users.filter(u => u.role === 'ADMIN').length}</p>
+                <p className="text-2xl font-bold">{stats.admins}</p>
               </div>
             </div>
           </CardContent>
@@ -223,8 +327,8 @@ export function AdminUserManagement() {
             <div className="flex items-center gap-2">
               <UserCheck className="h-4 w-4 text-green-600" />
               <div>
-                <p className="text-sm text-muted-foreground">Active</p>
-                <p className="text-2xl font-bold">{users.filter(u => u.isActive).length}</p>
+                <p className="text-sm text-muted-foreground">Teachers</p>
+                <p className="text-2xl font-bold">{stats.teachers}</p>
               </div>
             </div>
           </CardContent>
@@ -235,8 +339,20 @@ export function AdminUserManagement() {
             <div className="flex items-center gap-2">
               <UserX className="h-4 w-4 text-orange-600" />
               <div>
-                <p className="text-sm text-muted-foreground">Inactive</p>
-                <p className="text-2xl font-bold">{users.filter(u => !u.isActive).length}</p>
+                <p className="text-sm text-muted-foreground">Students</p>
+                <p className="text-2xl font-bold">{stats.students}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
+              <Coins className="h-4 w-4 text-yellow-600" />
+              <div>
+                <p className="text-sm text-muted-foreground">Active</p>
+                <p className="text-2xl font-bold">{stats.active}</p>
               </div>
             </div>
           </CardContent>
@@ -252,7 +368,7 @@ export function AdminUserManagement() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
@@ -269,20 +385,9 @@ export function AdminUserManagement() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Roles</SelectItem>
-                <SelectItem value="ADMIN">Admin</SelectItem>
-                <SelectItem value="TEACHER">Teacher</SelectItem>
-                <SelectItem value="STUDENT">Student</SelectItem>
-              </SelectContent>
-            </Select>
-            
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="teacher">Teacher</SelectItem>
+                <SelectItem value="student">Student</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -292,122 +397,322 @@ export function AdminUserManagement() {
       {/* Users Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Users ({filteredUsers.length})</CardTitle>
+          <CardTitle>Users ({pagination.total})</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Username</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead>Last Login</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredUsers.map((user) => (
-                <TableRow key={user.id}>
-                  <TableCell className="font-medium">{user.username}</TableCell>
-                  <TableCell>{user.email}</TableCell>
-                  <TableCell>
-                    <Badge variant={getRoleBadgeVariant(user.role)}>
-                      {user.role}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={user.isActive ? "default" : "secondary"}>
-                      {user.isActive ? "Active" : "Inactive"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{formatDate(user.createdAt)}</TableCell>
-                  <TableCell>
-                    {user.lastLogin ? formatDate(user.lastLogin) : 'Never'}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleEditUser(user)}
-                      >
-                        <Edit className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant={user.isActive ? "secondary" : "default"}
-                        size="sm"
-                        onClick={() => toggleUserStatus(user.id, user.isActive)}
-                      >
-                        {user.isActive ? <UserX className="h-3 w-3" /> : <UserCheck className="h-3 w-3" />}
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => deleteUser(user.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : users.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No users found
+            </div>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Username</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Credits</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {users.map((user) => (
+                    <TableRow key={user.id}>
+                      <TableCell className="font-medium">{user.username}</TableCell>
+                      <TableCell>{user.email}</TableCell>
+                      <TableCell>
+                        <Select
+                          value={user.role}
+                          onValueChange={(value: UserRole) => handleUpdateRole(user.id, value)}
+                        >
+                          <SelectTrigger className="w-32">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="admin">Admin</SelectItem>
+                            <SelectItem value="teacher">Teacher</SelectItem>
+                            <SelectItem value="student">Student</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{user.credit_balance}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setCreditTargetId(user.id);
+                              setCreditValue('');
+                              setIsCreditDialogOpen(true);
+                            }}
+                          >
+                            <Coins className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                      <TableCell>{formatDate(user.created_at)}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEditUser(user)}
+                          >
+                            <Edit className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => {
+                              setDeleteTargetId(user.id);
+                              setIsDeleteDialogOpen(true);
+                            }}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {/* Pagination */}
+              {pagination.totalPages > 1 && (
+                <div className="flex items-center justify-between mt-4">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} users
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                      disabled={pagination.page === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </Button>
+                    <span className="text-sm">
+                      Page {pagination.page} of {pagination.totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                      disabled={pagination.page >= pagination.totalPages}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
+
+      {/* Create User Dialog */}
+      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New User</DialogTitle>
+            <DialogDescription>
+              Create a new user account in the system
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Username</Label>
+              <Input
+                value={newUser.username}
+                onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+                placeholder="Enter username"
+              />
+            </div>
+            <div>
+              <Label>Email</Label>
+              <Input
+                type="email"
+                value={newUser.email}
+                onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                placeholder="Enter email"
+              />
+            </div>
+            <div>
+              <Label>Password</Label>
+              <Input
+                type="password"
+                value={newUser.password}
+                onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                placeholder="Enter password"
+              />
+            </div>
+            <div>
+              <Label>Role</Label>
+              <Select
+                value={newUser.role}
+                onValueChange={(value: UserRole) => setNewUser({ ...newUser, role: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="student">Student</SelectItem>
+                  <SelectItem value="teacher">Teacher</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateUser}>
+              Create User
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit User Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit User</DialogTitle>
+            <DialogDescription>
+              Update user information
+            </DialogDescription>
           </DialogHeader>
           {selectedUser && (
             <div className="space-y-4">
               <div>
-                <label className="text-sm font-medium">Username</label>
+                <Label>Username</Label>
                 <Input
                   value={selectedUser.username}
                   onChange={(e) => setSelectedUser({ ...selectedUser, username: e.target.value })}
                 />
               </div>
               <div>
-                <label className="text-sm font-medium">Email</label>
+                <Label>Email</Label>
                 <Input
+                  type="email"
                   value={selectedUser.email}
                   onChange={(e) => setSelectedUser({ ...selectedUser, email: e.target.value })}
                 />
               </div>
               <div>
-                <label className="text-sm font-medium">Role</label>
+                <Label>Role</Label>
                 <Select
                   value={selectedUser.role}
-                  onValueChange={(value: 'ADMIN' | 'TEACHER' | 'STUDENT') => 
-                    setSelectedUser({ ...selectedUser, role: value })
-                  }
+                  onValueChange={(value: UserRole) => setSelectedUser({ ...selectedUser, role: value })}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ADMIN">Admin</SelectItem>
-                    <SelectItem value="TEACHER">Teacher</SelectItem>
-                    <SelectItem value="STUDENT">Student</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="teacher">Teacher</SelectItem>
+                    <SelectItem value="student">Student</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleSaveUser}>
-                  Save Changes
-                </Button>
+              <div>
+                <Label>Credit Balance</Label>
+                <Input
+                  type="number"
+                  value={selectedUser.credit_balance}
+                  disabled
+                  className="bg-muted"
+                />
               </div>
             </div>
           )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveUser}>
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete User Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the user account.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteTargetId(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteUser} className="bg-destructive text-destructive-foreground">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Credit Adjustment Dialog */}
+      <Dialog open={isCreditDialogOpen} onOpenChange={setIsCreditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Adjust User Credits</DialogTitle>
+            <DialogDescription>
+              Add or subtract credits, or set a specific amount
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Action</Label>
+              <Select
+                value={creditAction}
+                onValueChange={(value: 'delta' | 'setTo') => setCreditAction(value)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="delta">Add/Subtract Credits</SelectItem>
+                  <SelectItem value="setTo">Set Credits To</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>{creditAction === 'delta' ? 'Amount to Add/Subtract' : 'Credit Amount'}</Label>
+              <Input
+                type="number"
+                value={creditValue}
+                onChange={(e) => setCreditValue(e.target.value)}
+                placeholder={creditAction === 'delta' ? 'e.g., +100 or -50' : 'e.g., 1000'}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setIsCreditDialogOpen(false);
+              setCreditTargetId(null);
+              setCreditValue('');
+            }}>
+              Cancel
+            </Button>
+            <Button onClick={handleAdjustCredits}>
+              Apply
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

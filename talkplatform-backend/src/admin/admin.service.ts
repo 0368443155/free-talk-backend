@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike } from 'typeorm';
 import { Redis } from 'ioredis';
 import { InjectRedis } from '@nestjs-modules/ioredis';
 import { User, UserRole } from '../users/user.entity';
 import { TeacherProfile } from '../teachers/teacher-profile.entity';
+import { TeacherVerification, VerificationStatus } from '../features/teachers/entities/teacher-verification.entity';
 import { SelectQueryBuilder } from 'typeorm';
 
 @Injectable()
@@ -12,22 +13,29 @@ export class AdminService {
   constructor(
     @InjectRepository(User) private usersRepo: Repository<User>,
     @InjectRepository(TeacherProfile) private teacherRepo: Repository<TeacherProfile>,
+    @InjectRepository(TeacherVerification) private verificationRepo: Repository<TeacherVerification>,
     @InjectRedis() private readonly redis: Redis,
   ) {}
 
   async listUsers(options: { page?: number; limit?: number; role?: UserRole; search?: string }) {
     const { page = 1, limit = 20, role, search } = options;
-    const where: any = {};
-    if (role) where.role = role;
-    if (search) {
-      where.username = ILike(`%${search}%`);
+    const qb = this.usersRepo.createQueryBuilder('user');
+    
+    if (role) {
+      qb.where('user.role = :role', { role });
     }
-    const [data, total] = await this.usersRepo.findAndCount({
-      where,
-      order: { created_at: 'DESC' },
-      skip: (page - 1) * limit,
-      take: limit,
-    });
+    
+    if (search) {
+      qb.andWhere('(user.username ILIKE :search OR user.email ILIKE :search)', {
+        search: `%${search}%`,
+      });
+    }
+    
+    qb.orderBy('user.created_at', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+    
+    const [data, total] = await qb.getManyAndCount();
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
@@ -125,5 +133,112 @@ export class AdminService {
   async setPlatformFees(fees: any) {
     await this.redis.set(this.feesKey, JSON.stringify(fees));
     return fees;
+  }
+
+  async getUserById(userId: string) {
+    const user = await this.usersRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    return user;
+  }
+
+  async updateUser(userId: string, updateData: { username?: string; email?: string }) {
+    const user = await this.usersRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    
+    if (updateData.username) user.username = updateData.username;
+    if (updateData.email) user.email = updateData.email;
+    
+    await this.usersRepo.save(user);
+    return user;
+  }
+
+  async deleteUser(userId: string) {
+    const user = await this.usersRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    
+    // Soft delete: Set role to a special status or use deleted_at field
+    // For now, we'll actually delete the user
+    // In production, consider soft delete with deleted_at field
+    await this.usersRepo.remove(user);
+    return { message: 'User deleted successfully' };
+  }
+
+  async createUser(userData: { username: string; email: string; password: string; role: UserRole }) {
+    // Check if user already exists
+    const existingUser = await this.usersRepo.findOne({
+      where: [{ email: userData.email }, { username: userData.username }],
+    });
+    
+    if (existingUser) {
+      throw new ConflictException('User with this email or username already exists');
+    }
+    
+    const user = this.usersRepo.create({
+      username: userData.username,
+      email: userData.email,
+      password: userData.password, // Will be hashed by BeforeInsert hook
+      role: userData.role,
+    });
+    
+    await this.usersRepo.save(user);
+    // Remove password from response
+    delete (user as any).password;
+    return user;
+  }
+
+  async listTeacherVerifications(options: { 
+    page?: number; 
+    limit?: number; 
+    status?: VerificationStatus; 
+    search?: string 
+  }) {
+    const { page = 1, limit = 20, status, search } = options;
+    
+    const qb = this.verificationRepo.createQueryBuilder('verification')
+      .leftJoinAndSelect('verification.user', 'user')
+      .select([
+        'verification.id',
+        'verification.user_id',
+        'verification.status',
+        'verification.documents',
+        'verification.additional_info',
+        'verification.admin_notes',
+        'verification.rejection_reason',
+        'verification.reviewed_by',
+        'verification.verified_at',
+        'verification.resubmission_count',
+        'verification.last_submitted_at',
+        'verification.created_at',
+        'verification.updated_at',
+        'user.id',
+        'user.username',
+        'user.email',
+        'user.avatar_url',
+      ]);
+
+    if (status) {
+      qb.where('verification.status = :status', { status });
+    }
+
+    if (search) {
+      qb.andWhere('(user.username ILIKE :search OR user.email ILIKE :search)', {
+        search: `%${search}%`,
+      });
+    }
+
+    qb.orderBy('verification.last_submitted_at', 'DESC')
+      .addOrderBy('verification.created_at', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    const [data, total] = await qb.getManyAndCount();
+    
+    return { 
+      data, 
+      total, 
+      page, 
+      limit, 
+      totalPages: Math.ceil(total / limit) 
+    };
   }
 }

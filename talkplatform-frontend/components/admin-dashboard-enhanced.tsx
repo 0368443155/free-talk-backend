@@ -6,8 +6,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { socket } from '../lib/socket';
-import { Activity, ArrowDown, ArrowUp, Users, Server, Wifi, AlertTriangle, Monitor, Database, Cpu, HardDrive } from 'lucide-react';
+import { Activity, ArrowDown, ArrowUp, Users, Server, Wifi, AlertTriangle, Monitor, Database, Cpu, HardDrive, FileCheck } from 'lucide-react';
 import { AdminUserManagement } from './admin-user-management';
+import { AdminTeacherVerification } from './admin-teacher-verification';
 
 interface SystemMetrics {
   totalBandwidth: number;
@@ -277,6 +278,7 @@ export default function AdminDashboardEnhanced({ initialData }: { initialData?: 
           <TabsTrigger value="bandwidth">Bandwidth</TabsTrigger>
           <TabsTrigger value="system">System Health</TabsTrigger>
           <TabsTrigger value="users">User Management</TabsTrigger>
+          <TabsTrigger value="teacher-verifications">Teacher Verifications</TabsTrigger>
           <TabsTrigger value="historical">Historical Data</TabsTrigger>
         </TabsList>
 
@@ -558,6 +560,11 @@ export default function AdminDashboardEnhanced({ initialData }: { initialData?: 
         {/* User Management Tab */}
         <TabsContent value="users" className="space-y-6">
           <AdminUserManagement />
+        </TabsContent>
+
+        {/* Teacher Verifications Tab */}
+        <TabsContent value="teacher-verifications" className="space-y-6">
+          <AdminTeacherVerification />
         </TabsContent>
 
         {/* Historical Data Tab */}
