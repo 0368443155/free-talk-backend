@@ -41,3 +41,4 @@ AND TABLE_NAME = 'teacher_verifications'
 AND COLUMN_NAME IN ('identity_card_front', 'identity_card_back', 'cv_url', 'years_of_experience', 'previous_platforms')
 ORDER BY COLUMN_NAME;
 
+

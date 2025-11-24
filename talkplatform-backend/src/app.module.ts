@@ -31,9 +31,9 @@ import { TypeOrmModule as DebugTypeOrmModule } from '@nestjs/typeorm';
 
         // Serve static files from 'uploads' directory
         // Note: This will serve files from /uploads/* URLs
-        // Make sure STORAGE_LOCAL_DIR matches this path
+        // Use process.cwd() to get the project root directory (works in both dev and production)
         ServeStaticModule.forRoot({
-            rootPath: join(__dirname, '..', 'uploads'),
+            rootPath: join(process.cwd(), 'uploads'),
             serveRoot: '/uploads',
             serveStaticOptions: {
                 index: false, // Disable directory listing

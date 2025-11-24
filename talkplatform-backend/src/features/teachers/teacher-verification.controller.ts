@@ -104,9 +104,13 @@ export class TeacherVerificationController {
   async getDocumentUrl(
     @Param('id') id: string,
     @Param('documentType') documentType: string,
-    @Query('index') index?: number,
+    @Query('index') index?: string,
   ) {
-    const url = await this.verificationService.getDocumentUrl(id, documentType, index ? parseInt(index.toString()) : undefined);
+    // Parse index correctly - handle 0 as valid value
+    const parsedIndex = index !== undefined && index !== null && index !== '' 
+      ? parseInt(index, 10) 
+      : undefined;
+    const url = await this.verificationService.getDocumentUrl(id, documentType, parsedIndex);
     return { url, type: documentType };
   }
 

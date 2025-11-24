@@ -25,14 +25,12 @@ import {
   submitVerificationApi,
   getVerificationStatusApi,
   getDocumentUrlApi,
+  uploadVerificationFileApi,
+  uploadVerificationFilesApi,
   VerificationStatus,
   type SubmitVerificationDto,
   type VerificationStatusResponse,
 } from '@/api/teachers.rest';
-import { 
-  getPresignedUploadUrlApi,
-  uploadFileApi,
-} from '@/api/storage.rest';
 
 export default function TeacherVerificationPage() {
   const router = useRouter();
@@ -52,8 +50,12 @@ export default function TeacherVerificationPage() {
   const [previousPlatforms, setPreviousPlatforms] = useState<string>('');
   const [references, setReferences] = useState<Array<{ name: string; email: string; relationship: string }>>([]);
 
-  // Upload progress
-  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  // Uploaded file URLs
+  const [identityCardFrontUrl, setIdentityCardFrontUrl] = useState<string | null>(null);
+  const [identityCardBackUrl, setIdentityCardBackUrl] = useState<string | null>(null);
+  const [degreeCertificateUrls, setDegreeCertificateUrls] = useState<Array<{ url: string; name: string }>>([]);
+  const [teachingCertificateUrls, setTeachingCertificateUrls] = useState<Array<{ url: string; name: string }>>([]);
+  const [cvUrl, setCvUrl] = useState<string | null>(null);
 
   useEffect(() => {
     loadVerificationStatus();
@@ -77,46 +79,94 @@ export default function TeacherVerificationPage() {
     }
   };
 
-  const uploadFile = async (file: File, folder: string): Promise<string> => {
-    const key = `${folder}/${Date.now()}-${file.name}`;
-    
+  // Upload file to server
+  const handleFileUpload = async (file: File, type: 'identity_front' | 'identity_back' | 'degree' | 'teaching' | 'cv'): Promise<string> => {
     try {
-      // Get pre-signed URL
-      const { url } = await getPresignedUploadUrlApi({
-        key,
-        mimeType: file.type,
-        folder,
-      });
-
-      // Upload file
-      await uploadFileApi(file, url);
-      
-      return key;
-    } catch (error) {
-      console.error('Upload error:', error);
-      throw error;
-    }
-  };
-
-  const handleFileUpload = async (file: File, type: 'identity_front' | 'identity_back' | 'degree' | 'teaching' | 'cv') => {
-    try {
-      const folder = `teacher-verification/${type}`;
-      const key = await uploadFile(file, folder);
-      return key;
-    } catch (error) {
+      const { url } = await uploadVerificationFileApi(file, type);
+      return url;
+    } catch (error: any) {
       toast({
         title: "Upload Failed",
-        description: "Failed to upload file. Please try again.",
+        description: error.response?.data?.message || `Failed to upload ${type} file`,
         variant: "destructive",
       });
       throw error;
     }
   };
 
+  // Handle identity card upload
+  const handleIdentityCardChange = async (file: File | null, side: 'front' | 'back') => {
+    if (!file) {
+      if (side === 'front') setIdentityCardFrontUrl(null);
+      else setIdentityCardBackUrl(null);
+      return;
+    }
+
+    try {
+      const url = await handleFileUpload(file, side === 'front' ? 'identity_front' : 'identity_back');
+      if (side === 'front') {
+        setIdentityCardFrontUrl(url);
+        setIdentityCardFront(file);
+      } else {
+        setIdentityCardBackUrl(url);
+        setIdentityCardBack(file);
+      }
+    } catch (error) {
+      // Error already handled in handleFileUpload
+    }
+  };
+
+  // Handle CV upload
+  const handleCVChange = async (file: File | null) => {
+    if (!file) {
+      setCvUrl(null);
+      return;
+    }
+
+    try {
+      const url = await handleFileUpload(file, 'cv');
+      setCvUrl(url);
+      setCvFile(file);
+    } catch (error) {
+      // Error already handled in handleFileUpload
+    }
+  };
+
+  // Handle certificates upload (multiple files)
+  const handleCertificatesChange = async (files: File[], type: 'degree' | 'teaching') => {
+    if (files.length === 0) {
+      if (type === 'degree') setDegreeCertificateUrls([]);
+      else setTeachingCertificateUrls([]);
+      return;
+    }
+
+    try {
+      const results = await uploadVerificationFilesApi(files, type);
+      const urls = results.map((result, index) => ({
+        url: result.url,
+        name: files[index].name.replace(/\.[^/.]+$/, ''),
+      }));
+
+      if (type === 'degree') {
+        setDegreeCertificateUrls(urls);
+        setDegreeCertificates(files);
+      } else {
+        setTeachingCertificateUrls(urls);
+        setTeachingCertificates(files);
+      }
+    } catch (error: any) {
+      toast({
+        title: "Upload Failed",
+        description: error.response?.data?.message || `Failed to upload ${type} certificates`,
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!identityCardFront || !identityCardBack) {
+    if (!identityCardFrontUrl || !identityCardBackUrl) {
       toast({
         title: "Required Fields",
         description: "Please upload both sides of your identity card",
@@ -128,35 +178,20 @@ export default function TeacherVerificationPage() {
     setLoading(true);
 
     try {
-      // Upload all files
-      const identityCardFrontKey = await handleFileUpload(identityCardFront, 'identity_front');
-      const identityCardBackKey = await handleFileUpload(identityCardBack, 'identity_back');
-      
-      const degreeKeys = await Promise.all(
-        degreeCertificates.map(file => handleFileUpload(file, 'degree'))
-      );
-      
-      const teachingKeys = await Promise.all(
-        teachingCertificates.map(file => handleFileUpload(file, 'teaching'))
-      );
-      
-      let cvUrl: string | undefined;
-      if (cvFile) {
-        const cvKey = await handleFileUpload(cvFile, 'cv');
-        cvUrl = cvKey;
-      }
-
-      // Prepare submission data
+      // Prepare submission data with URLs
       const submitData: SubmitVerificationDto = {
-        identity_card_front: identityCardFrontKey,
-        identity_card_back: identityCardBackKey,
-        degree_certificates: degreeKeys.map((key, index) => ({
-          name: degreeCertificates[index].name,
-          key,
+        identity_card_front: identityCardFrontUrl,
+        identity_card_back: identityCardBackUrl,
+        degree_certificates: degreeCertificateUrls.map((item) => ({
+          name: item.name,
+          file_url: item.url,
+          year: new Date().getFullYear(),
         })),
-        teaching_certificates: teachingKeys.map((key, index) => ({
-          name: teachingCertificates[index].name,
-          key,
+        teaching_certificates: teachingCertificateUrls.map((item) => ({
+          name: item.name,
+          issuer: 'Unknown',
+          file_url: item.url,
+          year: new Date().getFullYear(),
         })),
         cv_url: cvUrl,
         years_of_experience: yearsOfExperience ? parseInt(yearsOfExperience) : undefined,
@@ -266,19 +301,25 @@ export default function TeacherVerificationPage() {
                   <Label>Front Side *</Label>
                   <Input
                     type="file"
-                    accept="image/*,.pdf"
-                    onChange={(e) => setIdentityCardFront(e.target.files?.[0] || null)}
+                    accept="image/*"
+                    onChange={(e) => handleIdentityCardChange(e.target.files?.[0] || null, 'front')}
                     required
                   />
+                  {identityCardFrontUrl && (
+                    <p className="text-xs text-green-600 mt-1">✓ Uploaded successfully</p>
+                  )}
                 </div>
                 <div>
                   <Label>Back Side *</Label>
                   <Input
                     type="file"
-                    accept="image/*,.pdf"
-                    onChange={(e) => setIdentityCardBack(e.target.files?.[0] || null)}
+                    accept="image/*"
+                    onChange={(e) => handleIdentityCardChange(e.target.files?.[0] || null, 'back')}
                     required
                   />
+                  {identityCardBackUrl && (
+                    <p className="text-xs text-green-600 mt-1">✓ Uploaded successfully</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -288,10 +329,13 @@ export default function TeacherVerificationPage() {
               <Label className="text-base font-semibold">Degree Certificates (Optional)</Label>
               <Input
                 type="file"
-                accept="image/*,.pdf"
+                accept="image/*"
                 multiple
-                onChange={(e) => setDegreeCertificates(Array.from(e.target.files || []))}
+                onChange={(e) => handleCertificatesChange(Array.from(e.target.files || []), 'degree')}
               />
+              {degreeCertificateUrls.length > 0 && (
+                <p className="text-xs text-green-600 mt-1">✓ {degreeCertificateUrls.length} file(s) uploaded</p>
+              )}
               {degreeCertificates.length > 0 && (
                 <div className="text-sm text-gray-600">
                   {degreeCertificates.length} file(s) selected
@@ -304,10 +348,13 @@ export default function TeacherVerificationPage() {
               <Label className="text-base font-semibold">Teaching Certificates (Optional)</Label>
               <Input
                 type="file"
-                accept="image/*,.pdf"
+                accept="image/*"
                 multiple
-                onChange={(e) => setTeachingCertificates(Array.from(e.target.files || []))}
+                onChange={(e) => handleCertificatesChange(Array.from(e.target.files || []), 'teaching')}
               />
+              {teachingCertificateUrls.length > 0 && (
+                <p className="text-xs text-green-600 mt-1">✓ {teachingCertificateUrls.length} file(s) uploaded</p>
+              )}
               {teachingCertificates.length > 0 && (
                 <div className="text-sm text-gray-600">
                   {teachingCertificates.length} file(s) selected
@@ -317,12 +364,23 @@ export default function TeacherVerificationPage() {
 
             {/* CV/Resume */}
             <div className="space-y-4">
-              <Label className="text-base font-semibold">CV/Resume (Optional)</Label>
+              <Label className="text-base font-semibold">CV/Resume (Optional - PDF only)</Label>
               <Input
                 type="file"
-                accept=".pdf,.doc,.docx"
-                onChange={(e) => setCvFile(e.target.files?.[0] || null)}
+                accept=".pdf,application/pdf"
+                onChange={(e) => handleCVChange(e.target.files?.[0] || null)}
               />
+              {cvUrl && (
+                <p className="text-xs text-green-600 mt-1">✓ CV uploaded successfully</p>
+              )}
+              {cvFile && cvFile.type !== 'application/pdf' && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    CV must be a PDF file. Please select a PDF file.
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
 
             {/* Additional Info */}

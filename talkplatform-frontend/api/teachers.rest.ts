@@ -67,7 +67,7 @@ export enum VerificationStatus {
 
 export interface DocumentDto {
   name: string;
-  key: string;
+  file_url: string;
   year?: number;
   issuer?: string;
 }
@@ -79,11 +79,20 @@ export interface ReferenceDto {
 }
 
 export interface SubmitVerificationDto {
-  identity_card_front: string; // Storage key
-  identity_card_back: string; // Storage key
-  degree_certificates?: DocumentDto[];
-  teaching_certificates?: DocumentDto[];
-  cv_url?: string;
+  identity_card_front: string; // URL to uploaded image file
+  identity_card_back: string; // URL to uploaded image file
+  degree_certificates?: Array<{
+    name: string;
+    file_url: string; // URL to uploaded image file
+    year?: number;
+  }>;
+  teaching_certificates?: Array<{
+    name: string;
+    issuer?: string;
+    file_url: string; // URL to uploaded image file
+    year?: number;
+  }>;
+  cv_url?: string; // URL to uploaded PDF file
   years_of_experience?: number;
   previous_platforms?: string[];
   references?: ReferenceDto[];
@@ -117,5 +126,41 @@ export const getVerificationStatusApi = async (): Promise<VerificationStatusResp
 
 export const getDocumentUrlApi = async (verificationId: string, documentKey: string): Promise<{ url: string }> => {
   const res = await axiosConfig.get(`/teachers/verification/${verificationId}/document/${documentKey}`);
+  return res.data;
+};
+
+// Upload file for verification
+export const uploadVerificationFileApi = async (
+  file: File,
+  type: 'identity_front' | 'identity_back' | 'degree' | 'teaching' | 'cv'
+): Promise<{ url: string; filePath: string }> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('type', type);
+
+  const res = await axiosConfig.post('/teachers/verification/upload', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return res.data;
+};
+
+// Upload multiple files for certificates
+export const uploadVerificationFilesApi = async (
+  files: File[],
+  type: 'degree' | 'teaching'
+): Promise<Array<{ url: string; filePath: string }>> => {
+  const formData = new FormData();
+  files.forEach((file) => {
+    formData.append('files', file);
+  });
+  formData.append('type', type);
+
+  const res = await axiosConfig.post('/teachers/verification/upload-multiple', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
   return res.data;
 };

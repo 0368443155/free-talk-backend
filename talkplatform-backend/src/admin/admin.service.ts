@@ -26,7 +26,7 @@ export class AdminService {
     }
     
     if (search) {
-      qb.andWhere('(user.username ILIKE :search OR user.email ILIKE :search)', {
+      qb.andWhere('(LOWER(user.username) LIKE LOWER(:search) OR LOWER(user.email) LIKE LOWER(:search))', {
         search: `%${search}%`,
       });
     }
@@ -223,12 +223,12 @@ export class AdminService {
         'degree_certs.id',
         'degree_certs.name',
         'degree_certs.year',
-        'degree_certs.data',
+        'degree_certs.file_url',
         'teaching_certs.id',
         'teaching_certs.name',
         'teaching_certs.issuer',
         'teaching_certs.year',
-        'teaching_certs.data',
+        'teaching_certs.file_url',
         'refs.id',
         'refs.name',
         'refs.email',
@@ -240,7 +240,7 @@ export class AdminService {
     }
 
     if (search) {
-      qb.andWhere('(user.username ILIKE :search OR user.email ILIKE :search)', {
+      qb.andWhere('(LOWER(user.username) LIKE LOWER(:search) OR LOWER(user.email) LIKE LOWER(:search))', {
         search: `%${search}%`,
       });
     }

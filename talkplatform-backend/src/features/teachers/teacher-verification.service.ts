@@ -331,28 +331,34 @@ export class TeacherVerificationService {
         return verificationBack.identity_card_back;
 
       case 'degree_certificate':
-        if (documentIndex === undefined) {
+        if (documentIndex === undefined || documentIndex === null) {
           throw new BadRequestException('Document index is required for degree certificate');
+        }
+        if (documentIndex < 0) {
+          throw new BadRequestException('Document index must be non-negative');
         }
         const degreeCerts = await this.degreeCertRepository.find({
           where: { verification_id: verificationId },
           order: { created_at: 'ASC' },
         });
         if (!degreeCerts || degreeCerts.length <= documentIndex) {
-          throw new NotFoundException('Degree certificate not found');
+          throw new NotFoundException(`Degree certificate at index ${documentIndex} not found`);
         }
         return degreeCerts[documentIndex].file_url;
 
       case 'teaching_certificate':
-        if (documentIndex === undefined) {
+        if (documentIndex === undefined || documentIndex === null) {
           throw new BadRequestException('Document index is required for teaching certificate');
+        }
+        if (documentIndex < 0) {
+          throw new BadRequestException('Document index must be non-negative');
         }
         const teachingCerts = await this.teachingCertRepository.find({
           where: { verification_id: verificationId },
           order: { created_at: 'ASC' },
         });
         if (!teachingCerts || teachingCerts.length <= documentIndex) {
-          throw new NotFoundException('Teaching certificate not found');
+          throw new NotFoundException(`Teaching certificate at index ${documentIndex} not found`);
         }
         return teachingCerts[documentIndex].file_url;
 

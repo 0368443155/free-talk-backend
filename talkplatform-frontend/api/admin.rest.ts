@@ -118,18 +118,36 @@ export interface ITeacherVerification {
   id: string;
   user_id: string;
   status: VerificationStatus;
-  documents: {
-    identity_card_front?: string;
-    identity_card_back?: string;
-    degree_certificates?: Array<{ name: string; key: string; year: number }>;
-    teaching_certificates?: Array<{ name: string; issuer: string; key: string; year: number }>;
-    cv_url?: string;
-  };
-  additional_info: {
-    years_of_experience?: number;
-    previous_platforms?: string[];
-    references?: Array<{ name: string; email: string; relationship: string }>;
-  };
+  // Separate columns instead of JSON
+  identity_card_front?: string; // Base64 encoded image
+  identity_card_back?: string; // Base64 encoded image
+  cv_url?: string; // File path
+  years_of_experience?: number;
+  previous_platforms?: string[];
+  // Relations
+  degree_certificates?: Array<{
+    id: string;
+    name: string;
+    data: string; // Base64 encoded image
+    year: number;
+  }>;
+  teaching_certificates?: Array<{
+    id: string;
+    name: string;
+    issuer: string;
+    data: string; // Base64 encoded image
+    year: number;
+  }>;
+  references?: Array<{
+    id: string;
+    name: string;
+    email: string;
+    relationship: string;
+  }>;
+  // Legacy JSON (deprecated)
+  documents?: any;
+  additional_info?: any;
+  // Admin fields
   admin_notes?: string;
   rejection_reason?: string;
   reviewed_by?: string;
@@ -205,11 +223,15 @@ export const adminRequestInfoApi = async (id: string, notes: string): Promise<IT
   return response.data;
 };
 
-export const adminGetVerificationDocumentUrlApi = async (id: string, documentKey: string): Promise<{ url: string }> => {
+export const adminGetVerificationDocumentUrlApi = async (
+  id: string, 
+  documentType: 'identity_card_front' | 'identity_card_back' | 'degree_certificate' | 'teaching_certificate' | 'cv',
+  index?: number
+): Promise<{ url: string; type: string }> => {
   const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-  // Encode documentKey to handle special characters in the path
-  const encodedKey = encodeURIComponent(documentKey);
-  const response = await axiosConfig.get(`/teachers/verification/${id}/document/${encodedKey}`, {
+  const params = index !== undefined ? { index } : {};
+  const response = await axiosConfig.get(`/teachers/verification/${id}/document/${documentType}`, {
+    params,
     headers: { Authorization: `Bearer ${token}` },
   });
   return response.data;

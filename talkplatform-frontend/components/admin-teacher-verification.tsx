@@ -241,14 +241,20 @@ export function AdminTeacherVerification() {
   };
 
   // Handle view document
-  const handleViewDocument = async (verificationId: string, documentKey: string, documentName: string) => {
+  const handleViewDocument = async (
+    verificationId: string, 
+    documentType: 'identity_card_front' | 'identity_card_back' | 'degree_certificate' | 'teaching_certificate' | 'cv',
+    documentName: string,
+    index?: number
+  ) => {
     try {
-      const { url } = await adminGetVerificationDocumentUrlApi(verificationId, documentKey);
+      const { url } = await adminGetVerificationDocumentUrlApi(verificationId, documentType, index);
       setViewingDocument({ url, name: documentName });
     } catch (error: any) {
+      console.error('Error loading document:', error);
       toast({
         title: "Error",
-        description: error.response?.data?.message || "Failed to load document",
+        description: error.response?.data?.message || `Failed to load document: ${documentName}`,
         variant: "destructive",
       });
     }
@@ -568,7 +574,7 @@ export function AdminTeacherVerification() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleViewDocument(selectedVerification.id, selectedVerification.documents.identity_card_front!, 'Identity Card Front')}
+                      onClick={() => handleViewDocument(selectedVerification.id, 'identity_card_front', 'Identity Card Front')}
                     >
                       <Eye className="h-3 w-3 mr-1" />
                       View Identity Card (Front)
@@ -578,7 +584,7 @@ export function AdminTeacherVerification() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleViewDocument(selectedVerification.id, selectedVerification.documents.identity_card_back!, 'Identity Card Back')}
+                      onClick={() => handleViewDocument(selectedVerification.id, 'identity_card_back', 'Identity Card Back')}
                     >
                       <Eye className="h-3 w-3 mr-1" />
                       View Identity Card (Back)
@@ -594,22 +600,26 @@ export function AdminTeacherVerification() {
                   Degree Certificates
                 </h3>
                 <div className="space-y-2">
-                  {selectedVerification.documents?.degree_certificates?.map((cert, idx) => (
-                    <div key={idx} className="p-3 bg-muted rounded-lg flex justify-between items-center">
-                      <div>
-                        <p className="font-medium">{cert.name}</p>
-                        <p className="text-sm text-muted-foreground">Year: {cert.year}</p>
+                  {selectedVerification.degree_certificates && selectedVerification.degree_certificates.length > 0 ? (
+                    selectedVerification.degree_certificates.map((cert: any, idx: number) => (
+                      <div key={cert.id || idx} className="p-3 bg-muted rounded-lg flex justify-between items-center">
+                        <div>
+                          <p className="font-medium">{cert.name}</p>
+                          <p className="text-sm text-muted-foreground">Year: {cert.year}</p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleViewDocument(selectedVerification.id, 'degree_certificate', cert.name, idx)}
+                        >
+                          <Eye className="h-3 w-3 mr-1" />
+                          View
+                        </Button>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleViewDocument(selectedVerification.id, cert.key, cert.name)}
-                      >
-                        <Eye className="h-3 w-3 mr-1" />
-                        View
-                      </Button>
-                    </div>
-                  )) || <p className="text-muted-foreground">No degree certificates</p>}
+                    ))
+                  ) : (
+                    <p className="text-muted-foreground">No degree certificates</p>
+                  )}
                 </div>
               </div>
 
@@ -619,22 +629,26 @@ export function AdminTeacherVerification() {
                   Teaching Certificates
                 </h3>
                 <div className="space-y-2">
-                  {selectedVerification.documents?.teaching_certificates?.map((cert, idx) => (
-                    <div key={idx} className="p-3 bg-muted rounded-lg flex justify-between items-center">
-                      <div>
-                        <p className="font-medium">{cert.name}</p>
-                        <p className="text-sm text-muted-foreground">{cert.issuer} - {cert.year}</p>
+                  {selectedVerification.teaching_certificates && selectedVerification.teaching_certificates.length > 0 ? (
+                    selectedVerification.teaching_certificates.map((cert: any, idx: number) => (
+                      <div key={cert.id || idx} className="p-3 bg-muted rounded-lg flex justify-between items-center">
+                        <div>
+                          <p className="font-medium">{cert.name}</p>
+                          <p className="text-sm text-muted-foreground">{cert.issuer} - {cert.year}</p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleViewDocument(selectedVerification.id, 'teaching_certificate', cert.name, idx)}
+                        >
+                          <Eye className="h-3 w-3 mr-1" />
+                          View
+                        </Button>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleViewDocument(selectedVerification.id, cert.key, cert.name)}
-                      >
-                        <Eye className="h-3 w-3 mr-1" />
-                        View
-                      </Button>
-                    </div>
-                  )) || <p className="text-muted-foreground">No teaching certificates</p>}
+                    ))
+                  ) : (
+                    <p className="text-muted-foreground">No teaching certificates</p>
+                  )}
                 </div>
               </div>
 
@@ -646,15 +660,32 @@ export function AdminTeacherVerification() {
                     <Label className="text-xs text-muted-foreground">Years of Experience</Label>
                     <p>{selectedVerification.additional_info?.years_of_experience || 'N/A'}</p>
                   </div>
-                  {selectedVerification.documents?.cv_url && (
+                  {selectedVerification.cv_url && (
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleViewDocument(selectedVerification.id, selectedVerification.documents.cv_url!, 'CV')}
+                      onClick={() => handleViewDocument(selectedVerification.id, 'cv', 'CV')}
                     >
                       <Eye className="h-3 w-3 mr-1" />
                       View CV
                     </Button>
+                  )}
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Previous Platforms</Label>
+                    <p>{selectedVerification.previous_platforms?.join(', ') || 'N/A'}</p>
+                  </div>
+                  {selectedVerification.references && selectedVerification.references.length > 0 && (
+                    <div>
+                      <Label className="text-xs text-muted-foreground">References</Label>
+                      <div className="space-y-1">
+                        {selectedVerification.references.map((ref: any, idx: number) => (
+                          <div key={ref.id || idx} className="text-sm">
+                            <p className="font-medium">{ref.name}</p>
+                            <p className="text-xs text-muted-foreground">{ref.email} - {ref.relationship}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
@@ -793,11 +824,21 @@ export function AdminTeacherVerification() {
           </DialogHeader>
           {viewingDocument && (
             <div className="w-full h-[600px] bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden">
-              <iframe
-                src={viewingDocument.url}
-                className="w-full h-full border-0"
-                title={viewingDocument.name}
-              />
+              {viewingDocument.url.startsWith('data:') ? (
+                // Base64 image
+                <img
+                  src={viewingDocument.url}
+                  alt={viewingDocument.name}
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                // PDF file
+                <iframe
+                  src={viewingDocument.url}
+                  className="w-full h-full border-0"
+                  title={viewingDocument.name}
+                />
+              )}
             </div>
           )}
         </DialogContent>

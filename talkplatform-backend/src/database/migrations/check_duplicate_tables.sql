@@ -19,3 +19,4 @@ ORDER BY TABLE_NAME, CREATE_TIME;
 -- DROP TABLE IF EXISTS `teacher_verification_teaching_certificates_old`;
 -- DROP TABLE IF EXISTS `teacher_verification_references_old`;
 
+
