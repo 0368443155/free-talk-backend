@@ -22,7 +22,7 @@ import {
 interface UseLiveKitProps {
   token: string | null;
   serverUrl: string;
-  onConnected?: () => void;
+  onConnected?: (room: Room) => void; // Pass room to callback so localParticipant is available
   onDisconnected?: (reason?: DisconnectReason) => void;
   onParticipantConnected?: (participant: RemoteParticipant) => void;
   onParticipantDisconnected?: (participant: RemoteParticipant) => void;
@@ -101,6 +101,13 @@ export function useLiveKit({
     // Add local participant
     if (room.localParticipant) {
       const local = room.localParticipant;
+      const localCameraPub = Array.from(local.videoTrackPublications.values()).find(
+        pub => pub.source === Track.Source.Camera
+      );
+      const localScreenPub = Array.from(local.videoTrackPublications.values()).find(
+        pub => pub.source === Track.Source.ScreenShare
+      );
+      
       result.push({
         identity: local.identity,
         name: local.name,
@@ -110,25 +117,60 @@ export function useLiveKit({
         connectionQuality: local.connectionQuality.toString(),
         tracks: {
           audio: Array.from(local.audioTrackPublications.values())[0],
-          video: Array.from(local.videoTrackPublications.values())[0],
-          screen: Array.from(local.videoTrackPublications.values()).find(
-            pub => pub.source === Track.Source.ScreenShare
-          ),
+          video: localCameraPub, // Camera track (always separate from screen share)
+          screen: localScreenPub, // Screen share track (separate from camera)
         },
       });
     }
 
     // Add remote participants
+    // CRITICAL: Use Map to ensure unique participants (prevent duplicates)
+    const seenIdentities = new Set<string>();
+    
     room.remoteParticipants.forEach((participant) => {
+      // Skip if we've already seen this participant
+      if (seenIdentities.has(participant.identity)) {
+        console.warn(`⚠️ Duplicate participant identity: ${participant.identity}`);
+        return;
+      }
+      seenIdentities.add(participant.identity);
+      
       const screenSharePub = Array.from(participant.videoTrackPublications.values()).find(
         pub => pub.source === Track.Source.ScreenShare
       );
+      const cameraPub = Array.from(participant.videoTrackPublications.values()).find(
+        pub => pub.source === Track.Source.Camera
+      );
       
-      // Ensure screen share track is subscribed if it exists
+      // CRITICAL: Always subscribe to camera and screen share tracks if they exist
+      // This is called every time transformParticipants runs, ensuring tracks are always subscribed
       if (screenSharePub && !screenSharePub.isSubscribed) {
-        console.log(`📥 Subscribing to screen share track from ${participant.identity}`);
+        console.log(`📥 [transformParticipants] Subscribing to screen share track from ${participant.identity}`);
         screenSharePub.setSubscribed(true);
       }
+      
+      // CRITICAL: Always subscribe to camera track if it exists (important: camera should always be visible)
+      // This ensures that whenever we transform participants, we subscribe to any unsubscribed camera tracks
+      if (cameraPub && !cameraPub.isSubscribed) {
+        console.log(`📥 [transformParticipants] Subscribing to camera track from ${participant.identity}`);
+        cameraPub.setSubscribed(true);
+      }
+      
+      // Also subscribe to all other video tracks
+      participant.videoTrackPublications.forEach((pub) => {
+        if (!pub.isSubscribed) {
+          console.log(`📥 [transformParticipants] Subscribing to video track: ${pub.source} from ${participant.identity}`);
+          pub.setSubscribed(true);
+        }
+      });
+      
+      // Subscribe to audio tracks
+      participant.audioTrackPublications.forEach((pub) => {
+        if (!pub.isSubscribed) {
+          console.log(`📥 [transformParticipants] Subscribing to audio track from ${participant.identity}`);
+          pub.setSubscribed(true);
+        }
+      });
       
       result.push({
         identity: participant.identity,
@@ -139,10 +181,8 @@ export function useLiveKit({
         connectionQuality: participant.connectionQuality.toString(),
         tracks: {
           audio: Array.from(participant.audioTrackPublications.values())[0],
-          video: Array.from(participant.videoTrackPublications.values()).find(
-            pub => pub.source === Track.Source.Camera
-          ),
-          screen: screenSharePub,
+          video: cameraPub, // Camera track (always separate from screen share)
+          screen: screenSharePub, // Screen share track (separate from camera)
         },
       });
     });
@@ -187,8 +227,64 @@ export function useLiveKit({
           setIsConnected(true);
           setIsConnecting(false);
           setLocalParticipant(newRoom.localParticipant);
+          
+          // CRITICAL: Subscribe to all existing participants' tracks when we first connect
+          // This ensures we can see cameras of participants who joined before us
+          // IMPORTANT: Subscribe to ALL publications, even if track is not yet available
+          // This ensures we get the track as soon as it's published
+          (async () => {
+            console.log(`📥 Subscribing to existing participants' tracks...`);
+            for (const participant of newRoom.remoteParticipants.values()) {
+              console.log(`👤 Found existing participant: ${participant.identity}, subscribing to their tracks`);
+              
+              // CRITICAL: Subscribe to ALL video track publications (even if track not yet available)
+              // This ensures we receive the track as soon as it's published
+              for (const pub of participant.videoTrackPublications.values()) {
+                if (!pub.isSubscribed) {
+                  console.log(`📥 Auto-subscribing to video track publication: ${pub.source} from ${participant.identity} (track available: ${!!pub.track})`);
+                  pub.setSubscribed(true);
+                  // Small delay to ensure subscription completes
+                  await new Promise(resolve => setTimeout(resolve, 30));
+                }
+              }
+              
+              // CRITICAL: Subscribe to ALL audio track publications
+              for (const pub of participant.audioTrackPublications.values()) {
+                if (!pub.isSubscribed) {
+                  console.log(`📥 Auto-subscribing to audio track publication from ${participant.identity} (track available: ${!!pub.track})`);
+                  pub.setSubscribed(true);
+                  await new Promise(resolve => setTimeout(resolve, 30));
+                }
+              }
+              
+              // Also subscribe to all track publications (catch-all)
+              for (const pub of participant.trackPublications.values()) {
+                if (!pub.isSubscribed) {
+                  console.log(`📥 Auto-subscribing to track publication: ${pub.kind} from ${participant.identity} (track available: ${!!pub.track})`);
+                  pub.setSubscribed(true);
+                  await new Promise(resolve => setTimeout(resolve, 30));
+                }
+              }
+            }
+            
+            // Update participants list after all subscriptions
+            if (isMounted) {
+              console.log(`✅ Finished subscribing to existing participants' tracks, updating participants list`);
+              setParticipants(transformParticipants(newRoom));
+              
+              // Force update again after a delay to ensure all tracks are subscribed and visible
+              setTimeout(() => {
+                if (isMounted && roomRef.current) {
+                  console.log(`🔄 Force updating participants list after subscription delay`);
+                  setParticipants(transformParticipants(roomRef.current));
+                }
+              }, 500);
+            }
+          })();
+          
           setParticipants(transformParticipants(newRoom));
-          onConnected?.();
+          // Pass room to callback so localParticipant is immediately available
+          onConnected?.(newRoom);
         });
 
         newRoom.on(RoomEvent.Disconnected, (reason) => {
@@ -201,16 +297,62 @@ export function useLiveKit({
           onDisconnected?.(reason);
         });
 
-        newRoom.on(RoomEvent.ParticipantConnected, (participant) => {
+        newRoom.on(RoomEvent.ParticipantConnected, async (participant) => {
           if (!isMounted) return;
           console.log(`👤 Participant connected: ${participant.identity}`);
-          // Subscribe to all tracks when participant connects
-          participant.trackPublications.forEach((pub) => {
-            if (pub.track) {
-              console.log(`📥 Auto-subscribing to track: ${pub.kind} from ${participant.identity}, source: ${pub.source}`);
+          
+          // CRITICAL: Subscribe to ALL track publications (even if track not yet available)
+          // This ensures we receive tracks as soon as they're published
+          // Similar to WebRTC's automatic track exchange
+          for (const pub of participant.trackPublications.values()) {
+            if (!pub.isSubscribed) {
+              console.log(`📥 Auto-subscribing to track publication: ${pub.kind} from ${participant.identity}, source: ${pub.source} (track available: ${!!pub.track})`);
+              pub.setSubscribed(true);
+              // Small delay to ensure subscription completes
+              await new Promise(resolve => setTimeout(resolve, 30));
             }
-          });
+          }
+          
+          // Also explicitly subscribe to video and audio tracks
+          for (const pub of participant.videoTrackPublications.values()) {
+            if (!pub.isSubscribed) {
+              console.log(`📥 Auto-subscribing to video track: ${pub.source} from ${participant.identity}`);
+              pub.setSubscribed(true);
+              await new Promise(resolve => setTimeout(resolve, 30));
+            }
+          }
+          
+          for (const pub of participant.audioTrackPublications.values()) {
+            if (!pub.isSubscribed) {
+              console.log(`📥 Auto-subscribing to audio track from ${participant.identity}`);
+              pub.setSubscribed(true);
+              await new Promise(resolve => setTimeout(resolve, 30));
+            }
+          }
+          
+          // Update participants list immediately
           setParticipants(transformParticipants(newRoom));
+          
+          // Force update again after delay to ensure all tracks are subscribed and visible
+          setTimeout(() => {
+            if (isMounted && roomRef.current) {
+              // Force subscribe again to ensure all participants see the new participant's tracks
+              const newParticipant = Array.from(roomRef.current.remoteParticipants.values())
+                .find(p => p.identity === participant.identity);
+              
+              if (newParticipant) {
+                newParticipant.trackPublications.forEach((pub) => {
+                  if (!pub.isSubscribed) {
+                    console.log(`📥 [ParticipantConnected] Force subscribing to track: ${pub.kind}, source: ${pub.source} from ${participant.identity}`);
+                    pub.setSubscribed(true);
+                  }
+                });
+              }
+              
+              setParticipants(transformParticipants(roomRef.current));
+            }
+          }, 300);
+          
           onParticipantConnected?.(participant);
         });
 
@@ -220,12 +362,44 @@ export function useLiveKit({
           onParticipantDisconnected?.(participant);
         });
 
-        // Listen for track published events to ensure screen share is available
+        // Listen for track published events to ensure screen share and camera are available
         newRoom.on(RoomEvent.TrackPublished, (publication, participant) => {
           if (!isMounted) return;
           console.log(`📤 Track published: ${publication.kind} from ${participant.identity}, source: ${publication.source}`);
-          // Update participants when new tracks are published (especially screen share)
+          
+          // CRITICAL: Auto-subscribe to ALL tracks when published (ensure tracks are always visible)
+          // This mimics WebRTC's automatic track exchange behavior
+          if (!publication.isSubscribed) {
+            console.log(`📥 Auto-subscribing to published track: ${publication.kind}, source: ${publication.source} from ${participant.identity}`);
+            publication.setSubscribed(true);
+          }
+          
+          // Force update participants immediately when track is published
           setParticipants(transformParticipants(newRoom));
+          
+          // Additional update after short delay to ensure track is fully subscribed and visible
+          // This ensures all participants (including those who joined earlier) see the new track
+          setTimeout(() => {
+            if (isMounted && roomRef.current) {
+              // Force subscribe to the newly published track
+              const publishingParticipant = Array.from(roomRef.current.remoteParticipants.values())
+                .find(p => p.identity === participant.identity);
+              
+              if (publishingParticipant) {
+                // Find the specific publication and ensure it's subscribed
+                publishingParticipant.trackPublications.forEach((pub) => {
+                  if (pub.kind === publication.kind && 
+                      pub.source === publication.source && 
+                      !pub.isSubscribed) {
+                    console.log(`📥 [TrackPublished] Force subscribing to track: ${pub.kind}, source: ${pub.source} from ${participant.identity}`);
+                    pub.setSubscribed(true);
+                  }
+                });
+              }
+              
+              setParticipants(transformParticipants(roomRef.current));
+            }
+          }, 200);
         });
 
         newRoom.on(RoomEvent.TrackUnpublished, (publication, participant) => {
@@ -237,8 +411,18 @@ export function useLiveKit({
         newRoom.on(RoomEvent.TrackSubscribed, (track, pub, participant) => {
           if (!isMounted) return;
           console.log(`📥 Track subscribed: ${pub.kind} from ${participant.identity}, source: ${pub.source}`);
+          
           // Force update participants to include newly subscribed tracks
           setParticipants(transformParticipants(newRoom));
+          
+          // CRITICAL: When a track is subscribed, force update UI to reflect the change
+          // This ensures camera feeds appear immediately when subscribed
+          setTimeout(() => {
+            if (isMounted && roomRef.current) {
+              setParticipants(transformParticipants(roomRef.current));
+            }
+          }, 100);
+          
           onTrackSubscribed?.(track, pub, participant);
         });
 
@@ -320,15 +504,26 @@ export function useLiveKit({
 
   // Media control functions
   const enableCamera = useCallback(async (enabled: boolean) => {
-    if (!roomRef.current) return;
+    if (!roomRef.current) {
+      console.warn('⚠️ Cannot enable camera: room not connected');
+      return;
+    }
 
     try {
-      console.log(`📷 Toggling camera: ${enabled}`);
+      console.log(`📷 ${enabled ? 'Enabling' : 'Disabling'} camera...`);
       await roomRef.current.localParticipant.setCameraEnabled(enabled);
-      console.log(`✅ Camera set to: ${enabled}`);
-      setParticipants(transformParticipants(roomRef.current));
+      console.log(`✅ Camera ${enabled ? 'enabled' : 'disabled'} successfully`);
+      
+      // Force update participants to reflect camera state change immediately
+      // Use setTimeout to ensure track is published before updating
+      setTimeout(() => {
+        if (roomRef.current) {
+          setParticipants(transformParticipants(roomRef.current));
+        }
+      }, 200);
     } catch (err) {
-      console.error('Failed to toggle camera:', err);
+      console.error('❌ Failed to toggle camera:', err);
+      throw err;
     }
   }, [transformParticipants]);
 

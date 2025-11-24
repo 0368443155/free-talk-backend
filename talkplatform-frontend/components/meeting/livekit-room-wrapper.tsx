@@ -22,6 +22,8 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { useLiveKit, LiveKitParticipant } from '@/hooks/use-livekit';
 import { useMeetingSocket } from '@/hooks/use-meeting-socket';
+import { useMeetingMedia } from '@/hooks/use-meeting-media';
+import { useMeetingJoin } from '@/hooks/use-meeting-join';
 import { WaitingRoomHostPanel } from './waiting-room-host-panel';
 import { GreenRoom, DeviceSettings } from './green-room';
 import { MeetingControls } from './meeting-controls';
@@ -83,6 +85,7 @@ import {
 
 interface LiveKitRoomWrapperProps {
   meetingId: string;
+  meetingTitle?: string; // Optional meeting title - if not provided, will use meetingId
   user: {
     id: string;
     username: string;
@@ -108,6 +111,7 @@ interface WaitingParticipant {
  */
 export function LiveKitRoomWrapper({
   meetingId,
+  meetingTitle,
   user,
   onLeave,
   isHost = false,
@@ -138,10 +142,6 @@ export function LiveKitRoomWrapper({
     quality: 'good' as 'excellent' | 'good' | 'poor',
   });
 
-  // Track mic/cam state from database (source of truth for UI sync)
-  const [isMicEnabledState, setIsMicEnabledState] = useState(true);
-  const [isCameraEnabledState, setIsCameraEnabledState] = useState(true);
-
   // YouTube Player state
   const [showYouTubeSearch, setShowYouTubeSearch] = useState(false);
   const [youtubeVolume, setYoutubeVolume] = useState(50);
@@ -158,8 +158,7 @@ export function LiveKitRoomWrapper({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const chatInputRef = useRef<HTMLInputElement>(null);
   
-  // Local state
-  const [isJoining, setIsJoining] = useState(false);
+  // isJoining is now managed by useMeetingJoin hook
 
   const { toast } = useToast();
   const { addReaction, ReactionOverlay: ReactionComponent } = useReactions();
@@ -197,23 +196,23 @@ export function LiveKitRoomWrapper({
     setIsOnline(currentParticipant ? (currentParticipant.is_online !== false) : false);
   }, [currentParticipant]);
 
-  // Sync mic/cam state from database when participant data changes
-  useEffect(() => {
-    if (currentParticipant) {
-      const dbIsMuted = (currentParticipant as any).is_muted ?? false;
-      const dbIsVideoOff = (currentParticipant as any).is_video_off ?? false;
-      
-      setIsMicEnabledState(!dbIsMuted);
-      setIsCameraEnabledState(!dbIsVideoOff);
-      
-      console.log('🔄 Synced participant state from database:', {
-        isMuted: dbIsMuted,
-        isVideoOff: dbIsVideoOff,
-        isMicEnabled: !dbIsMuted,
-        isCameraEnabled: !dbIsVideoOff
-      });
-    }
-  }, [currentParticipant]);
+  // Meeting join hook
+  const { joinMeeting, isJoining } = useMeetingJoin({
+    meetingId,
+    isPublicMeeting,
+    classroomId,
+    onJoinSuccess: (token, wsUrl, deviceSettings) => {
+      console.log('✅ Join success, setting token (phase will be set when LiveKit connects)');
+      setLivekitToken(token);
+      setLivekitWsUrl(wsUrl);
+      setDeviceSettings(deviceSettings);
+      // Don't set phase here - let onConnected set it when LiveKit actually connects
+    },
+    onJoinError: (error) => {
+      console.error('❌ Join error:', error);
+      // Phase stays as 'green-room' on error
+    },
+  });
 
   // Socket.IO connection - MUST be after isOnline is set
   const { socket, isConnected: isSocketConnected, connectionError: socketError } = useMeetingSocket({
@@ -266,77 +265,69 @@ export function LiveKitRoomWrapper({
   } = useLiveKit({
     token: livekitToken,
     serverUrl: livekitWsUrl,
-    onConnected: async () => {
+    onConnected: async (connectedRoom) => {
       setPhase('meeting');
       toast({
         title: "Connected",
         description: "You have joined the meeting",
       });
       
-      // Enable camera and microphone based on database state (synced from green-room)
-      // Use setTimeout to ensure localParticipant is ready
+      // Enable camera and microphone IMMEDIATELY based on deviceSettings from green-room
+      // Use connectedRoom.localParticipant directly (guaranteed to be available)
       setTimeout(async () => {
-        if (currentParticipant && room?.localParticipant) {
-          // Get state from database (already synced from green-room via joinMeeting)
+        // Priority: deviceSettings (from green-room) > database state
+        let shouldEnableCamera = deviceSettings?.videoEnabled ?? true;
+        let shouldEnableMic = deviceSettings?.audioEnabled ?? true;
+        
+        // Override with database state if available (for rejoin scenarios)
+        if (currentParticipant) {
           const dbIsMuted = (currentParticipant as any).is_muted ?? false;
           const dbIsVideoOff = (currentParticipant as any).is_video_off ?? false;
-          
-          console.log('🎥 Enabling camera/mic based on database state:', {
-            isMuted: dbIsMuted,
-            isVideoOff: dbIsVideoOff,
-            audioEnabled: !dbIsMuted,
-            videoEnabled: !dbIsVideoOff
-          });
-          
-          try {
-            // Enable camera based on database state
-            if (!dbIsVideoOff) {
-              await enableCamera(true);
-              setIsCameraEnabledState(true);
-              console.log('✅ Camera enabled on room connect (from database)');
-            } else {
-              await enableCamera(false);
-              setIsCameraEnabledState(false);
-              console.log('❌ Camera disabled on room connect (from database)');
-            }
-            
-            // Enable microphone based on database state
-            if (!dbIsMuted) {
-              await enableMicrophone(true);
-              setIsMicEnabledState(true);
-              console.log('✅ Microphone enabled on room connect (from database)');
-            } else {
-              await enableMicrophone(false);
-              setIsMicEnabledState(false);
-              console.log('❌ Microphone disabled on room connect (from database)');
-            }
-          } catch (error) {
-            console.error('❌ Failed to enable camera/mic on room connect:', error);
-          }
-        } else if (deviceSettings && room?.localParticipant) {
-          // Fallback to deviceSettings if currentParticipant not available yet
-          console.log('🎥 Enabling camera/mic based on deviceSettings (fallback):', deviceSettings);
-          try {
-            if (deviceSettings.videoEnabled) {
-              await enableCamera(true);
-              setIsCameraEnabledState(true);
-            } else {
-              await enableCamera(false);
-              setIsCameraEnabledState(false);
-            }
-            
-            if (deviceSettings.audioEnabled) {
-              await enableMicrophone(true);
-              setIsMicEnabledState(true);
-            } else {
-              await enableMicrophone(false);
-              setIsMicEnabledState(false);
-            }
-          } catch (error) {
-            console.error('❌ Failed to enable camera/mic on room connect:', error);
-          }
+          shouldEnableCamera = !dbIsVideoOff;
+          shouldEnableMic = !dbIsMuted;
         }
-      }, 500); // Small delay to ensure localParticipant is ready
+        
+        // Use connectedRoom.localParticipant directly - it's guaranteed to be available
+        const roomLocalParticipant = connectedRoom?.localParticipant;
+        
+        console.log('🎥 Enabling camera/mic on room connect:', {
+          deviceSettings,
+          shouldEnableCamera,
+          shouldEnableMic,
+          hasLocalParticipant: !!roomLocalParticipant,
+          hasRoom: !!connectedRoom
+        });
+        
+        if (roomLocalParticipant) {
+          try {
+            // Enable camera immediately - CRITICAL: Must enable camera first
+            if (shouldEnableCamera) {
+              await enableCamera(true);
+              setIsCameraEnabledState(true);
+              console.log('✅ Camera enabled on room connect');
+            } else {
+              await enableCamera(false);
+              setIsCameraEnabledState(false);
+              console.log('✅ Camera disabled on room connect');
+            }
+            
+            // Enable microphone immediately
+            if (shouldEnableMic) {
+              await enableMicrophone(true);
+              setIsMicEnabledState(true);
+              console.log('✅ Microphone enabled on room connect');
+            } else {
+              await enableMicrophone(false);
+              setIsMicEnabledState(false);
+              console.log('✅ Microphone disabled on room connect');
+            }
+          } catch (error) {
+            console.error('❌ Failed to enable camera/mic on room connect:', error);
+          }
+        } else {
+          console.error('❌ localParticipant not available in connectedRoom');
+        }
+      }, 100); // Small delay to ensure everything is ready
     },
     onDisconnected: () => {
       onLeave();
@@ -359,32 +350,50 @@ export function LiveKitRoomWrapper({
     }
   });
 
+  // Use meeting media hook for camera/mic state management
+  // MUST be after currentParticipant and useLiveKit (for enableCamera, enableMicrophone, localParticipant)
+  const {
+    isMicEnabledState,
+    isCameraEnabledState,
+    handleToggleCamera: handleToggleCameraFromHook,
+    handleToggleMicrophone: handleToggleMicrophoneFromHook,
+    forceCameraState,
+    forceMicState,
+    setIsMicEnabledState,
+    setIsCameraEnabledState,
+  } = useMeetingMedia({
+    currentParticipant,
+    enableCamera,
+    enableMicrophone,
+    localParticipant,
+  });
+
   // fetchParticipants and fetchChatMessages are now provided by hooks
 
-  // Join meeting API
+  // Join meeting API - now handled by useMeetingJoin hook
+  // This is only used for auto-join scenarios
   const handleJoinMeeting = useCallback(async () => {
     if (currentParticipant?.is_online || isJoining) return;
 
     try {
-      setIsJoining(true);
-      if (isPublicMeeting) {
-        await joinPublicMeetingApi(meetingId);
-      } else {
-        await joinMeetingApi(classroomId!, meetingId);
-      }
-      toast({ title: "Success", description: "Joined meeting successfully" });
+      // Use default device settings for auto-join
+      const defaultSettings: DeviceSettings = {
+        audioInput: '',
+        videoInput: '',
+        audioOutput: '',
+        audioEnabled: true,
+        videoEnabled: true,
+        virtualBackground: false,
+        backgroundBlur: 0,
+        audioLevel: 0,
+      };
+      await joinMeeting(defaultSettings);
       await fetchParticipants();
     } catch (error: any) {
       console.error("Failed to join meeting:", error);
-      toast({
-        title: "Error",
-        description: error.response?.data?.message || "Failed to join meeting",
-        variant: "destructive",
-      });
-    } finally {
-      setIsJoining(false);
+      // Error is already handled by useMeetingJoin hook
     }
-  }, [currentParticipant, isJoining, isPublicMeeting, meetingId, classroomId, toast, fetchParticipants]);
+  }, [currentParticipant, isJoining, joinMeeting, fetchParticipants]);
 
   // Initial data fetch
   useEffect(() => {
@@ -444,14 +453,30 @@ export function LiveKitRoomWrapper({
   }, [socket]);
 
   // Socket.IO: Host moderation enforcement
+  // Use refs to prevent duplicate toast notifications
+  const lastMuteEventRef = useRef<{ userId: string; isMuted: boolean; timestamp: number } | null>(null);
+  const lastVideoEventRef = useRef<{ userId: string; isVideoOff: boolean; timestamp: number } | null>(null);
+  
   useEffect(() => {
     if (!socket) return;
 
     const handleForceMute = (data: { userId: string; isMuted: boolean }) => {
+      // Prevent duplicate events within 1 second
+      const now = Date.now();
+      const lastEvent = lastMuteEventRef.current;
+      if (lastEvent && 
+          lastEvent.userId === data.userId && 
+          lastEvent.isMuted === data.isMuted && 
+          (now - lastEvent.timestamp) < 1000) {
+        console.log('⚠️ Duplicate mute event ignored:', data);
+        return;
+      }
+      lastMuteEventRef.current = { ...data, timestamp: now };
+      
       // If it's the current user, enforce the mute state
       if (data.userId === user.id) {
-        // Update UI state immediately
-        setIsMicEnabledState(!data.isMuted);
+        // Update UI state immediately using hook
+        forceMicState(!data.isMuted);
         
         // Always enforce the state from server (don't check current state)
         if (data.isMuted) {
@@ -480,6 +505,18 @@ export function LiveKitRoomWrapper({
     };
 
     const handleForceVideoOff = (data: { userId: string; isVideoOff: boolean }) => {
+      // Prevent duplicate events within 1 second
+      const now = Date.now();
+      const lastEvent = lastVideoEventRef.current;
+      if (lastEvent && 
+          lastEvent.userId === data.userId && 
+          lastEvent.isVideoOff === data.isVideoOff && 
+          (now - lastEvent.timestamp) < 1000) {
+        console.log('⚠️ Duplicate video event ignored:', data);
+        return;
+      }
+      lastVideoEventRef.current = { ...data, timestamp: now };
+      
       // If it's the current user, enforce the video state
       if (data.userId === user.id) {
         const videoTracks = Array.from(localParticipant?.videoTrackPublications.values() || []);
@@ -489,8 +526,8 @@ export function LiveKitRoomWrapper({
         // Check if video track is enabled (not muted and track exists)
         const isCurrentlyEnabled = hasVideoTrack && cameraTracks[0].track && !cameraTracks[0].track.isMuted;
         
-        // Update UI state immediately
-        setIsCameraEnabledState(!data.isVideoOff);
+        // Update UI state immediately using hook
+        forceCameraState(!data.isVideoOff);
         
         console.log('🎥 Force video state check:', {
           userId: data.userId,
@@ -594,83 +631,14 @@ export function LiveKitRoomWrapper({
   }, [room, isLiveKitConnected]);
 
   const handleJoin = async (settings: DeviceSettings) => {
-    setDeviceSettings(settings);
     try {
-      // First, join meeting with deviceSettings to sync state in database
-      console.log('📝 Joining meeting with deviceSettings:', {
-        audioEnabled: settings.audioEnabled,
-        videoEnabled: settings.videoEnabled
-      });
-      
-      if (isPublicMeeting) {
-        await joinPublicMeetingApi(meetingId, {
-          audioEnabled: settings.audioEnabled,
-          videoEnabled: settings.videoEnabled
-        });
-      } else {
-        await joinMeetingApi(classroomId!, meetingId, {
-          audioEnabled: settings.audioEnabled,
-          videoEnabled: settings.videoEnabled
-        });
-      }
-      
-      // Refresh participants to get updated state from database
+      // Use join hook which handles both API join and token generation
+      await joinMeeting(settings);
+      // Refresh participants after successful join
       await fetchParticipants();
-      
-      console.log('✅ Meeting joined, state synced to database');
-      
-      // Then request LiveKit token
-      console.log('🔐 Requesting LiveKit token for meeting:', meetingId);
-      const data = await generateLiveKitTokenApi(meetingId);
-      
-      if (!data || !data.token || !data.wsUrl) {
-        throw new Error('Invalid token response from server');
-      }
-      
-      console.log('✅ LiveKit token received successfully');
-      setLivekitToken(data.token);
-      setLivekitWsUrl(data.wsUrl);
-      setPhase('meeting');
-    } catch (error: any) {
-      console.error("❌ Failed to get LiveKit token:", error);
-      
-      // Extract error message
-      let errorMessage = "Failed to join meeting. Could not generate token.";
-      if (error.response) {
-        // Server responded with error
-        const status = error.response.status;
-        const data = error.response.data;
-        
-        if (status === 400) {
-          errorMessage = data?.message || "Invalid request. Please check your meeting ID.";
-        } else if (status === 401) {
-          errorMessage = "Authentication failed. Please log in again.";
-          // Clear tokens and redirect to login
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem('accessToken');
-            localStorage.removeItem('refreshToken');
-            setTimeout(() => window.location.href = '/login', 2000);
-          }
-        } else if (status === 403) {
-          errorMessage = data?.message || "Access denied. You may not have permission to join this meeting.";
-        } else if (status === 404) {
-          errorMessage = "Meeting not found. Please check the meeting ID.";
-        } else {
-          errorMessage = data?.message || `Server error (${status}). Please try again later.`;
-        }
-      } else if (error.request) {
-        // Request was made but no response received
-        errorMessage = "Network error. Please check your internet connection.";
-      } else {
-        // Something else happened
-        errorMessage = error.message || errorMessage;
-      }
-      
-      toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive",
-      });
+    } catch (error) {
+      // Error is already handled by useMeetingJoin hook
+      console.error('❌ Failed to join meeting:', error);
     }
   };
 
@@ -692,21 +660,9 @@ export function LiveKitRoomWrapper({
     onLeave();
   };
 
-  const handleToggleCamera = async () => {
-    if (localParticipant) {
-      const newState = !isCameraEnabledState;
-      setIsCameraEnabledState(newState);
-      await enableCamera(newState);
-    }
-  };
-
-  const handleToggleMicrophone = async () => {
-    if (localParticipant) {
-      const newState = !isMicEnabledState;
-      setIsMicEnabledState(newState);
-      await enableMicrophone(newState);
-    }
-  };
+  // Use handlers from hook
+  const handleToggleCamera = handleToggleCameraFromHook;
+  const handleToggleMicrophone = handleToggleMicrophoneFromHook;
 
   const handleToggleScreenShare = async () => {
     if (localParticipant) {
@@ -811,9 +767,66 @@ export function LiveKitRoomWrapper({
     }
   };
 
-  // Refresh page
-  const handleRefresh = () => {
-    window.location.reload();
+  // Refresh/reconnect LiveKit without resetting to green-room
+  const handleRefresh = async () => {
+    try {
+      console.log('🔄 Refreshing LiveKit connection (preserving state)...');
+      
+      // Save current device settings to preserve state
+      const currentSettings = deviceSettings || {
+        audioInput: '',
+        videoInput: '',
+        audioOutput: '',
+        audioEnabled: isMicEnabledState,
+        videoEnabled: isCameraEnabledState,
+        virtualBackground: false,
+        backgroundBlur: 0,
+        audioLevel: 0,
+      };
+      
+      // Disconnect current LiveKit connection
+      if (room) {
+        console.log('🔌 Disconnecting current LiveKit connection...');
+        await disconnect();
+      }
+      
+      // Clear current token to force reconnection
+      setLivekitToken(null);
+      setLivekitWsUrl('');
+      
+      // Small delay to ensure disconnect completes
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Request new token (will trigger reconnection)
+      console.log('🔐 Requesting new LiveKit token...');
+      const data = await generateLiveKitTokenApi(meetingId);
+      
+      if (!data || !data.token || !data.wsUrl) {
+        throw new Error('Invalid token response from server');
+      }
+      
+      console.log('✅ New LiveKit token received, reconnecting...');
+      setLivekitToken(data.token);
+      setLivekitWsUrl(data.wsUrl);
+      
+      // Restore device settings so camera/mic state is preserved
+      setDeviceSettings(currentSettings);
+      
+      // Note: useLiveKit hook will automatically reconnect when token changes
+      // Camera/mic state will be restored from deviceSettings in onConnected callback
+      
+      toast({
+        title: "Reconnecting",
+        description: "Refreshing connection while preserving your settings...",
+      });
+    } catch (error: any) {
+      console.error("❌ Failed to refresh connection:", error);
+      toast({
+        title: "Error",
+        description: "Failed to refresh connection. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   // Host participant management
@@ -1027,7 +1040,7 @@ export function LiveKitRoomWrapper({
   if (phase === 'green-room') {
     return (
       <GreenRoom
-        meetingTitle={`Meeting ${meetingId}`}
+        meetingTitle={meetingTitle || `Meeting ${meetingId}`}
         onJoinMeeting={handleJoin}
         onCancel={onLeave}
       />
@@ -1163,10 +1176,8 @@ export function LiveKitRoomWrapper({
 
                     if (hasScreenShare) {
                       // Layout with screen share: Screen share left, participants right of screen share
-                      // Exclude the screen share participant from regular participants list
-                      const participantsWithoutScreenShare = regularParticipants.filter(
-                        p => p.identity !== screenShareParticipant.identity
-                      );
+                      // Include ALL participants in the grid (camera tracks), screen share is shown separately
+                      // This ensures camera is always visible, even when sharing screen
                       
                       return (
                         <div className="flex-1 flex h-full gap-2 p-2">
@@ -1182,13 +1193,14 @@ export function LiveKitRoomWrapper({
                           </div>
 
                           {/* Participants Grid - Vertical on right of screen share */}
-                          {participantsWithoutScreenShare.length > 0 && (
+                          {/* Show ALL participants including the one sharing screen (their camera will show) */}
+                          {regularParticipants.length > 0 && (
                             <div className={`flex-shrink-0 flex flex-col gap-2 overflow-y-auto transition-all duration-300 ${
                               isSidebarCollapsed 
                                 ? 'w-80' // Expand when sidebar is collapsed
                                 : 'w-64' // Normal width when sidebar is open
                             }`}>
-                              {participantsWithoutScreenShare.map((participant) => (
+                              {regularParticipants.map((participant) => (
                                 <div key={participant.identity} className="flex-shrink-0">
                                   <ParticipantTile
                                     participant={participant}
@@ -1202,10 +1214,16 @@ export function LiveKitRoomWrapper({
                       );
                     } else {
                       // Normal grid layout when no screen share
+                      // CRITICAL: Filter out duplicate participants (same identity)
+                      // This prevents showing multiple tiles for the same participant
+                      const uniqueParticipants = regularParticipants.filter((p, index, self) => 
+                        index === self.findIndex(pp => pp.identity === p.identity)
+                      );
+                      
                       return (
                         <div className="h-full overflow-auto p-4">
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                            {regularParticipants.map((participant) => (
+                            {uniqueParticipants.map((participant) => (
                               <ParticipantTile
                                 key={participant.identity}
                                 participant={participant}
@@ -1589,10 +1607,28 @@ function ParticipantTile({ participant, isScreenShare = false, isCompact = false
     : participant.tracks.video;  // Use camera video track otherwise
 
   // Attach video track to video element
+  // CRITICAL: Similar to WebRTC's RemoteVideo - attach track when it becomes available
   useEffect(() => {
-    if (videoRef.current && trackPublication?.track) {
+    if (!videoRef.current || !trackPublication) {
+      setHasVideo(false);
+      return;
+    }
+
+    // Check if track is subscribed and has track object
+    const isSubscribed = trackPublication.isSubscribed;
+    const track = trackPublication.track;
+    
+    console.log(`🎥 [ParticipantTile] ${participant.identity} - Track state:`, {
+      isSubscribed,
+      hasTrack: !!track,
+      source: trackPublication.source,
+      isScreenShare
+    });
+
+    // If track is subscribed but track object not yet available, wait for it
+    if (isSubscribed && track) {
       try {
-        trackPublication.track.attach(videoRef.current);
+        track.attach(videoRef.current);
         setHasVideo(true);
         console.log(`✅ Attached ${isScreenShare ? 'screen share' : 'video'} track for ${participant.identity}`);
       } catch (error) {
@@ -1601,9 +1637,9 @@ function ParticipantTile({ participant, isScreenShare = false, isCompact = false
       }
 
       return () => {
-        if (trackPublication.track && videoRef.current) {
+        if (track && videoRef.current) {
           try {
-            trackPublication.track.detach(videoRef.current);
+            track.detach(videoRef.current);
           } catch (error) {
             console.error(`Failed to detach ${isScreenShare ? 'screen share' : 'video'} track for ${participant.identity}:`, error);
           }
@@ -1611,11 +1647,18 @@ function ParticipantTile({ participant, isScreenShare = false, isCompact = false
       };
     } else {
       setHasVideo(false);
-      if (isScreenShare) {
-        console.log(`⚠️ No screen share track available for ${participant.identity}`);
+      if (isSubscribed && !track) {
+        console.log(`⏳ Track subscribed but track object not yet available for ${participant.identity}, waiting...`);
+      } else if (!isSubscribed) {
+        console.log(`⚠️ Track not subscribed for ${participant.identity}`);
+        // Force subscribe if not subscribed
+        if (trackPublication && !trackPublication.isSubscribed) {
+          console.log(`📥 Force subscribing to track for ${participant.identity}`);
+          trackPublication.setSubscribed(true);
+        }
       }
     }
-  }, [trackPublication, participant.identity, isScreenShare]);
+  }, [trackPublication, trackPublication?.track, trackPublication?.isSubscribed, participant.identity, isScreenShare]);
 
   // Attach audio track to audio element
   useEffect(() => {

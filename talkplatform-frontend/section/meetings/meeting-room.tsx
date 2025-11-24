@@ -892,6 +892,7 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     return (
       <LiveKitRoomWrapper
         meetingId={meeting.id}
+        meetingTitle={meeting.title}
         user={user}
         onLeave={handleLiveKitLeave}
         isHost={isHost}
