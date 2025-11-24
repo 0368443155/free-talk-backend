@@ -3,12 +3,16 @@ import {
   PrimaryGeneratedColumn,
   Column,
   OneToOne,
+  OneToMany,
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
   Index,
 } from 'typeorm';
 import { User } from '../../../users/user.entity';
+import { TeacherVerificationDegreeCertificate } from './teacher-verification-degree-certificate.entity';
+import { TeacherVerificationTeachingCertificate } from './teacher-verification-teaching-certificate.entity';
+import { TeacherVerificationReference } from './teacher-verification-reference.entity';
 
 /**
  * Verification Status
@@ -49,50 +53,50 @@ export class TeacherVerification {
   status: VerificationStatus;
 
   /**
-   * Documents lưu trữ trong JSONB để linh hoạt
-   * 
-   * Cấu trúc:
-   * {
-   *   identity_card_front: string, // R2 Key hoặc URL
-   *   identity_card_back: string,
-   *   degree_certificates: Array<{ name: string, key: string, year: number }>,
-   *   teaching_certificates: Array<{ name: string, issuer: string, key: string, year: number }>,
-   *   cv_url: string,
-   *   background_check: string, // Nếu có
-   * }
+   * Identity Documents - URLs to image files
    */
-  @Column({ type: 'json', nullable: true })
-  documents: {
-    identity_card_front?: string;
-    identity_card_back?: string;
-    degree_certificates?: Array<{
-      name: string;
-      key: string;
-      year: number;
-    }>;
-    teaching_certificates?: Array<{
-      name: string;
-      issuer: string;
-      key: string;
-      year: number;
-    }>;
-    cv_url?: string;
-    background_check?: string;
-  };
+  @Column({ type: 'varchar', length: 500, nullable: true, comment: 'URL to image file in uploads/teacher-verification/image/' })
+  identity_card_front: string;
+
+  @Column({ type: 'varchar', length: 500, nullable: true, comment: 'URL to image file in uploads/teacher-verification/image/' })
+  identity_card_back: string;
 
   /**
-   * Thông tin bổ sung từ giáo viên
+   * CV/Resume - File path in uploads/teacher-verification/document/
+   */
+  @Column({ type: 'varchar', length: 500, nullable: true, comment: 'File path in uploads/teacher-verification/document/' })
+  cv_url: string;
+
+  /**
+   * Additional Information
+   */
+  @Column({ type: 'int', nullable: true, comment: 'Years of teaching experience' })
+  years_of_experience: number;
+
+  @Column({ type: 'json', nullable: true, comment: 'Array of previous platform names' })
+  previous_platforms: string[];
+
+  /**
+   * Relations - Separate tables for better data integrity
+   */
+  @OneToMany(() => TeacherVerificationDegreeCertificate, (cert) => cert.verification, { cascade: true })
+  degree_certificates: TeacherVerificationDegreeCertificate[];
+
+  @OneToMany(() => TeacherVerificationTeachingCertificate, (cert) => cert.verification, { cascade: true })
+  teaching_certificates: TeacherVerificationTeachingCertificate[];
+
+  @OneToMany(() => TeacherVerificationReference, (ref) => ref.verification, { cascade: true })
+  references: TeacherVerificationReference[];
+
+  /**
+   * Legacy JSON columns - kept for backward compatibility during migration
+   * Can be removed after all data is migrated
    */
   @Column({ type: 'json', nullable: true })
-  additional_info: {
-    years_of_experience?: number;
-    previous_platforms?: string[];
-    references?: Array<{
-      name: string;
-      email: string;
-      relationship: string;
-    }>;
-  };
+  documents: any; // Deprecated - use separate columns
+
+  @Column({ type: 'json', nullable: true })
+  additional_info: any; // Deprecated - use separate columns
 
   /**
    * Ghi chú từ admin

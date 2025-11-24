@@ -8,7 +8,11 @@ import {
   Query,
   UseGuards,
   Request,
+  UseInterceptors,
+  UploadedFile,
+  UploadedFiles,
 } from '@nestjs/common';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { RolesGuard } from '../../core/auth/guards/roles.guard';
 import { Roles } from '../../auth/roles.decorator';
@@ -22,6 +26,36 @@ export class TeacherVerificationController {
   constructor(
     private readonly verificationService: TeacherVerificationService,
   ) {}
+
+  /**
+   * Upload file cho verification (ảnh hoặc PDF)
+   * POST /api/v1/teachers/verification/upload
+   * 
+   * type: 'identity_front' | 'identity_back' | 'degree' | 'teaching' | 'cv'
+   */
+  @Post('upload')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadFile(
+    @UploadedFile() file: Express.Multer.File,
+    @Body('type') type: string,
+    @Request() req,
+  ) {
+    return await this.verificationService.uploadFile(req.user.id, file, type);
+  }
+
+  /**
+   * Upload multiple files (cho certificates)
+   * POST /api/v1/teachers/verification/upload-multiple
+   */
+  @Post('upload-multiple')
+  @UseInterceptors(FilesInterceptor('files', 10))
+  async uploadMultipleFiles(
+    @UploadedFiles() files: Express.Multer.File[],
+    @Body('type') type: string,
+    @Request() req,
+  ) {
+    return await this.verificationService.uploadMultipleFiles(req.user.id, files, type);
+  }
 
   /**
    * Nộp hồ sơ xác minh
@@ -56,20 +90,24 @@ export class TeacherVerificationController {
   }
 
   /**
-   * Admin: Lấy document URL
-   * GET /api/v1/teachers/verification/:id/document/:documentKey
+   * Admin: Lấy document để xem
+   * GET /api/v1/teachers/verification/:id/document/:documentType?index=0
+   * 
+   * documentType: identity_card_front, identity_card_back, degree_certificate, teaching_certificate, cv
+   * index: chỉ dùng cho degree_certificate và teaching_certificate (optional)
    * 
    * NOTE: Route này phải được đặt TRƯỚC các route PATCH có :id để tránh conflict
    */
-  @Get(':id/document/:documentKey')
+  @Get(':id/document/:documentType')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
   async getDocumentUrl(
     @Param('id') id: string,
-    @Param('documentKey') documentKey: string,
+    @Param('documentType') documentType: string,
+    @Query('index') index?: number,
   ) {
-    const url = await this.verificationService.getDocumentUrl(id, documentKey);
-    return { url };
+    const url = await this.verificationService.getDocumentUrl(id, documentType, index ? parseInt(index.toString()) : undefined);
+    return { url, type: documentType };
   }
 
   /**

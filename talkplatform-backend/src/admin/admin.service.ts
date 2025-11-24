@@ -196,12 +196,18 @@ export class AdminService {
     
     const qb = this.verificationRepo.createQueryBuilder('verification')
       .leftJoinAndSelect('verification.user', 'user')
+      .leftJoinAndSelect('verification.degree_certificates', 'degree_certs')
+      .leftJoinAndSelect('verification.teaching_certificates', 'teaching_certs')
+      .leftJoinAndSelect('verification.references', 'refs')
       .select([
         'verification.id',
         'verification.user_id',
         'verification.status',
-        'verification.documents',
-        'verification.additional_info',
+        'verification.identity_card_front',
+        'verification.identity_card_back',
+        'verification.cv_url',
+        'verification.years_of_experience',
+        'verification.previous_platforms',
         'verification.admin_notes',
         'verification.rejection_reason',
         'verification.reviewed_by',
@@ -214,6 +220,19 @@ export class AdminService {
         'user.username',
         'user.email',
         'user.avatar_url',
+        'degree_certs.id',
+        'degree_certs.name',
+        'degree_certs.year',
+        'degree_certs.data',
+        'teaching_certs.id',
+        'teaching_certs.name',
+        'teaching_certs.issuer',
+        'teaching_certs.year',
+        'teaching_certs.data',
+        'refs.id',
+        'refs.name',
+        'refs.email',
+        'refs.relationship',
       ]);
 
     if (status) {

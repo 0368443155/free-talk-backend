@@ -34,33 +34,42 @@ export class ReferenceDto {
 }
 
 export class SubmitVerificationDto {
-  // Identity Documents
+  // Identity Documents (URLs to uploaded files)
   @IsNotEmpty()
   @IsString()
-  identity_card_front: string; // Storage key
+  identity_card_front: string; // URL to uploaded image file
 
   @IsNotEmpty()
   @IsString()
-  identity_card_back: string; // Storage key
+  identity_card_back: string; // URL to uploaded image file
 
-  // Degree Certificates
+  // Degree Certificates (URLs to uploaded files)
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => DocumentDto)
-  degree_certificates?: DocumentDto[];
+  degree_certificates?: Array<{
+    name: string;
+    file_url: string; // URL to uploaded image file
+    year?: number;
+  }>;
 
-  // Teaching Certificates (TEFL, TESOL, etc.)
+  // Teaching Certificates (URLs to uploaded files)
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => DocumentDto)
-  teaching_certificates?: DocumentDto[];
+  teaching_certificates?: Array<{
+    name: string;
+    issuer?: string;
+    file_url: string; // URL to uploaded image file
+    year?: number;
+  }>;
 
-  // CV/Resume
+  // CV/Resume (URL to uploaded PDF file)
   @IsOptional()
   @IsString()
-  cv_url?: string;
+  cv_url?: string; // URL to uploaded PDF file
 
   // Additional Info
   @IsOptional()
