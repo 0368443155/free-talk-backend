@@ -17,6 +17,7 @@ import { EventsModule } from './events/events.module';
 import { TasksModule } from './tasks/tasks.module';
 import { LiveKitModule } from './livekit/livekit.module';
 import { MarketplaceModule } from './features/marketplace/marketplace.module';
+import { CoursesModule } from './features/courses/courses.module';
 import { APP_PIPE, APP_INTERCEPTOR, Reflector } from '@nestjs/core';
 import { DebugController } from './debug/debug.controller';
 import { DebugPublicController } from './debug/debug-public.controller';
@@ -86,6 +87,7 @@ import { TypeOrmModule as DebugTypeOrmModule } from '@nestjs/typeorm';
         TasksModule,
         LiveKitModule,
         MarketplaceModule,
+        CoursesModule, // ✅ Added Courses Module
 
         require('./features/livekit-rooms/livekit-rooms.module').LiveKitRoomsModule,
         require('./features/credits/credits.module').CreditsModule,

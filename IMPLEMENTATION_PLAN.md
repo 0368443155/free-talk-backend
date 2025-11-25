@@ -1,716 +1,1048 @@
-# 4Talk Platform - Implementation Plan
+# 4Talk Platform - Detailed Implementation Plan (Updated)
 
-## 📋 Tổng quan
+## 📋 Tổng quan hệ thống
 
-Tài liệu này mô tả kế hoạch triển khai chi tiết cho các tính năng còn lại của hệ thống 4Talk.
+Hệ thống có 2 loại phòng chính:
+1. **Free Talk Rooms** - Phòng miễn phí, tối đa 4 người, tìm theo khu vực
+2. **Paid Courses** - Khóa học trả phí, có thể mua theo buổi hoặc cả khóa
 
 ---
 
-## 🎯 Phase 1: Teacher Schedule Management (Priority: HIGH)
+## 🏗️ Database Schema Overview
 
-### 4.1 Tạo Slot Dạy (Schedule)
+### Core Tables
 
-#### Database Schema
 ```sql
-CREATE TABLE schedules (
+-- Users table (đã có, cần bổ sung)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS region VARCHAR(100);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS latitude DECIMAL(10, 8);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS longitude DECIMAL(11, 8);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS total_earnings DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS total_withdrawals DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS available_balance DECIMAL(10,2) DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS rating DECIMAL(3,2) DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS total_reviews INTEGER DEFAULT 0;
+
+-- Courses table (Khóa học)
+CREATE TABLE courses (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   teacher_id UUID NOT NULL REFERENCES users(id),
   title VARCHAR(255) NOT NULL,
   description TEXT,
-  start_time TIMESTAMP NOT NULL,
-  end_time TIMESTAMP NOT NULL,
-  price DECIMAL(10,2) NOT NULL,
-  max_students INTEGER DEFAULT 10,
-  current_students INTEGER DEFAULT 0,
-  status VARCHAR(50) DEFAULT 'open', -- open, full, cancelled, completed
+  duration_hours INTEGER NOT NULL, -- Tổng thời lượng khóa học (giờ)
+  total_sessions INTEGER NOT NULL, -- Tổng số buổi học
+  price_type VARCHAR(20) NOT NULL, -- 'per_session' hoặc 'full_course'
+  price_per_session DECIMAL(10,2), -- Giá mỗi buổi (nếu bán theo buổi)
+  price_full_course DECIMAL(10,2), -- Giá cả khóa (nếu bán cả khóa)
   language VARCHAR(50),
-  level VARCHAR(50), -- beginner, intermediate, advanced
+  level VARCHAR(50),
+  category VARCHAR(100),
+  status VARCHAR(50) DEFAULT 'upcoming', -- upcoming, ongoing, completed, cancelled
+  max_students INTEGER DEFAULT 20,
+  current_students INTEGER DEFAULT 0,
+  affiliate_code VARCHAR(50) UNIQUE,
+  qr_code_url TEXT,
+  share_link TEXT,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW(),
-  CONSTRAINT valid_time_range CHECK (end_time > start_time),
-  CONSTRAINT valid_price CHECK (price >= 0),
-  CONSTRAINT valid_students CHECK (current_students <= max_students)
+  CONSTRAINT valid_price CHECK (
+    (price_type = 'per_session' AND price_per_session >= 1.00) OR
+    (price_type = 'full_course' AND price_full_course >= 1.00)
+  )
 );
 
-CREATE INDEX idx_schedules_teacher ON schedules(teacher_id);
-CREATE INDEX idx_schedules_status ON schedules(status);
-CREATE INDEX idx_schedules_time ON schedules(start_time, end_time);
-```
+-- Course Sessions (Buổi học trong khóa)
+CREATE TABLE course_sessions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  course_id UUID NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+  session_number INTEGER NOT NULL, -- Buổi số mấy (1, 2, 3...)
+  title VARCHAR(255),
+  description TEXT,
+  scheduled_date DATE NOT NULL,
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  duration_minutes INTEGER NOT NULL,
+  status VARCHAR(50) DEFAULT 'scheduled', -- scheduled, in_progress, completed, cancelled
+  livekit_room_name VARCHAR(255),
+  actual_start_time TIMESTAMP,
+  actual_end_time TIMESTAMP,
+  actual_duration_minutes INTEGER,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(course_id, session_number)
+);
 
-#### Backend API
-- `POST /api/schedules` - Tạo slot mới
-- `GET /api/schedules` - Lấy danh sách slots (filter by teacher, status, date)
-- `GET /api/schedules/:id` - Chi tiết slot
-- `PATCH /api/schedules/:id` - Cập nhật slot
-- `DELETE /api/schedules/:id` - Hủy slot (chỉ khi current_students = 0)
-
-#### Frontend Components
-- `ScheduleCalendar.tsx` - Calendar view với date/time picker
-- `CreateScheduleForm.tsx` - Form tạo slot
-- `ScheduleList.tsx` - Danh sách slots của teacher
-- `ScheduleCard.tsx` - Card hiển thị thông tin slot
-
-#### Validation Rules
-1. Start time phải trong tương lai (> now + 1 hour)
-2. End time > Start time
-3. Duration: min 30 phút, max 4 giờ
-4. Không trùng với slots khác của cùng teacher (status != cancelled)
-5. Price > 0
-
----
-
-## 🎓 Phase 2: Student Booking System (Priority: HIGH)
-
-### 4.2 Booking Flow
-
-#### Database Schema
-```sql
-CREATE TABLE bookings (
+-- Course Enrollments (Đăng ký khóa học)
+CREATE TABLE course_enrollments (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES users(id),
-  schedule_id UUID NOT NULL REFERENCES schedules(id),
-  status VARCHAR(50) DEFAULT 'confirmed', -- confirmed, cancelled, completed, refunded
-  price_paid DECIMAL(10,2) NOT NULL,
-  payment_method VARCHAR(50) DEFAULT 'credit', -- credit, wallet
-  booking_time TIMESTAMP DEFAULT NOW(),
+  course_id UUID NOT NULL REFERENCES courses(id),
+  enrollment_type VARCHAR(20) NOT NULL, -- 'full_course' hoặc 'per_session'
+  total_price_paid DECIMAL(10,2) NOT NULL,
+  payment_status VARCHAR(50) DEFAULT 'pending', -- pending, paid, refunded
+  status VARCHAR(50) DEFAULT 'active', -- active, cancelled, completed
+  enrolled_at TIMESTAMP DEFAULT NOW(),
   cancelled_at TIMESTAMP,
-  refund_amount DECIMAL(10,2),
+  refund_amount DECIMAL(10,2) DEFAULT 0,
+  completion_percentage DECIMAL(5,2) DEFAULT 0, -- % hoàn thành khóa học
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW(),
-  UNIQUE(user_id, schedule_id) -- Không book trùng
+  UNIQUE(user_id, course_id)
 );
 
-CREATE INDEX idx_bookings_user ON bookings(user_id);
-CREATE INDEX idx_bookings_schedule ON bookings(schedule_id);
-CREATE INDEX idx_bookings_status ON bookings(status);
-```
-
-#### Backend API
-- `POST /api/bookings` - Đặt chỗ (với transaction)
-- `GET /api/bookings` - Lấy danh sách bookings của user
-- `GET /api/bookings/:id` - Chi tiết booking
-- `DELETE /api/bookings/:id` - Hủy booking (với refund logic)
-
-#### Transaction Flow (ACID)
-```typescript
-async createBooking(userId: string, scheduleId: string) {
-  return await this.dataSource.transaction(async (manager) => {
-    // 1. Lock schedule row
-    const schedule = await manager.findOne(Schedule, {
-      where: { id: scheduleId },
-      lock: { mode: 'pessimistic_write' }
-    });
-    
-    // 2. Validate
-    if (schedule.status !== 'open') throw new Error('Schedule not available');
-    if (schedule.current_students >= schedule.max_students) throw new Error('Schedule full');
-    
-    // 3. Check user credit
-    const user = await manager.findOne(User, { where: { id: userId } });
-    if (user.credit_balance < schedule.price) throw new Error('Insufficient credit');
-    
-    // 4. Deduct credit
-    await manager.update(User, userId, {
-      credit_balance: () => `credit_balance - ${schedule.price}`
-    });
-    
-    // 5. Create booking
-    const booking = await manager.save(Booking, {
-      user_id: userId,
-      schedule_id: scheduleId,
-      price_paid: schedule.price,
-      status: 'confirmed'
-    });
-    
-    // 6. Update schedule
-    await manager.update(Schedule, scheduleId, {
-      current_students: () => 'current_students + 1',
-      status: schedule.current_students + 1 >= schedule.max_students ? 'full' : 'open'
-    });
-    
-    // 7. Create transaction record
-    await manager.save(Transaction, {
-      user_id: userId,
-      type: 'booking',
-      amount: -schedule.price,
-      reference_id: booking.id,
-      status: 'completed'
-    });
-    
-    return booking;
-  });
-}
-```
-
-#### Frontend Components
-- `ScheduleBrowser.tsx` - Browse available schedules
-- `ScheduleDetail.tsx` - Chi tiết schedule với nút Book
-- `BookingConfirmation.tsx` - Modal xác nhận booking
-- `MyBookings.tsx` - Danh sách bookings của user
-
----
-
-## 💰 Phase 3: Wallet & Payment System (Priority: HIGH)
-
-### 5.1 Wallet Structure
-
-#### Database Schema
-```sql
--- User table already has credit_balance, but we add wallet table for tracking
-CREATE TABLE wallets (
+-- Session Purchases (Mua buổi học riêng lẻ)
+CREATE TABLE session_purchases (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID UNIQUE NOT NULL REFERENCES users(id),
-  balance DECIMAL(10,2) DEFAULT 0 CHECK (balance >= 0),
-  hold_balance DECIMAL(10,2) DEFAULT 0 CHECK (hold_balance >= 0), -- For pending transactions
-  total_earned DECIMAL(10,2) DEFAULT 0, -- For teachers
-  total_spent DECIMAL(10,2) DEFAULT 0, -- For students
+  user_id UUID NOT NULL REFERENCES users(id),
+  course_id UUID NOT NULL REFERENCES courses(id),
+  session_id UUID NOT NULL REFERENCES course_sessions(id),
+  price_paid DECIMAL(10,2) NOT NULL,
+  payment_status VARCHAR(50) DEFAULT 'pending',
+  status VARCHAR(50) DEFAULT 'active', -- active, cancelled, attended, missed
+  purchased_at TIMESTAMP DEFAULT NOW(),
+  cancelled_at TIMESTAMP,
+  refund_amount DECIMAL(10,2) DEFAULT 0,
+  attended BOOLEAN DEFAULT FALSE,
+  attendance_duration_minutes INTEGER DEFAULT 0,
   created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(user_id, session_id)
 );
 
+-- Free Talk Rooms (Phòng Free Talk)
+CREATE TABLE free_talk_rooms (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  host_id UUID NOT NULL REFERENCES users(id),
+  room_name VARCHAR(255) NOT NULL,
+  description TEXT,
+  max_participants INTEGER DEFAULT 4,
+  current_participants INTEGER DEFAULT 0,
+  region VARCHAR(100),
+  language VARCHAR(50),
+  level VARCHAR(50),
+  livekit_room_name VARCHAR(255) UNIQUE,
+  qr_code_url TEXT,
+  share_link TEXT,
+  status VARCHAR(50) DEFAULT 'active', -- active, closed
+  created_at TIMESTAMP DEFAULT NOW(),
+  closed_at TIMESTAMP
+);
+
+-- Free Talk Participants (Người tham gia Free Talk)
+CREATE TABLE free_talk_participants (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  room_id UUID NOT NULL REFERENCES free_talk_rooms(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id),
+  joined_at TIMESTAMP DEFAULT NOW(),
+  left_at TIMESTAMP,
+  duration_minutes INTEGER,
+  UNIQUE(room_id, user_id)
+);
+
+-- Transactions (Giao dịch tài chính)
 CREATE TABLE transactions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES users(id),
-  type VARCHAR(50) NOT NULL, -- deposit, booking, refund, payout, income_class, purchase_material
+  type VARCHAR(50) NOT NULL, -- deposit, purchase_course, purchase_session, refund, withdrawal, commission
   amount DECIMAL(10,2) NOT NULL,
   balance_before DECIMAL(10,2) NOT NULL,
   balance_after DECIMAL(10,2) NOT NULL,
   status VARCHAR(50) DEFAULT 'pending', -- pending, completed, failed, cancelled
-  reference_id UUID, -- booking_id, schedule_id, material_id
-  reference_type VARCHAR(50), -- booking, schedule, material
+  reference_type VARCHAR(50), -- course, session, withdrawal
+  reference_id UUID,
   description TEXT,
   metadata JSONB,
   created_at TIMESTAMP DEFAULT NOW(),
   completed_at TIMESTAMP
 );
 
-CREATE INDEX idx_transactions_user ON transactions(user_id);
-CREATE INDEX idx_transactions_type ON transactions(type);
-CREATE INDEX idx_transactions_status ON transactions(status);
-CREATE INDEX idx_transactions_created ON transactions(created_at DESC);
-```
-
-#### Backend API
-- `GET /api/wallet/balance` - Lấy số dư
-- `POST /api/wallet/deposit` - Nạp tiền (admin only for testing)
-- `GET /api/wallet/transactions` - Lịch sử giao dịch
-- `POST /api/wallet/withdraw` - Rút tiền (teacher only)
-
-#### Admin Tool (Mock Deposit)
-```typescript
-// Admin can add credit for testing
-@Post('admin/wallet/add-credit')
-@UseGuards(AdminGuard)
-async addCredit(
-  @Body() dto: { email: string; amount: number }
-) {
-  return await this.walletService.addCredit(dto.email, dto.amount);
-}
-```
-
----
-
-## 🎁 Phase 4: Affiliate System (Priority: MEDIUM)
-
-### 6.1 Referral Code Generation
-
-#### Database Schema
-```sql
-ALTER TABLE users ADD COLUMN affiliate_code VARCHAR(50) UNIQUE;
-ALTER TABLE users ADD COLUMN referred_by UUID REFERENCES users(id);
-ALTER TABLE users ADD COLUMN total_referrals INTEGER DEFAULT 0;
-ALTER TABLE users ADD COLUMN total_referral_earnings DECIMAL(10,2) DEFAULT 0;
-
-CREATE TABLE referral_earnings (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  referrer_id UUID NOT NULL REFERENCES users(id), -- Teacher who referred
-  referred_user_id UUID NOT NULL REFERENCES users(id), -- Student who was referred
-  schedule_id UUID NOT NULL REFERENCES schedules(id),
-  booking_id UUID NOT NULL REFERENCES bookings(id),
-  original_amount DECIMAL(10,2) NOT NULL,
-  commission_rate DECIMAL(5,2) NOT NULL, -- 0.70 for referred, 0.30 for platform
-  commission_amount DECIMAL(10,2) NOT NULL,
-  status VARCHAR(50) DEFAULT 'pending', -- pending, paid
-  created_at TIMESTAMP DEFAULT NOW(),
-  paid_at TIMESTAMP
-);
-```
-
-#### Auto-generate Affiliate Code
-```typescript
-// When teacher is verified
-async approveTeacher(teacherId: string) {
-  const code = `TEACH${teacherId.substring(0, 8).toUpperCase()}`;
-  await this.userRepository.update(teacherId, {
-    is_verified: true,
-    affiliate_code: code
-  });
-}
-```
-
-#### Tracking Referrals
-```typescript
-// During registration
-async register(dto: RegisterDto, refCode?: string) {
-  let referrerId = null;
-  
-  if (refCode) {
-    const referrer = await this.userRepository.findOne({
-      where: { affiliate_code: refCode, role: 'teacher' }
-    });
-    if (referrer) referrerId = referrer.id;
-  }
-  
-  const user = await this.userRepository.save({
-    ...dto,
-    referred_by: referrerId
-  });
-  
-  if (referrerId) {
-    await this.userRepository.increment(
-      { id: referrerId },
-      'total_referrals',
-      1
-    );
-  }
-  
-  return user;
-}
-```
-
-#### Commission Calculation
-```typescript
-async completeClass(scheduleId: string) {
-  const schedule = await this.scheduleRepository.findOne({
-    where: { id: scheduleId },
-    relations: ['teacher', 'bookings', 'bookings.user']
-  });
-  
-  for (const booking of schedule.bookings) {
-    const student = booking.user;
-    const teacher = schedule.teacher;
-    const amount = booking.price_paid;
-    
-    let teacherShare: number;
-    let commissionRate: number;
-    
-    if (student.referred_by === teacher.id) {
-      // Student came from this teacher's referral
-      teacherShare = amount * 0.70;
-      commissionRate = 0.70;
-    } else {
-      // Platform source
-      teacherShare = amount * 0.30;
-      commissionRate = 0.30;
-    }
-    
-    // Add to teacher wallet
-    await this.walletService.addIncome(teacher.id, teacherShare, {
-      type: 'income_class',
-      schedule_id: scheduleId,
-      booking_id: booking.id
-    });
-    
-    // Record commission
-    if (student.referred_by) {
-      await this.referralEarningRepository.save({
-        referrer_id: teacher.id,
-        referred_user_id: student.id,
-        schedule_id: scheduleId,
-        booking_id: booking.id,
-        original_amount: amount,
-        commission_rate: commissionRate,
-        commission_amount: teacherShare,
-        status: 'paid'
-      });
-    }
-  }
-}
-```
-
----
-
-## 📚 Phase 5: Marketplace (Materials) (Priority: MEDIUM)
-
-### 7.1 Upload & Sell Materials
-
-#### Database Schema
-```sql
-CREATE TABLE teacher_materials (
+-- Withdrawals (Rút tiền của giáo viên)
+CREATE TABLE withdrawals (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   teacher_id UUID NOT NULL REFERENCES users(id),
-  title VARCHAR(255) NOT NULL,
-  description TEXT,
-  price DECIMAL(10,2) NOT NULL CHECK (price >= 0),
-  category VARCHAR(100),
-  language VARCHAR(50),
-  level VARCHAR(50),
-  file_url TEXT NOT NULL, -- S3 private URL
-  preview_url TEXT, -- S3 public URL (first 3 pages)
-  file_size BIGINT,
-  file_type VARCHAR(50),
-  download_count INTEGER DEFAULT 0,
-  purchase_count INTEGER DEFAULT 0,
-  rating DECIMAL(3,2) DEFAULT 0,
-  status VARCHAR(50) DEFAULT 'active', -- active, inactive, deleted
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
+  amount DECIMAL(10,2) NOT NULL,
+  status VARCHAR(50) DEFAULT 'pending', -- pending, processing, completed, rejected
+  bank_account_info JSONB,
+  requested_at TIMESTAMP DEFAULT NOW(),
+  processed_at TIMESTAMP,
+  completed_at TIMESTAMP,
+  notes TEXT
 );
 
-CREATE TABLE material_purchases (
+-- Payment Holds (Giữ tiền khi học viên mua khóa)
+CREATE TABLE payment_holds (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID NOT NULL REFERENCES users(id),
-  material_id UUID NOT NULL REFERENCES teacher_materials(id),
-  price_paid DECIMAL(10,2) NOT NULL,
-  purchased_at TIMESTAMP DEFAULT NOW(),
-  download_count INTEGER DEFAULT 0,
-  last_downloaded_at TIMESTAMP,
-  UNIQUE(user_id, material_id)
+  enrollment_id UUID REFERENCES course_enrollments(id),
+  session_purchase_id UUID REFERENCES session_purchases(id),
+  teacher_id UUID NOT NULL REFERENCES users(id),
+  student_id UUID NOT NULL REFERENCES users(id),
+  amount DECIMAL(10,2) NOT NULL,
+  status VARCHAR(50) DEFAULT 'held', -- held, released, refunded
+  held_at TIMESTAMP DEFAULT NOW(),
+  released_at TIMESTAMP,
+  release_percentage DECIMAL(5,2) DEFAULT 0, -- % tiền được giải phóng
+  notes TEXT
 );
 
-CREATE INDEX idx_materials_teacher ON teacher_materials(teacher_id);
-CREATE INDEX idx_materials_status ON teacher_materials(status);
-CREATE INDEX idx_purchases_user ON material_purchases(user_id);
-CREATE INDEX idx_purchases_material ON material_purchases(material_id);
+-- Reviews (Đánh giá giáo viên)
+CREATE TABLE reviews (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  teacher_id UUID NOT NULL REFERENCES users(id),
+  student_id UUID NOT NULL REFERENCES users(id),
+  course_id UUID REFERENCES courses(id),
+  rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+  comment TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(student_id, course_id)
+);
 ```
 
-#### Backend API
-- `POST /api/materials` - Upload material (teacher only)
-- `GET /api/materials` - Browse materials (with filters)
-- `GET /api/materials/:id` - Material detail
-- `POST /api/materials/:id/purchase` - Purchase material
-- `GET /api/materials/:id/download` - Download (generate signed URL)
+---
 
-#### File Upload Flow
+## 🎓 Phase 1: Course Management (Quản lý Khóa học)
+
+### 1.1 Teacher - Tạo Khóa học
+
+#### API Endpoints
 ```typescript
-async uploadMaterial(teacherId: string, file: Express.Multer.File, dto: CreateMaterialDto) {
-  // 1. Upload original file to S3 (private bucket)
-  const fileKey = `materials/${teacherId}/${Date.now()}_${file.originalname}`;
-  const fileUrl = await this.s3Service.uploadPrivate(fileKey, file.buffer);
+POST   /api/courses                    // Tạo khóa học mới
+GET    /api/courses                    // Lấy danh sách khóa học (filter)
+GET    /api/courses/:id                // Chi tiết khóa học
+PATCH  /api/courses/:id                // Cập nhật khóa học
+DELETE /api/courses/:id                // Xóa khóa học (chỉ khi chưa có học viên)
+POST   /api/courses/:id/sessions       // Thêm buổi học vào khóa
+GET    /api/courses/:id/sessions       // Lấy danh sách buổi học
+PATCH  /api/courses/:id/sessions/:sid  // Cập nhật buổi học
+DELETE /api/courses/:id/sessions/:sid  // Xóa buổi học
+GET    /api/courses/:id/qr-code        // Generate QR code
+GET    /api/courses/:id/share-link     // Generate share link
+```
+
+#### Business Logic
+
+**Tạo khóa học**:
+```typescript
+async createCourse(teacherId: string, dto: CreateCourseDto) {
+  // 1. Validate teacher
+  const teacher = await this.userRepository.findOne({
+    where: { id: teacherId, role: 'teacher', is_verified: true }
+  });
+  if (!teacher) throw new Error('Only verified teachers can create courses');
   
-  // 2. Generate preview (first 3 pages for PDF)
-  let previewUrl = null;
-  if (file.mimetype === 'application/pdf') {
-    const previewBuffer = await this.pdfService.extractPages(file.buffer, 1, 3);
-    const previewKey = `previews/${teacherId}/${Date.now()}_preview.pdf`;
-    previewUrl = await this.s3Service.uploadPublic(previewKey, previewBuffer);
+  // 2. Validate pricing
+  if (dto.price_type === 'per_session' && dto.price_per_session < 1) {
+    throw new Error('Price per session must be at least $1');
+  }
+  if (dto.price_type === 'full_course' && dto.price_full_course < 1) {
+    throw new Error('Full course price must be at least $1');
   }
   
-  // 3. Save to database
-  const material = await this.materialRepository.save({
+  // 3. Create course
+  const course = await this.courseRepository.save({
     teacher_id: teacherId,
     ...dto,
-    file_url: fileUrl,
-    preview_url: previewUrl,
-    file_size: file.size,
-    file_type: file.mimetype
+    affiliate_code: `COURSE_${generateCode()}`,
+    share_link: `${process.env.FRONTEND_URL}/courses/${courseId}`,
   });
   
-  return material;
+  // 4. Generate QR code
+  const qrCodeUrl = await this.qrService.generate(course.share_link);
+  await this.courseRepository.update(course.id, { qr_code_url: qrCodeUrl });
+  
+  return course;
 }
 ```
 
-#### Purchase Flow
+**Thêm buổi học**:
 ```typescript
-async purchaseMaterial(userId: string, materialId: string) {
+async addSession(courseId: string, dto: CreateSessionDto) {
+  const course = await this.courseRepository.findOne({ where: { id: courseId } });
+  
+  // Validate session number
+  const existingSession = await this.sessionRepository.findOne({
+    where: { course_id: courseId, session_number: dto.session_number }
+  });
+  if (existingSession) throw new Error('Session number already exists');
+  
+  // Create session
+  const session = await this.sessionRepository.save({
+    course_id: courseId,
+    ...dto,
+    livekit_room_name: `course_${courseId}_session_${dto.session_number}`,
+  });
+  
+  return session;
+}
+```
+
+### 1.2 Teacher Dashboard
+
+#### Quản lý các khóa học
+```typescript
+GET /api/teachers/me/courses?status=upcoming    // Các khóa sắp diễn ra
+GET /api/teachers/me/courses?status=ongoing     // Các khóa đang diễn ra
+GET /api/teachers/me/courses?status=completed   // Các khóa đã kết thúc
+```
+
+#### Quản lý Doanh thu
+```typescript
+GET /api/teachers/me/revenue/total              // Tổng doanh thu
+GET /api/teachers/me/revenue/by-course/:id      // Doanh thu theo khóa
+GET /api/teachers/me/revenue/by-session/:id     // Doanh thu theo buổi
+GET /api/teachers/me/revenue/refunds            // Tiền refund
+```
+
+**Revenue Calculation**:
+```typescript
+async getTeacherRevenue(teacherId: string) {
+  // Tổng doanh thu = Tổng tiền đã nhận - Tiền refund
+  const totalEarnings = await this.transactionRepository
+    .createQueryBuilder('t')
+    .select('SUM(t.amount)', 'total')
+    .where('t.user_id = :teacherId', { teacherId })
+    .andWhere('t.type IN (:...types)', { types: ['commission', 'session_payment'] })
+    .andWhere('t.status = :status', { status: 'completed' })
+    .getRawOne();
+  
+  const totalRefunds = await this.transactionRepository
+    .createQueryBuilder('t')
+    .select('SUM(t.amount)', 'total')
+    .where('t.user_id = :teacherId', { teacherId })
+    .andWhere('t.type = :type', { type: 'refund' })
+    .getRawOne();
+  
+  const totalWithdrawals = await this.withdrawalRepository
+    .createQueryBuilder('w')
+    .select('SUM(w.amount)', 'total')
+    .where('w.teacher_id = :teacherId', { teacherId })
+    .andWhere('w.status = :status', { status: 'completed' })
+    .getRawOne();
+  
+  const availableBalance = totalEarnings.total - totalRefunds.total - totalWithdrawals.total;
+  
+  return {
+    total_earnings: totalEarnings.total || 0,
+    total_refunds: totalRefunds.total || 0,
+    total_withdrawals: totalWithdrawals.total || 0,
+    available_balance: availableBalance || 0,
+  };
+}
+```
+
+#### Quản lý Thanh toán (Rút tiền)
+```typescript
+POST /api/teachers/me/withdrawals              // Yêu cầu rút tiền
+GET  /api/teachers/me/withdrawals              // Lịch sử rút tiền
+GET  /api/teachers/me/withdrawals/:id          // Chi tiết yêu cầu rút tiền
+```
+
+**Withdrawal Logic**:
+```typescript
+async requestWithdrawal(teacherId: string, amount: number, bankInfo: any) {
   return await this.dataSource.transaction(async (manager) => {
-    const material = await manager.findOne(Material, { where: { id: materialId } });
+    // 1. Check available balance
+    const teacher = await manager.findOne(User, { where: { id: teacherId } });
+    if (teacher.available_balance < amount) {
+      throw new Error('Insufficient balance');
+    }
+    
+    // 2. Create withdrawal request
+    const withdrawal = await manager.save(Withdrawal, {
+      teacher_id: teacherId,
+      amount,
+      bank_account_info: bankInfo,
+      status: 'pending',
+    });
+    
+    // 3. Deduct from available balance
+    await manager.update(User, teacherId, {
+      available_balance: () => `available_balance - ${amount}`,
+    });
+    
+    // 4. Create transaction record
+    await manager.save(Transaction, {
+      user_id: teacherId,
+      type: 'withdrawal',
+      amount: -amount,
+      balance_before: teacher.available_balance,
+      balance_after: teacher.available_balance - amount,
+      reference_type: 'withdrawal',
+      reference_id: withdrawal.id,
+      status: 'pending',
+    });
+    
+    return withdrawal;
+  });
+}
+```
+
+---
+
+## 🎓 Phase 2: Student Enrollment (Học viên đăng ký)
+
+### 2.1 Mua theo buổi học
+
+#### API Endpoints
+```typescript
+POST /api/courses/:id/sessions/:sid/purchase   // Mua 1 buổi học
+POST /api/courses/:id/sessions/:sid/cancel     // Hủy buổi học đã mua
+```
+
+#### Purchase Logic
+```typescript
+async purchaseSession(userId: string, sessionId: string) {
+  return await this.dataSource.transaction(async (manager) => {
+    // 1. Get session and course info
+    const session = await manager.findOne(CourseSession, {
+      where: { id: sessionId },
+      relations: ['course', 'course.teacher']
+    });
+    
+    const course = session.course;
+    const price = course.price_per_session;
+    
+    // 2. Check if already purchased
+    const existing = await manager.findOne(SessionPurchase, {
+      where: { user_id: userId, session_id: sessionId }
+    });
+    if (existing) throw new Error('Already purchased this session');
+    
+    // 3. Check user credit
     const user = await manager.findOne(User, { where: { id: userId } });
+    if (user.credit_balance < price) throw new Error('Insufficient credit');
     
-    // Check if already purchased
-    const existing = await manager.findOne(MaterialPurchase, {
-      where: { user_id: userId, material_id: materialId }
-    });
-    if (existing) throw new Error('Already purchased');
-    
-    // Check credit
-    if (user.credit_balance < material.price) throw new Error('Insufficient credit');
-    
-    // Deduct credit
+    // 4. Deduct credit from student
     await manager.update(User, userId, {
-      credit_balance: () => `credit_balance - ${material.price}`
+      credit_balance: () => `credit_balance - ${price}`,
     });
     
-    // Calculate teacher share (70% for referred, 30% for platform)
-    const teacherShare = user.referred_by === material.teacher_id 
-      ? material.price * 0.70 
-      : material.price * 0.30;
-    
-    // Add to teacher wallet
-    await manager.update(User, material.teacher_id, {
-      credit_balance: () => `credit_balance + ${teacherShare}`
-    });
-    
-    // Create purchase record
-    const purchase = await manager.save(MaterialPurchase, {
+    // 5. Create purchase record
+    const purchase = await manager.save(SessionPurchase, {
       user_id: userId,
-      material_id: materialId,
-      price_paid: material.price
+      course_id: course.id,
+      session_id: sessionId,
+      price_paid: price,
+      payment_status: 'paid',
+      status: 'active',
     });
     
-    // Update material stats
-    await manager.increment(Material, { id: materialId }, 'purchase_count', 1);
+    // 6. Hold payment (giữ tiền)
+    await manager.save(PaymentHold, {
+      session_purchase_id: purchase.id,
+      teacher_id: course.teacher_id,
+      student_id: userId,
+      amount: price,
+      status: 'held',
+    });
+    
+    // 7. Create transaction
+    await manager.save(Transaction, {
+      user_id: userId,
+      type: 'purchase_session',
+      amount: -price,
+      balance_before: user.credit_balance,
+      balance_after: user.credit_balance - price,
+      reference_type: 'session',
+      reference_id: purchase.id,
+      status: 'completed',
+    });
+    
+    // 8. Send notification to teacher
+    await this.notificationService.sendToTeacher(course.teacher_id, {
+      type: 'new_session_purchase',
+      student_name: user.username,
+      session_title: session.title,
+      amount: price,
+    });
     
     return purchase;
   });
 }
 ```
 
-#### Download with Signed URL
+### 2.2 Mua cả khóa học
+
+#### API Endpoints
 ```typescript
-async generateDownloadUrl(userId: string, materialId: string) {
-  // Check if user purchased
-  const purchase = await this.purchaseRepository.findOne({
-    where: { user_id: userId, material_id: materialId },
-    relations: ['material']
+POST /api/courses/:id/enroll                   // Mua cả khóa học
+POST /api/courses/:id/cancel                   // Hủy khóa học
+```
+
+#### Enrollment Logic
+```typescript
+async enrollFullCourse(userId: string, courseId: string) {
+  return await this.dataSource.transaction(async (manager) => {
+    const course = await manager.findOne(Course, {
+      where: { id: courseId },
+      relations: ['teacher']
+    });
+    
+    const price = course.price_full_course;
+    
+    // Check if already enrolled
+    const existing = await manager.findOne(CourseEnrollment, {
+      where: { user_id: userId, course_id: courseId }
+    });
+    if (existing) throw new Error('Already enrolled in this course');
+    
+    // Check credit
+    const user = await manager.findOne(User, { where: { id: userId } });
+    if (user.credit_balance < price) throw new Error('Insufficient credit');
+    
+    // Deduct credit
+    await manager.update(User, userId, {
+      credit_balance: () => `credit_balance - ${price}`,
+    });
+    
+    // Create enrollment
+    const enrollment = await manager.save(CourseEnrollment, {
+      user_id: userId,
+      course_id: courseId,
+      enrollment_type: 'full_course',
+      total_price_paid: price,
+      payment_status: 'paid',
+      status: 'active',
+    });
+    
+    // Hold payment
+    await manager.save(PaymentHold, {
+      enrollment_id: enrollment.id,
+      teacher_id: course.teacher_id,
+      student_id: userId,
+      amount: price,
+      status: 'held',
+    });
+    
+    // Update course student count
+    await manager.update(Course, courseId, {
+      current_students: () => 'current_students + 1',
+    });
+    
+    // Transaction record
+    await manager.save(Transaction, {
+      user_id: userId,
+      type: 'purchase_course',
+      amount: -price,
+      balance_before: user.credit_balance,
+      balance_after: user.credit_balance - price,
+      reference_type: 'course',
+      reference_id: enrollment.id,
+      status: 'completed',
+    });
+    
+    // Notify teacher
+    await this.notificationService.sendToTeacher(course.teacher_id, {
+      type: 'new_course_enrollment',
+      student_name: user.username,
+      course_title: course.title,
+      amount: price,
+    });
+    
+    return enrollment;
   });
-  
-  if (!purchase) throw new Error('Material not purchased');
-  
-  // Generate signed URL (expires in 15 minutes)
-  const signedUrl = await this.s3Service.getSignedUrl(
-    purchase.material.file_url,
-    15 * 60 // 15 minutes
-  );
-  
-  // Update download stats
-  await this.purchaseRepository.update(purchase.id, {
-    download_count: () => 'download_count + 1',
-    last_downloaded_at: new Date()
-  });
-  
-  return { url: signedUrl, expiresIn: 900 };
 }
 ```
 
 ---
 
-## 🎯 Phase 6: Advanced Lobby Features (Priority: LOW)
+## 💰 Phase 3: Payment Gateway & Auto-Release
 
-### 8.1 Room Filters
+### 3.1 Payment Hold System
 
-#### API Enhancement
+**Quy tắc giải phóng tiền**:
+- Khi học viên học xong buổi học
+- Check thời gian học: Nếu >= 20% thời lượng buổi học → Tự động thanh toán cho giáo viên
+- Nếu < 20% → Refund cho học viên
+
+#### Auto-Release Logic
 ```typescript
-@Get('rooms')
-async getRooms(
-  @Query('language') language?: string,
-  @Query('level') level?: string,
-  @Query('region') region?: string,
-  @Query('status') status: string = 'active'
-) {
-  const query = this.roomRepository.createQueryBuilder('room')
-    .where('room.status = :status', { status });
+@Cron('*/5 * * * *') // Chạy mỗi 5 phút
+async autoReleasePayments() {
+  // Find all completed sessions
+  const completedSessions = await this.sessionRepository.find({
+    where: { status: 'completed' },
+    relations: ['course', 'course.teacher']
+  });
   
-  if (language) {
-    query.andWhere('room.language = :language', { language });
+  for (const session of completedSessions) {
+    // Find all purchases for this session
+    const purchases = await this.sessionPurchaseRepository.find({
+      where: { session_id: session.id, status: 'attended' }
+    });
+    
+    for (const purchase of purchases) {
+      // Check if payment already released
+      const hold = await this.paymentHoldRepository.findOne({
+        where: { session_purchase_id: purchase.id, status: 'held' }
+      });
+      
+      if (!hold) continue;
+      
+      // Calculate attendance percentage
+      const attendancePercentage = (purchase.attendance_duration_minutes / session.duration_minutes) * 100;
+      
+      if (attendancePercentage >= 20) {
+        // Release payment to teacher
+        await this.releasePaymentToTeacher(hold, attendancePercentage);
+      } else {
+        // Refund to student
+        await this.refundToStudent(hold, purchase);
+      }
+    }
   }
-  
-  if (level) {
-    query.andWhere('room.level = :level', { level });
-  }
-  
-  if (region) {
-    query.andWhere('room.region = :region', { region });
-  }
-  
-  return await query.getMany();
+}
+
+async releasePaymentToTeacher(hold: PaymentHold, attendancePercentage: number) {
+  return await this.dataSource.transaction(async (manager) => {
+    // Calculate commission (70% if referred, 30% if platform)
+    const student = await manager.findOne(User, { where: { id: hold.student_id } });
+    const teacher = await manager.findOne(User, { where: { id: hold.teacher_id } });
+    
+    let teacherShare: number;
+    if (student.referred_by === teacher.id) {
+      teacherShare = hold.amount * 0.70;
+    } else {
+      teacherShare = hold.amount * 0.30;
+    }
+    
+    // Add to teacher available balance
+    await manager.update(User, hold.teacher_id, {
+      available_balance: () => `available_balance + ${teacherShare}`,
+      total_earnings: () => `total_earnings + ${teacherShare}`,
+    });
+    
+    // Update hold status
+    await manager.update(PaymentHold, hold.id, {
+      status: 'released',
+      released_at: new Date(),
+      release_percentage: attendancePercentage,
+    });
+    
+    // Create transaction
+    await manager.save(Transaction, {
+      user_id: hold.teacher_id,
+      type: 'commission',
+      amount: teacherShare,
+      balance_before: teacher.available_balance,
+      balance_after: teacher.available_balance + teacherShare,
+      reference_type: 'payment_hold',
+      reference_id: hold.id,
+      status: 'completed',
+      description: `Payment released - ${attendancePercentage.toFixed(2)}% attendance`,
+    });
+  });
+}
+
+async refundToStudent(hold: PaymentHold, purchase: SessionPurchase) {
+  return await this.dataSource.transaction(async (manager) => {
+    const student = await manager.findOne(User, { where: { id: hold.student_id } });
+    
+    // Refund to student
+    await manager.update(User, hold.student_id, {
+      credit_balance: () => `credit_balance + ${hold.amount}`,
+    });
+    
+    // Update hold
+    await manager.update(PaymentHold, hold.id, {
+      status: 'refunded',
+      released_at: new Date(),
+    });
+    
+    // Update purchase
+    await manager.update(SessionPurchase, purchase.id, {
+      status: 'cancelled',
+      refund_amount: hold.amount,
+    });
+    
+    // Transaction
+    await manager.save(Transaction, {
+      user_id: hold.student_id,
+      type: 'refund',
+      amount: hold.amount,
+      balance_before: student.credit_balance,
+      balance_after: student.credit_balance + hold.amount,
+      reference_type: 'session_purchase',
+      reference_id: purchase.id,
+      status: 'completed',
+      description: 'Refund - attendance < 20%',
+    });
+  });
 }
 ```
 
-### 8.2 Peer Matching (GeoIP)
+### 3.2 Attendance Tracking
 
-#### Setup GeoIP
-```bash
-npm install maxmind
-```
-
+**Track attendance during LiveKit session**:
 ```typescript
-import maxmind, { CityResponse } from 'maxmind';
-
-@Injectable()
-export class GeoIpService {
-  private lookup: maxmind.Reader<CityResponse>;
-  
-  async onModuleInit() {
-    this.lookup = await maxmind.open('GeoLite2-City.mmdb');
+// In LiveKit webhook handler
+@Post('webhooks/livekit')
+async handleLivekitWebhook(@Body() event: any) {
+  if (event.event === 'participant_joined') {
+    await this.trackParticipantJoin(event);
+  } else if (event.event === 'participant_left') {
+    await this.trackParticipantLeave(event);
   }
+}
+
+async trackParticipantJoin(event: any) {
+  const { room_name, participant } = event;
   
-  getLocation(ip: string) {
-    const result = this.lookup.get(ip);
-    return {
-      country: result?.country?.iso_code,
-      city: result?.city?.names?.en,
-      latitude: result?.location?.latitude,
-      longitude: result?.location?.longitude
-    };
+  // Parse room name to get session info
+  // Format: course_{courseId}_session_{sessionNumber}
+  const match = room_name.match(/course_(.+)_session_(\d+)/);
+  if (!match) return;
+  
+  const [, courseId, sessionNumber] = match;
+  
+  // Find session
+  const session = await this.sessionRepository.findOne({
+    where: { course_id: courseId, session_number: parseInt(sessionNumber) }
+  });
+  
+  // Find purchase
+  const purchase = await this.sessionPurchaseRepository.findOne({
+    where: { 
+      session_id: session.id,
+      user_id: participant.identity // userId stored in participant identity
+    }
+  });
+  
+  if (purchase) {
+    // Mark as attended and record join time
+    await this.sessionPurchaseRepository.update(purchase.id, {
+      attended: true,
+      status: 'attended',
+    });
+    
+    // Store join time in metadata
+    await this.redis.set(
+      `attendance:${purchase.id}:join`,
+      new Date().toISOString()
+    );
+  }
+}
+
+async trackParticipantLeave(event: any) {
+  const { room_name, participant } = event;
+  
+  const match = room_name.match(/course_(.+)_session_(\d+)/);
+  if (!match) return;
+  
+  const [, courseId, sessionNumber] = match;
+  
+  const session = await this.sessionRepository.findOne({
+    where: { course_id: courseId, session_number: parseInt(sessionNumber) }
+  });
+  
+  const purchase = await this.sessionPurchaseRepository.findOne({
+    where: { 
+      session_id: session.id,
+      user_id: participant.identity
+    }
+  });
+  
+  if (purchase) {
+    // Calculate duration
+    const joinTime = await this.redis.get(`attendance:${purchase.id}:join`);
+    if (joinTime) {
+      const duration = Math.floor(
+        (new Date().getTime() - new Date(joinTime).getTime()) / (1000 * 60)
+      );
+      
+      await this.sessionPurchaseRepository.update(purchase.id, {
+        attendance_duration_minutes: duration,
+      });
+      
+      await this.redis.del(`attendance:${purchase.id}:join`);
+    }
   }
 }
 ```
 
-#### Peer Matching API
+---
+
+## 🎯 Phase 4: Free Talk Rooms
+
+### 4.1 Tạo phòng Free Talk
+
+#### API Endpoints
 ```typescript
-@Get('peers/nearby')
-async findNearbyPeers(@Req() req: Request) {
-  const userIp = req.ip;
+POST /api/free-talk/rooms                      // Tạo phòng mới
+GET  /api/free-talk/rooms                      // Lấy danh sách phòng (filter by region)
+GET  /api/free-talk/rooms/:id                  // Chi tiết phòng
+POST /api/free-talk/rooms/:id/join             // Join phòng
+POST /api/free-talk/rooms/:id/leave            // Leave phòng
+GET  /api/free-talk/nearby                     // Tìm phòng gần (GeoIP)
+```
+
+#### Create Room Logic
+```typescript
+async createFreeTalkRoom(userId: string, dto: CreateFreeTalkRoomDto) {
+  const user = await this.userRepository.findOne({ where: { id: userId } });
+  
+  // Create room
+  const room = await this.freeTalkRoomRepository.save({
+    host_id: userId,
+    room_name: dto.room_name,
+    description: dto.description,
+    max_participants: 4, // Fixed max 4 people
+    region: user.region,
+    language: dto.language,
+    level: dto.level,
+    livekit_room_name: `freetalk_${generateRoomId()}`,
+    share_link: `${process.env.FRONTEND_URL}/free-talk/${roomId}`,
+    status: 'active',
+  });
+  
+  // Generate QR code
+  const qrCodeUrl = await this.qrService.generate(room.share_link);
+  await this.freeTalkRoomRepository.update(room.id, { qr_code_url: qrCodeUrl });
+  
+  // Auto-join host
+  await this.joinRoom(userId, room.id);
+  
+  return room;
+}
+```
+
+#### Find Nearby Rooms (GeoIP)
+```typescript
+async findNearbyRooms(userIp: string) {
+  // Get user location from IP
   const location = this.geoIpService.getLocation(userIp);
   
-  // Find online users in same region
-  const peers = await this.userRepository.find({
+  // Find active rooms in same region
+  const rooms = await this.freeTalkRoomRepository.find({
     where: {
-      is_online: true,
-      region_code: location.country
+      status: 'active',
+      region: location.country,
+      current_participants: LessThan(4), // Not full
     },
-    take: 10
+    order: { created_at: 'DESC' },
+    take: 20,
   });
   
-  return peers;
+  return rooms;
 }
 ```
 
-### 8.3 Topic-based Chat Rooms
-
-#### Socket Namespace Enhancement
+#### Auto-close Room Logic
 ```typescript
-@WebSocketGateway({
-  namespace: '/chat',
-  cors: { origin: '*' }
-})
-export class ChatGateway {
-  @SubscribeMessage('join-topic')
-  handleJoinTopic(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() data: { topic: string }
-  ) {
-    const roomName = `topic_${data.topic}`;
-    client.join(roomName);
-    
-    this.server.to(roomName).emit('user-joined', {
-      userId: client.data.userId,
-      username: client.data.username,
-      topic: data.topic
-    });
-  }
+// Socket event when user disconnects
+@SubscribeMessage('leave-room')
+async handleLeaveRoom(client: Socket, roomId: string) {
+  const userId = client.data.userId;
   
-  @SubscribeMessage('topic-message')
-  handleTopicMessage(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() data: { topic: string; message: string }
-  ) {
-    const roomName = `topic_${data.topic}`;
-    
-    this.server.to(roomName).emit('topic-message', {
-      userId: client.data.userId,
-      username: client.data.username,
-      message: data.message,
-      topic: data.topic,
-      timestamp: new Date()
+  // Update participant
+  await this.participantRepository.update(
+    { room_id: roomId, user_id: userId, left_at: null },
+    { left_at: new Date() }
+  );
+  
+  // Update room participant count
+  await this.freeTalkRoomRepository.decrement(
+    { id: roomId },
+    'current_participants',
+    1
+  );
+  
+  // Check if room is empty
+  const room = await this.freeTalkRoomRepository.findOne({
+    where: { id: roomId }
+  });
+  
+  if (room.current_participants === 0) {
+    // Close room
+    await this.freeTalkRoomRepository.update(roomId, {
+      status: 'closed',
+      closed_at: new Date(),
     });
+    
+    // Delete LiveKit room
+    await this.livekitService.deleteRoom(room.livekit_room_name);
   }
 }
 ```
 
 ---
 
-## 📅 Implementation Timeline
+## 📊 Phase 5: CMS & Admin
 
-### Week 1-2: Teacher Schedule Management
-- [ ] Database migration
-- [ ] Backend API (schedules)
-- [ ] Frontend components (calendar, forms)
-- [ ] Testing
+### 5.1 Admin Dashboard
 
-### Week 3-4: Student Booking System
-- [ ] Database migration (bookings)
-- [ ] Backend API with transactions
-- [ ] Frontend booking flow
-- [ ] Testing
+#### API Endpoints
+```typescript
+GET  /api/admin/courses                        // Quản lý tất cả khóa học
+GET  /api/admin/enrollments                    // Quản lý đăng ký
+GET  /api/admin/transactions                   // Quản lý giao dịch
+GET  /api/admin/withdrawals                    // Quản lý yêu cầu rút tiền
+POST /api/admin/withdrawals/:id/approve        // Duyệt rút tiền
+POST /api/admin/withdrawals/:id/reject         // Từ chối rút tiền
+GET  /api/admin/revenue                        // Thống kê doanh thu
+```
 
-### Week 5-6: Wallet & Payment
-- [ ] Database migration (wallets, transactions)
-- [ ] Backend API
-- [ ] Admin deposit tool
-- [ ] Transaction history UI
-- [ ] Testing
-
-### Week 7-8: Affiliate System
-- [ ] Database migration
-- [ ] Referral code generation
-- [ ] Commission calculation logic
-- [ ] Dashboard for teachers
-- [ ] Testing
-
-### Week 9-10: Marketplace
-- [ ] Database migration
-- [ ] File upload (S3)
-- [ ] Preview generation
-- [ ] Purchase flow
-- [ ] Download with signed URLs
-- [ ] Testing
-
-### Week 11-12: Advanced Features
-- [ ] Room filters
-- [ ] GeoIP matching
-- [ ] Topic-based chat
-- [ ] Testing & optimization
-
----
-
-## 🧪 Testing Strategy
-
-### Unit Tests
-- Service layer logic
-- Transaction handling
-- Commission calculations
-- File upload/download
-
-### Integration Tests
-- API endpoints
-- Database transactions
-- Socket events
-- S3 operations
-
-### E2E Tests
-- Complete booking flow
-- Purchase flow
-- Refund flow
-- Affiliate tracking
+### 5.2 Revenue Statistics
+```typescript
+async getAdminRevenue() {
+  // Platform revenue = 70% of non-referred students + 30% of referred students
+  const totalRevenue = await this.transactionRepository
+    .createQueryBuilder('t')
+    .select('SUM(t.amount)', 'total')
+    .where('t.type IN (:...types)', { types: ['purchase_course', 'purchase_session'] })
+    .andWhere('t.status = :status', { status: 'completed' })
+    .getRawOne();
+  
+  const teacherPayouts = await this.transactionRepository
+    .createQueryBuilder('t')
+    .select('SUM(t.amount)', 'total')
+    .where('t.type = :type', { type: 'commission' })
+    .andWhere('t.status = :status', { status: 'completed' })
+    .getRawOne();
+  
+  const platformRevenue = totalRevenue.total - teacherPayouts.total;
+  
+  return {
+    total_revenue: totalRevenue.total || 0,
+    teacher_payouts: teacherPayouts.total || 0,
+    platform_revenue: platformRevenue || 0,
+  };
+}
+```
 
 ---
 
-## 🔒 Security Considerations
+## 🔔 Phase 6: Notifications
 
-1. **Transaction Safety**: Always use database transactions for money operations
-2. **File Access**: Use signed URLs with expiration
-3. **Authorization**: Check permissions for all sensitive operations
-4. **Rate Limiting**: Prevent abuse of booking/purchase APIs
-5. **Input Validation**: Validate all user inputs
-6. **SQL Injection**: Use parameterized queries
-7. **XSS Protection**: Sanitize user-generated content
+### 6.1 Notification Types
 
----
+```typescript
+// Teacher notifications
+- new_session_purchase: Học viên mua buổi học
+- new_course_enrollment: Học viên đăng ký khóa học
+- session_cancelled: Học viên hủy buổi học
+- withdrawal_approved: Yêu cầu rút tiền được duyệt
+- payment_released: Tiền được giải phóng sau buổi học
 
-## 📊 Monitoring & Analytics
-
-1. **Transaction Monitoring**: Track all money movements
-2. **Booking Analytics**: Success rate, cancellation rate
-3. **Material Analytics**: Popular materials, download stats
-4. **Affiliate Performance**: Top referrers, conversion rates
-5. **Error Tracking**: Log all failed transactions
-
----
-
-## 🚀 Deployment Checklist
-
-- [ ] Database migrations tested
-- [ ] Environment variables configured
-- [ ] S3 buckets created (private & public)
-- [ ] GeoIP database downloaded
-- [ ] Payment gateway configured (future)
-- [ ] Monitoring tools setup
-- [ ] Backup strategy in place
-- [ ] Load testing completed
+// Student notifications
+- session_reminder: Nhắc nhở buổi học sắp diễn ra (1 giờ trước)
+- session_started: Buổi học đã bắt đầu
+- refund_processed: Tiền được hoàn lại
+- course_updated: Khóa học có cập nhật
+```
 
 ---
 
-**Last Updated**: 2025-11-25
-**Version**: 1.0
+## 📱 Frontend Components Structure
+
+```
+talkplatform-frontend/
+├── app/
+│   ├── courses/
+│   │   ├── page.tsx                    # Browse courses
+│   │   ├── [id]/
+│   │   │   ├── page.tsx                # Course detail
+│   │   │   └── sessions/
+│   │   │       └── [sid]/page.tsx      # Session detail
+│   │   └── create/page.tsx             # Create course (teacher)
+│   ├── my-courses/
+│   │   ├── page.tsx                    # Student: My enrollments
+│   │   └── teaching/page.tsx           # Teacher: My courses
+│   ├── free-talk/
+│   │   ├── page.tsx                    # Browse free talk rooms
+│   │   ├── [id]/page.tsx               # Join room
+│   │   └── create/page.tsx             # Create room
+│   ├── revenue/
+│   │   └── page.tsx                    # Teacher revenue dashboard
+│   └── withdrawals/
+│       └── page.tsx                    # Teacher withdrawals
+├── components/
+│   ├── courses/
+│   │   ├── CourseCard.tsx
+│   │   ├── CourseList.tsx
+│   │   ├── CreateCourseForm.tsx
+│   │   ├── SessionScheduler.tsx
+│   │   └── EnrollButton.tsx
+│   ├── free-talk/
+│   │   ├── RoomCard.tsx
+│   │   ├── RoomList.tsx
+│   │   ├── CreateRoomForm.tsx
+│   │   └── NearbyRooms.tsx
+│   ├── revenue/
+│   │   ├── RevenueChart.tsx
+│   │   ├── TransactionHistory.tsx
+│   │   └── WithdrawalForm.tsx
+│   └── payment/
+│       ├── PaymentModal.tsx
+│       └── RefundStatus.tsx
+└── api/
+    ├── courses.rest.ts
+    ├── enrollments.rest.ts
+    ├── free-talk.rest.ts
+    ├── revenue.rest.ts
+    └── withdrawals.rest.ts
+```
+
+---
+
+## 🧪 Testing Scenarios
+
+### Course Purchase Flow
+1. Student browses courses
+2. Student clicks "Buy Session" or "Buy Full Course"
+3. System checks credit balance
+4. Payment is deducted and held
+5. Student receives confirmation
+6. Teacher receives notification
+
+### Attendance & Auto-Release
+1. Student joins LiveKit session
+2. System tracks join time
+3. Student leaves session
+4. System calculates duration
+5. If >= 20%: Release payment to teacher
+6. If < 20%: Refund to student
+
+### Free Talk Room
+1. User creates room (max 4 people)
+2. Generate QR code and share link
+3. Other users join via link
+4. Last user leaves
+5. Room auto-closes
+
+---
+
+## 🚀 Implementation Timeline
+
+**Week 1-2**: Course Management
+- Database migrations
+- Backend API (courses, sessions)
+- Frontend UI (create course, schedule sessions)
+
+**Week 3-4**: Enrollment System
+- Purchase flow (session & full course)
+- Payment hold system
+- Student dashboard
+
+**Week 5-6**: Payment Gateway
+- Auto-release logic
+- Attendance tracking
+- Refund system
+
+**Week 7-8**: Teacher Revenue
+- Revenue dashboard
+- Withdrawal system
+- Transaction history
+
+**Week 9-10**: Free Talk Rooms
+- Room creation
+- GeoIP matching
+- Auto-close logic
+
+**Week 11-12**: Admin & Polish
+- Admin dashboard
+- Notifications
+- Testing & bug fixes
+
+---
+
+**Ready to start implementation? Let me know which phase you want to begin with!** 🚀
