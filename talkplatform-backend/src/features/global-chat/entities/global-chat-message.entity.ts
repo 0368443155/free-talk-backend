@@ -17,30 +17,43 @@ export enum GlobalMessageType {
 
 @Entity('global_chat_messages')
 @Index(['created_at'])
-@Index(['sender_id', 'created_at'])
+@Index(['user_id', 'created_at'])
 export class GlobalChatMessage {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne(() => User, { eager: true, nullable: true })
-  @JoinColumn({ name: 'sender_id' })
-  sender: User;
+  // Column for user_id to match database schema
+  @Column({ type: 'uuid', nullable: true, name: 'user_id' })
+  user_id: string | null;
 
-  @Column({ type: 'uuid', nullable: true })
-  sender_id: string;
+  // Relation to User (loaded separately when needed via relations)
+  // Note: We use a virtual property that will be populated when relation is loaded
+  sender: User | null;
+
+  // Getter for sender_id to maintain code compatibility
+  get sender_id(): string | null {
+    return this.user_id;
+  }
 
   @Column({ type: 'text' })
   message: string;
 
-  @Column({
-    type: 'enum',
-    enum: GlobalMessageType,
-    default: GlobalMessageType.TEXT,
-  })
-  type: GlobalMessageType;
+  // Note: 'type' and 'metadata' columns don't exist in old database schema
+  // These are virtual properties for code compatibility
+  type?: GlobalMessageType;
+  metadata?: any;
 
-  @Column({ type: 'json', nullable: true })
-  metadata: any; // For reply_to, reactions, etc.
+  @Column({ type: 'varchar', length: 50, nullable: true, default: 'lobby' })
+  room_type: string; // Match old schema
+
+  @Column({ type: 'boolean', nullable: true, default: false })
+  is_system_message: boolean; // Match old schema
+
+  @Column({ type: 'boolean', nullable: true, default: false })
+  is_deleted: boolean; // Match old schema
+
+  @Column({ type: 'timestamp', nullable: true })
+  deleted_at: Date; // Match old schema
 
   @CreateDateColumn({ type: 'timestamp' })
   created_at: Date;

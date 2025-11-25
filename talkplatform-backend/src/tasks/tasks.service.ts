@@ -49,6 +49,19 @@ export class TasksService {
   @Interval(5000) // Chạy mỗi 5 giây
   async pushSystemMetricsToWebSocket() {
     try {
+      // Check if table exists first
+      const tableExists = await this.connection.query(`
+        SELECT COUNT(*) as count 
+        FROM information_schema.tables 
+        WHERE table_schema = DATABASE() 
+        AND table_name = 'bandwidth_metrics'
+      `);
+
+      if (!tableExists || tableExists[0]?.count === 0) {
+        this.logger.warn('bandwidth_metrics table does not exist, skipping metrics collection');
+        return;
+      }
+
       // Lấy metrics thời gian thực từ database
       const realtimeMetrics = await this.connection.query(`
         SELECT 
@@ -75,7 +88,10 @@ export class TasksService {
         });
       }
     } catch (error) {
-      this.logger.error('Failed to collect system metrics', error.message);
+      // Only log error if it's not a "table doesn't exist" error
+      if (error.message && !error.message.includes("doesn't exist")) {
+        this.logger.error('Failed to collect system metrics', error.message);
+      }
     }
   }
 

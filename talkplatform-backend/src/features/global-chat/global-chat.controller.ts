@@ -29,12 +29,24 @@ export class GlobalChatController {
     @Query('limit') limit?: number,
     @Query('before') before?: string,
   ) {
-    const beforeDate = before ? new Date(before) : undefined;
-    return this.globalChatService.getMessages({
-      page: page ? Number(page) : 1,
-      limit: limit ? Number(limit) : 50,
-      before: beforeDate,
-    });
+    try {
+      const beforeDate = before ? new Date(before) : undefined;
+      return await this.globalChatService.getMessages({
+        page: page ? Number(page) : 1,
+        limit: limit ? Number(limit) : 50,
+        before: beforeDate,
+      });
+    } catch (error) {
+      // Service already handles errors and returns empty result
+      // But if it still throws, return empty result here too
+      return {
+        data: [],
+        total: 0,
+        page: page ? Number(page) : 1,
+        limit: limit ? Number(limit) : 50,
+        totalPages: 0,
+      };
+    }
   }
 
   @Post('messages')
@@ -44,6 +56,9 @@ export class GlobalChatController {
     @Request() req,
     @Body() body: { message: string; type?: GlobalMessageType; metadata?: any },
   ) {
+    if (!req.user || !req.user.id) {
+      throw new Error('User not authenticated');
+    }
     return this.globalChatService.createMessage(
       req.user.id,
       body.message,

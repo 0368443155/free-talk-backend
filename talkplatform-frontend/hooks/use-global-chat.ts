@@ -119,7 +119,25 @@ export function useGlobalChat({ enabled = true }: UseGlobalChatProps = {}): UseG
   const fetchMessages = useCallback(async () => {
     try {
       const response = await getGlobalChatMessagesApi({ page: 1, limit: 50 });
-      setMessages(response.data);
+      console.log('📥 [GLOBAL CHAT] Fetched messages:', response.data.length);
+      console.log('📥 [GLOBAL CHAT] First message sample:', response.data[0]);
+      // Ensure all messages have proper sender format
+      const normalizedMessages = response.data.map((msg: IGlobalChatMessage) => {
+        if (msg.sender && !msg.sender.user_id && (msg.sender as any).id) {
+          // Transform if backend returns sender.id instead of sender.user_id
+          return {
+            ...msg,
+            sender: {
+              user_id: (msg.sender as any).id,
+              username: msg.sender.username,
+              avatar_url: msg.sender.avatar_url,
+            },
+            sender_id: (msg.sender as any).id || msg.sender_id,
+          };
+        }
+        return msg;
+      });
+      setMessages(normalizedMessages);
     } catch (error: any) {
       if (error.code !== 'ECONNABORTED' && !error.message?.includes('timeout')) {
         console.error("Failed to fetch global chat messages:", error);

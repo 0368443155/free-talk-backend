@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, LessThan, In } from 'typeorm';
 import { Cron } from '@nestjs/schedule';
 import { GlobalChatMessage, GlobalMessageType } from './entities/global-chat-message.entity';
 import { User } from '../../users/user.entity';
@@ -34,31 +34,67 @@ export class GlobalChatService {
     const skip = (page - 1) * limit;
 
     try {
-      const qb = this.chatMessageRepository.createQueryBuilder('message')
-        .leftJoinAndSelect('message.sender', 'sender')
-        .orderBy('message.created_at', 'DESC');
-
+      // Build where condition
+      const whereCondition: any = {};
       if (before) {
-        qb.where('message.created_at < :before', { before });
+        whereCondition.created_at = LessThan(before);
       }
 
-      const [data, total] = await qb
-        .skip(skip)
-        .take(limit)
-        .getManyAndCount();
+      // First, get total count (simple count without relations)
+      const total = await this.chatMessageRepository.count({
+        where: Object.keys(whereCondition).length > 0 ? whereCondition : undefined,
+      });
+
+      // Then, get data and load users separately
+      const findOptions: any = {
+        order: { created_at: 'DESC' },
+        skip,
+        take: limit,
+      };
+
+      if (Object.keys(whereCondition).length > 0) {
+        findOptions.where = whereCondition;
+      }
+
+      const data = await this.chatMessageRepository.find(findOptions);
+
+      // Load users for all messages
+      const userIds = data.map(m => m.user_id).filter((id): id is string => id !== null);
+      if (userIds.length > 0) {
+        const users = await this.userRepository.find({
+          where: { id: In(userIds) },
+        });
+        const userMap = new Map(users.map(u => [u.id, u]));
+        data.forEach(message => {
+          if (message.user_id) {
+            message.sender = userMap.get(message.user_id) || null;
+          }
+        });
+      }
 
       // Reverse to show oldest first
       const reversedData = data.reverse();
 
+      // Transform messages to match frontend interface (sender.user_id instead of sender.id)
+      const transformedData = reversedData.map(message => ({
+        ...message,
+        sender: message.sender ? {
+          user_id: message.sender.id,
+          username: message.sender.username,
+          avatar_url: message.sender.avatar_url || undefined,
+        } : null,
+      }));
+
       return {
-        data: reversedData,
+        data: transformedData,
         total,
         page,
         limit,
         totalPages: Math.ceil(total / limit),
       };
     } catch (error) {
-      console.error('Error fetching global chat messages:', error);
+      this.logger.error('Error fetching global chat messages:', error);
+      this.logger.error('Error stack:', error.stack);
       // Return empty result instead of throwing to prevent 500 error
       return {
         data: [],
@@ -92,30 +128,38 @@ export class GlobalChatService {
       throw new NotFoundException('User not found');
     }
 
-    // Create message with sender_id directly to avoid foreign key issues
+    // Create message with user_id (mapped to user_id column in DB)
+    // Note: 'type' and 'metadata' columns don't exist in old database, so we don't set them
     const chatMessage = this.chatMessageRepository.create({
-      sender_id: userId, // Set sender_id directly instead of relation
+      user_id: userId, // Set user_id directly
       message: message.trim(),
-      type,
-      metadata,
+      room_type: 'lobby', // Default room type for old schema compatibility
+      is_system_message: type === GlobalMessageType.SYSTEM,
+      is_deleted: false,
     });
+    
+    // Set virtual properties for code compatibility (not saved to DB)
+    chatMessage.type = type || GlobalMessageType.TEXT;
+    chatMessage.metadata = metadata || null;
 
     try {
       const saved = await this.chatMessageRepository.save(chatMessage);
 
-      // Load with sender relation after save
-      const messageWithSender = await this.chatMessageRepository.findOne({
-        where: { id: saved.id },
-        relations: ['sender'],
-      });
-
-      if (!messageWithSender) {
-        // If relation load fails, return saved message without relation
-        this.logger.warn(`Failed to load sender relation for message ${saved.id}`);
-        return saved;
+      // Load user separately and assign to sender property
+      const loadedUser = await this.userRepository.findOne({ where: { id: userId } });
+      if (loadedUser) {
+        saved.sender = loadedUser;
       }
 
-      return messageWithSender;
+      // Transform to match frontend interface
+      return {
+        ...saved,
+        sender: saved.sender ? {
+          user_id: saved.sender.id,
+          username: saved.sender.username,
+          avatar_url: saved.sender.avatar_url || undefined,
+        } : null,
+      } as any;
     } catch (error) {
       this.logger.error(`Failed to save global chat message: ${error.message}`, error.stack);
       throw error;
@@ -128,7 +172,6 @@ export class GlobalChatService {
   async deleteMessage(messageId: string, adminId: string): Promise<void> {
     const message = await this.chatMessageRepository.findOne({
       where: { id: messageId },
-      relations: ['sender'],
     });
 
     if (!message) {
@@ -137,7 +180,7 @@ export class GlobalChatService {
 
     // Check if user is admin or message owner
     const admin = await this.userRepository.findOne({ where: { id: adminId } });
-    if (!admin || (admin.role !== 'admin' && message.sender_id !== adminId)) {
+    if (!admin || (admin.role !== 'admin' && message.user_id !== adminId)) {
       throw new BadRequestException('Unauthorized to delete this message');
     }
 
@@ -150,14 +193,29 @@ export class GlobalChatService {
   async getMessageById(messageId: string): Promise<GlobalChatMessage> {
     const message = await this.chatMessageRepository.findOne({
       where: { id: messageId },
-      relations: ['sender'],
     });
 
     if (!message) {
       throw new NotFoundException('Message not found');
     }
 
-    return message;
+    // Load user if user_id exists
+    if (message.user_id) {
+      const user = await this.userRepository.findOne({ where: { id: message.user_id } });
+      if (user) {
+        message.sender = user;
+      }
+    }
+
+    // Transform to match frontend interface
+    return {
+      ...message,
+      sender: message.sender ? {
+        user_id: message.sender.id,
+        username: message.sender.username,
+        avatar_url: message.sender.avatar_url || undefined,
+      } : null,
+    } as any;
   }
 
   /**

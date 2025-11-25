@@ -10,7 +10,7 @@ services:
       MYSQL_USER: ${DB_USERNAME:-talkuser}
       MYSQL_PASSWORD: ${DB_PASSWORD:-talkpassword}
     ports:
-      - "${DB_PORT:-3307}:3306"
+      - "${DB_PORT:-3307}:3306"  # Changed to 3307 to avoid conflict with local MySQL on 3306
     volumes:
       - mysql_data:/var/lib/mysql
       - ./docker/mysql/init:/docker-entrypoint-initdb.d
