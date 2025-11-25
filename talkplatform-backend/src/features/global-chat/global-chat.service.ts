@@ -75,19 +75,28 @@ export class GlobalChatService {
       // Reverse to show oldest first
       const reversedData = data.reverse();
 
+      // Remove duplicates by ID (in case of any data inconsistency)
+      const uniqueMessages = reversedData.reduce((acc: GlobalChatMessage[], msg) => {
+        if (!acc.find(m => m.id === msg.id)) {
+          acc.push(msg);
+        }
+        return acc;
+      }, []);
+
       // Transform messages to match frontend interface (sender.user_id instead of sender.id)
-      const transformedData = reversedData.map(message => ({
+      const transformedData = uniqueMessages.map(message => ({
         ...message,
+        sender_id: message.user_id, // Add sender_id for entity compatibility
         sender: message.sender ? {
           user_id: message.sender.id,
           username: message.sender.username,
           avatar_url: message.sender.avatar_url || undefined,
         } : null,
-      }));
+      })) as GlobalChatMessage[]; // Cast to GlobalChatMessage[] since we've added sender_id
 
       return {
         data: transformedData,
-        total,
+        total: uniqueMessages.length, // Use unique count
         page,
         limit,
         totalPages: Math.ceil(total / limit),

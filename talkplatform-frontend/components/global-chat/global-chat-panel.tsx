@@ -28,7 +28,6 @@ export function GlobalChatPanel({ className }: GlobalChatPanelProps) {
   const [newMessage, setNewMessage] = useState("");
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const chatInputRef = useRef<HTMLInputElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
   const prevMessagesLengthRef = useRef(0);
@@ -40,31 +39,54 @@ export function GlobalChatPanel({ className }: GlobalChatPanelProps) {
     '🤞', '🤟', '🤘', '👌', '🤌', '🤏', '✨', '🎉', '❤️', '💯', '🔥'
   ];
 
+  // Get scroll container from ScrollArea
+  const getScrollContainer = useCallback(() => {
+    return scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null;
+  }, []);
+
   // Check if user is near bottom of scroll area
   const checkIfNearBottom = useCallback(() => {
-    const scrollContainer = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+    const scrollContainer = getScrollContainer();
     if (!scrollContainer) return true;
     
     const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
     const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
     return distanceFromBottom < 100; // Within 100px of bottom
-  }, []);
+  }, [getScrollContainer]);
+
+  // Scroll to bottom within chat area only (not the whole page)
+  const scrollToBottom = useCallback((smooth = true) => {
+    const scrollContainer = getScrollContainer();
+    if (!scrollContainer) return;
+
+    // Scroll within the chat container only, not the whole page
+    scrollContainer.scrollTo({
+      top: scrollContainer.scrollHeight,
+      behavior: smooth ? 'smooth' : 'auto',
+    });
+  }, [getScrollContainer]);
 
   // Auto-scroll to bottom only when new messages arrive and user is near bottom
   useEffect(() => {
     const isNewMessage = messages.length > prevMessagesLengthRef.current;
+    const wasEmpty = prevMessagesLengthRef.current === 0;
     prevMessagesLengthRef.current = messages.length;
 
-    if (isNewMessage && (shouldAutoScrollRef.current || checkIfNearBottom())) {
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 100);
+    // Always scroll to bottom on initial load (when messages first appear)
+    if (wasEmpty && messages.length > 0) {
+      setTimeout(() => scrollToBottom(false), 100);
+      return;
     }
-  }, [messages, checkIfNearBottom]);
+
+    // For new messages, only scroll if user is near bottom
+    if (isNewMessage && (shouldAutoScrollRef.current || checkIfNearBottom())) {
+      setTimeout(() => scrollToBottom(true), 100);
+    }
+  }, [messages, checkIfNearBottom, scrollToBottom]);
 
   // Track scroll position to determine if we should auto-scroll
   useEffect(() => {
-    const scrollContainer = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+    const scrollContainer = getScrollContainer();
     if (!scrollContainer) return;
 
     const handleScroll = () => {
@@ -73,14 +95,23 @@ export function GlobalChatPanel({ className }: GlobalChatPanelProps) {
 
     scrollContainer.addEventListener('scroll', handleScroll);
     return () => scrollContainer.removeEventListener('scroll', handleScroll);
-  }, [checkIfNearBottom]);
+  }, [getScrollContainer, checkIfNearBottom]);
 
   const handleChatInputSend = useCallback(async () => {
+    if (!user) return;
     const trimmedMessage = newMessage.trim();
     if (!trimmedMessage || !isConnected || isSending) return;
 
     try {
-      await sendMessage(trimmedMessage);
+      // Pass user info for optimistic update
+      // IMPORTANT: Normalize user_id to match backend format
+      const normalizedUserId = user.id || user.user_id || '';
+      await sendMessage(trimmedMessage, {
+        id: normalizedUserId,
+        user_id: normalizedUserId, // Add user_id for compatibility
+        username: user.username || user.name,
+        avatar_url: user.avatar_url,
+      });
       setNewMessage('');
       setTimeout(() => {
         chatInputRef.current?.focus();
@@ -88,7 +119,7 @@ export function GlobalChatPanel({ className }: GlobalChatPanelProps) {
     } catch (error) {
       console.error('Failed to send message:', error);
     }
-  }, [newMessage, isConnected, isSending, sendMessage]);
+  }, [newMessage, isConnected, isSending, sendMessage, user]);
 
   const handleChatInputKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -132,7 +163,7 @@ export function GlobalChatPanel({ className }: GlobalChatPanelProps) {
 
       {/* Messages area */}
       <div className="flex-1 min-h-0 overflow-hidden">
-        <ScrollArea ref={scrollAreaRef} className="h-full p-3">
+        <ScrollArea ref={scrollAreaRef} className="h-full p-3 [&>[data-radix-scroll-area-scrollbar]]:opacity-100">
           <div className="space-y-1">
             {messages.map((message, index) => {
               // Handle system messages
@@ -151,13 +182,24 @@ export function GlobalChatPanel({ className }: GlobalChatPanelProps) {
               }
               
               const prevMessage = index > 0 ? messages[index - 1] : null;
-              // Normalize sender ID - handle both user_id and id formats
+              // Normalize sender ID - handle both user_id and id formats (EXACT same as meeting chat)
               const messageSenderId = message.sender?.user_id || (message.sender as any)?.id || message.sender_id;
               const prevMessageSenderId = prevMessage?.sender?.user_id || (prevMessage?.sender as any)?.id || prevMessage?.sender_id;
-              const currentUserId = user?.id;
+              // Use user.id or user.user_id (EXACT same as meeting chat)
+              const currentUserId = user?.id || user?.user_id;
               const showHeader = !prevMessage || prevMessageSenderId !== messageSenderId;
               const messageTime = new Date(message.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-              const isOwnMessage = currentUserId === messageSenderId;
+              // Compare sender_id with current user ID (both must be truthy and match)
+              // Backend sends senderId as user_id from DB, so we compare with user.id or user.user_id
+              // Try multiple comparisons to ensure match
+              const isOwnMessage = !!messageSenderId && !!currentUserId && (
+                messageSenderId === currentUserId ||
+                messageSenderId === user?.id ||
+                messageSenderId === user?.user_id ||
+                (message.sender?.user_id === currentUserId) ||
+                (message.sender?.user_id === user?.id) ||
+                (message.sender?.user_id === user?.user_id)
+              );
 
               return (
                 <div key={message.id} className={`w-full ${isOwnMessage ? 'flex justify-end' : ''}`}>
@@ -192,8 +234,6 @@ export function GlobalChatPanel({ className }: GlobalChatPanelProps) {
                 Start the conversation! Say hello to everyone 👋
               </div>
             )}
-            
-            <div ref={messagesEndRef} />
           </div>
         </ScrollArea>
       </div>

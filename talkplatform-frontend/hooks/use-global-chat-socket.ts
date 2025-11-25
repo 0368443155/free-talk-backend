@@ -81,7 +81,7 @@ export function useGlobalChatSocket({ enabled = true }: UseGlobalChatSocketProps
       reconnectionDelayMax: 3000,
       timeout: 10000,
       autoConnect: true,
-      forceNew: true, // Similar to meeting socket
+      forceNew: false, // Set to false to reuse existing connection and prevent duplicate listeners
       query: {
         userId, // Pass userId in query (similar to meeting socket)
       },
