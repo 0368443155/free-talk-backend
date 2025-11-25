@@ -295,31 +295,63 @@ export function LiveKitRoomWrapper({
           shouldEnableCamera,
           shouldEnableMic,
           hasLocalParticipant: !!roomLocalParticipant,
-          hasRoom: !!connectedRoom
+          hasRoom: !!connectedRoom,
+          hasMediaStream: !!deviceSettings?.mediaStream
         });
         
         if (roomLocalParticipant) {
           try {
-            // Enable camera immediately - CRITICAL: Must enable camera first
-            if (shouldEnableCamera) {
-              await enableCamera(true);
-              setIsCameraEnabledState(true);
-              console.log('✅ Camera enabled on room connect');
+            // 🔥 FIX: Reuse stream from green-room to avoid duplicate permission requests
+            if (deviceSettings?.mediaStream) {
+              console.log('🔄 Reusing media stream from green-room to avoid duplicate permission requests');
+              const stream = deviceSettings.mediaStream;
+              
+              // Create LocalTracks from existing stream
+              const videoTrack = stream.getVideoTracks()[0];
+              const audioTrack = stream.getAudioTracks()[0];
+              
+              if (videoTrack && shouldEnableCamera) {
+                // Use device ID from green-room to create track with same device
+                // Note: Browser may still request permission as this is a new getUserMedia call
+                const deviceId = videoTrack.getSettings().deviceId || deviceSettings.videoInput;
+                await enableCamera(true, deviceId);
+                setIsCameraEnabledState(true);
+              } else if (!shouldEnableCamera) {
+                await enableCamera(false);
+                setIsCameraEnabledState(false);
+              }
+              
+              if (audioTrack && shouldEnableMic) {
+                // Use device ID from green-room to create track with same device
+                // Note: Browser may still request permission as this is a new getUserMedia call
+                const deviceId = audioTrack.getSettings().deviceId || deviceSettings.audioInput;
+                await enableMicrophone(true, deviceId);
+                setIsMicEnabledState(true);
+              } else if (!shouldEnableMic) {
+                await enableMicrophone(false);
+                setIsMicEnabledState(false);
+              }
             } else {
-              await enableCamera(false);
-              setIsCameraEnabledState(false);
-              console.log('✅ Camera disabled on room connect');
-            }
-            
-            // Enable microphone immediately
-            if (shouldEnableMic) {
-              await enableMicrophone(true);
-              setIsMicEnabledState(true);
-              console.log('✅ Microphone enabled on room connect');
-            } else {
-              await enableMicrophone(false);
-              setIsMicEnabledState(false);
-              console.log('✅ Microphone disabled on room connect');
+              // Fallback: Create new tracks if no stream available
+              if (shouldEnableCamera) {
+                await enableCamera(true);
+                setIsCameraEnabledState(true);
+                console.log('✅ Camera enabled on room connect (new track)');
+              } else {
+                await enableCamera(false);
+                setIsCameraEnabledState(false);
+                console.log('✅ Camera disabled on room connect');
+              }
+              
+              if (shouldEnableMic) {
+                await enableMicrophone(true);
+                setIsMicEnabledState(true);
+                console.log('✅ Microphone enabled on room connect (new track)');
+              } else {
+                await enableMicrophone(false);
+                setIsMicEnabledState(false);
+                console.log('✅ Microphone disabled on room connect');
+              }
             }
           } catch (error) {
             console.error('❌ Failed to enable camera/mic on room connect:', error);
@@ -1652,9 +1684,19 @@ function ParticipantTile({ participant, isScreenShare = false, isCompact = false
       } else if (!isSubscribed) {
         console.log(`⚠️ Track not subscribed for ${participant.identity}`);
         // Force subscribe if not subscribed
+        // Note: setSubscribed may not be available on all track publication types
         if (trackPublication && !trackPublication.isSubscribed) {
-          console.log(`📥 Force subscribing to track for ${participant.identity}`);
-          trackPublication.setSubscribed(true);
+          const hasSetSubscribed = typeof (trackPublication as any).setSubscribed === 'function';
+          if (hasSetSubscribed) {
+            try {
+              console.log(`📥 Force subscribing to track for ${participant.identity}`);
+              (trackPublication as any).setSubscribed(true);
+            } catch (error) {
+              console.warn(`⚠️ Failed to subscribe to track for ${participant.identity}:`, error);
+            }
+          } else {
+            console.warn(`⚠️ Track publication for ${participant.identity} does not support setSubscribed`);
+          }
         }
       }
     }

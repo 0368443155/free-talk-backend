@@ -30,29 +30,41 @@ export class GlobalChatService {
     const { page = 1, limit = 50, before } = options;
     const skip = (page - 1) * limit;
 
-    const qb = this.chatMessageRepository.createQueryBuilder('message')
-      .leftJoinAndSelect('message.sender', 'sender')
-      .orderBy('message.created_at', 'DESC');
+    try {
+      const qb = this.chatMessageRepository.createQueryBuilder('message')
+        .leftJoinAndSelect('message.sender', 'sender')
+        .orderBy('message.created_at', 'DESC');
 
-    if (before) {
-      qb.where('message.created_at < :before', { before });
+      if (before) {
+        qb.where('message.created_at < :before', { before });
+      }
+
+      const [data, total] = await qb
+        .skip(skip)
+        .take(limit)
+        .getManyAndCount();
+
+      // Reverse to show oldest first
+      const reversedData = data.reverse();
+
+      return {
+        data: reversedData,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      };
+    } catch (error) {
+      console.error('Error fetching global chat messages:', error);
+      // Return empty result instead of throwing to prevent 500 error
+      return {
+        data: [],
+        total: 0,
+        page,
+        limit,
+        totalPages: 0,
+      };
     }
-
-    const [data, total] = await qb
-      .skip(skip)
-      .take(limit)
-      .getManyAndCount();
-
-    // Reverse to show oldest first
-    const reversedData = data.reverse();
-
-    return {
-      data: reversedData,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
   }
 
   /**

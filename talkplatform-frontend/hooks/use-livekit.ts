@@ -17,6 +17,10 @@ import {
   DisconnectReason,
   DataPacket_Kind,
   VideoPreset,
+  createLocalVideoTrack,
+  createLocalAudioTrack,
+  LocalVideoTrack,
+  LocalAudioTrack,
 } from 'livekit-client';
 
 interface UseLiveKitProps {
@@ -503,16 +507,65 @@ export function useLiveKit({
   }, [token, serverUrl]); // Only re-run if token or serverUrl changes
 
   // Media control functions
-  const enableCamera = useCallback(async (enabled: boolean) => {
+  const enableCamera = useCallback(async (enabled: boolean, deviceId?: string) => {
     if (!roomRef.current) {
       console.warn('⚠️ Cannot enable camera: room not connected');
       return;
     }
 
     try {
-      console.log(`📷 ${enabled ? 'Enabling' : 'Disabling'} camera...`);
-      await roomRef.current.localParticipant.setCameraEnabled(enabled);
-      console.log(`✅ Camera ${enabled ? 'enabled' : 'disabled'} successfully`);
+      // Check if camera track already exists
+      const existingCameraTrack = Array.from(roomRef.current.localParticipant.videoTrackPublications.values())
+        .find(pub => pub.source === Track.Source.Camera);
+      
+      // If track exists and we're just toggling, try to enable/disable it
+      // Note: We check for setEnabled method directly instead of instanceof to avoid issues in production builds
+      if (existingCameraTrack && existingCameraTrack.track) {
+        const track = existingCameraTrack.track;
+        // Check if track has setEnabled method (works in both dev and production)
+        const hasSetEnabled = typeof (track as any).setEnabled === 'function';
+        
+        if (hasSetEnabled) {
+          try {
+            console.log(`📷 ${enabled ? 'Enabling' : 'Disabling'} existing camera track...`);
+            (track as any).setEnabled(enabled);
+            console.log(`✅ Camera track ${enabled ? 'enabled' : 'disabled'} successfully`);
+          } catch (error) {
+            console.warn('⚠️ Failed to enable/disable track, unpublishing and creating new:', error);
+            // Fallback: unpublish and create new
+            if (existingCameraTrack.track) {
+              await roomRef.current.localParticipant.unpublishTrack(existingCameraTrack.track);
+            }
+            const options: any = {};
+            if (deviceId) {
+              options.deviceId = { exact: deviceId };
+            }
+            await roomRef.current.localParticipant.setCameraEnabled(enabled, Object.keys(options).length > 0 ? options : undefined);
+            console.log(`✅ Camera ${enabled ? 'enabled' : 'disabled'} successfully`);
+          }
+        } else {
+          // If track doesn't have setEnabled, unpublish and create new
+          console.log('📷 Existing track cannot be toggled, unpublishing and creating new...');
+          if (existingCameraTrack.track) {
+            await roomRef.current.localParticipant.unpublishTrack(existingCameraTrack.track);
+          }
+          const options: any = {};
+          if (deviceId) {
+            options.deviceId = { exact: deviceId };
+          }
+          await roomRef.current.localParticipant.setCameraEnabled(enabled, Object.keys(options).length > 0 ? options : undefined);
+          console.log(`✅ Camera ${enabled ? 'enabled' : 'disabled'} successfully`);
+        }
+      } else {
+        // Create new track with device ID if provided
+        const options: any = {};
+        if (deviceId) {
+          options.deviceId = { exact: deviceId };
+        }
+        console.log(`📷 ${enabled ? 'Enabling' : 'Disabling'} camera${deviceId ? ` with device ID: ${deviceId}` : ''}...`);
+        await roomRef.current.localParticipant.setCameraEnabled(enabled, Object.keys(options).length > 0 ? options : undefined);
+        console.log(`✅ Camera ${enabled ? 'enabled' : 'disabled'} successfully`);
+      }
       
       // Force update participants to reflect camera state change immediately
       // Use setTimeout to ensure track is published before updating
@@ -527,13 +580,61 @@ export function useLiveKit({
     }
   }, [transformParticipants]);
 
-  const enableMicrophone = useCallback(async (enabled: boolean) => {
+  const enableMicrophone = useCallback(async (enabled: boolean, deviceId?: string) => {
     if (!roomRef.current) return;
 
     try {
-      console.log(`🎤 Toggling microphone: ${enabled}`);
-      await roomRef.current.localParticipant.setMicrophoneEnabled(enabled);
-      console.log(`✅ Microphone set to: ${enabled}`);
+      // Check if microphone track already exists
+      const existingMicTrack = Array.from(roomRef.current.localParticipant.audioTrackPublications.values())[0];
+      
+      // If track exists and we're just toggling, try to enable/disable it
+      // Note: We check for setEnabled method directly instead of instanceof to avoid issues in production builds
+      if (existingMicTrack && existingMicTrack.track) {
+        const track = existingMicTrack.track;
+        // Check if track has setEnabled method (works in both dev and production)
+        const hasSetEnabled = typeof (track as any).setEnabled === 'function';
+        
+        if (hasSetEnabled) {
+          try {
+            console.log(`🎤 ${enabled ? 'Enabling' : 'Disabling'} existing microphone track...`);
+            (track as any).setEnabled(enabled);
+            console.log(`✅ Microphone track ${enabled ? 'enabled' : 'disabled'} successfully`);
+          } catch (error) {
+            console.warn('⚠️ Failed to enable/disable track, unpublishing and creating new:', error);
+            // Fallback: unpublish and create new
+            if (existingMicTrack.track) {
+              await roomRef.current.localParticipant.unpublishTrack(existingMicTrack.track);
+            }
+            const options: any = {};
+            if (deviceId) {
+              options.deviceId = { exact: deviceId };
+            }
+            await roomRef.current.localParticipant.setMicrophoneEnabled(enabled, Object.keys(options).length > 0 ? options : undefined);
+            console.log(`✅ Microphone ${enabled ? 'enabled' : 'disabled'} successfully`);
+          }
+        } else {
+          // If track doesn't have setEnabled, unpublish and create new
+          console.log('🎤 Existing track cannot be toggled, unpublishing and creating new...');
+          if (existingMicTrack.track) {
+            await roomRef.current.localParticipant.unpublishTrack(existingMicTrack.track);
+          }
+          const options: any = {};
+          if (deviceId) {
+            options.deviceId = { exact: deviceId };
+          }
+          await roomRef.current.localParticipant.setMicrophoneEnabled(enabled, Object.keys(options).length > 0 ? options : undefined);
+          console.log(`✅ Microphone ${enabled ? 'enabled' : 'disabled'} successfully`);
+        }
+      } else {
+        // Create new track with device ID if provided
+        const options: any = {};
+        if (deviceId) {
+          options.deviceId = { exact: deviceId };
+        }
+        console.log(`🎤 ${enabled ? 'Enabling' : 'Disabling'} microphone${deviceId ? ` with device ID: ${deviceId}` : ''}...`);
+        await roomRef.current.localParticipant.setMicrophoneEnabled(enabled, Object.keys(options).length > 0 ? options : undefined);
+        console.log(`✅ Microphone set to: ${enabled}`);
+      }
       setParticipants(transformParticipants(roomRef.current));
     } catch (err) {
       console.error('Failed to toggle microphone:', err);

@@ -51,6 +51,7 @@ export interface DeviceSettings {
   virtualBackground: boolean;
   backgroundBlur: number;
   audioLevel: number;
+  mediaStream?: MediaStream; // Optional: Reuse stream from green-room to avoid duplicate permission requests
 }
 
 /**
@@ -376,6 +377,7 @@ export function GreenRoom({ onJoinMeeting, onCancel, meetingTitle, isWaitingRoom
 
   const handleJoinMeeting = () => {
     // UC-02: Save final device settings
+    // Include the current stream to reuse it in LiveKit and avoid duplicate permission requests
     const deviceSettings: DeviceSettings = {
       audioInput: selectedAudioInput,
       videoInput: selectedVideoInput,
@@ -385,6 +387,7 @@ export function GreenRoom({ onJoinMeeting, onCancel, meetingTitle, isWaitingRoom
       virtualBackground,
       backgroundBlur,
       audioLevel,
+      mediaStream: currentStreamRef.current || null, // Pass stream to reuse
     };
 
     onJoinMeeting(deviceSettings);
