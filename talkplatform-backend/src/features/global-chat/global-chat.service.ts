@@ -14,7 +14,7 @@ export class GlobalChatService {
     private readonly chatMessageRepository: Repository<GlobalChatMessage>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
-  ) {}
+  ) { }
 
   /**
    * Get chat messages with pagination
@@ -146,7 +146,7 @@ export class GlobalChatService {
       is_system_message: type === GlobalMessageType.SYSTEM,
       is_deleted: false,
     });
-    
+
     // Set virtual properties for code compatibility (not saved to DB)
     chatMessage.type = type || GlobalMessageType.TEXT;
     chatMessage.metadata = metadata || null;
@@ -161,8 +161,10 @@ export class GlobalChatService {
       }
 
       // Transform to match frontend interface
+      // IMPORTANT: Must include sender_id explicitly because getter doesn't work on plain objects
       return {
         ...saved,
+        sender_id: userId, // CRITICAL: Add sender_id explicitly for gateway broadcast
         sender: saved.sender ? {
           user_id: saved.sender.id,
           username: saved.sender.username,

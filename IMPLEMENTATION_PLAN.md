@@ -1,436 +1,716 @@
-# 🚀 KẾHOẠCH TRIỂN KHAI CHI TIẾT
+# 4Talk Platform - Implementation Plan
 
-**Ngày tạo:** 2025-11-21  
-**Mục tiêu:** Hoàn thiện TalkPlatform theo đúng yêu cầu  
-**Timeline:** 6 tuần
+## 📋 Tổng quan
 
----
-
-## ✅ BƯỚC 1: SETUP CƠ BẢN (Đã hoàn thành)
-
-- [x] Chạy SQL script tạo missing tables
-- [x] Fix frontend build errors
-- [x] Tạo các tài liệu audit và checklist
+Tài liệu này mô tả kế hoạch triển khai chi tiết cho các tính năng còn lại của hệ thống 4Talk.
 
 ---
 
-## 🎯 BƯỚC 2: MODULE 6 - MARKETPLACE (Tuần 1-2) - ƯU TIÊN CAO
+## 🎯 Phase 1: Teacher Schedule Management (Priority: HIGH)
 
-### 2.1. Backend - Entities & DTOs (Ngày 1-2)
+### 4.1 Tạo Slot Dạy (Schedule)
 
-#### Tạo Entities:
-```bash
-cd talkplatform-backend/src/features
-mkdir marketplace
-cd marketplace
-mkdir entities dto services controllers
+#### Database Schema
+```sql
+CREATE TABLE schedules (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  teacher_id UUID NOT NULL REFERENCES users(id),
+  title VARCHAR(255) NOT NULL,
+  description TEXT,
+  start_time TIMESTAMP NOT NULL,
+  end_time TIMESTAMP NOT NULL,
+  price DECIMAL(10,2) NOT NULL,
+  max_students INTEGER DEFAULT 10,
+  current_students INTEGER DEFAULT 0,
+  status VARCHAR(50) DEFAULT 'open', -- open, full, cancelled, completed
+  language VARCHAR(50),
+  level VARCHAR(50), -- beginner, intermediate, advanced
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  CONSTRAINT valid_time_range CHECK (end_time > start_time),
+  CONSTRAINT valid_price CHECK (price >= 0),
+  CONSTRAINT valid_students CHECK (current_students <= max_students)
+);
+
+CREATE INDEX idx_schedules_teacher ON schedules(teacher_id);
+CREATE INDEX idx_schedules_status ON schedules(status);
+CREATE INDEX idx_schedules_time ON schedules(start_time, end_time);
 ```
 
-**Files cần tạo:**
-1. `entities/material-category.entity.ts`
-2. `entities/material.entity.ts`
-3. `entities/material-purchase.entity.ts`
-4. `entities/material-review.entity.ts`
+#### Backend API
+- `POST /api/schedules` - Tạo slot mới
+- `GET /api/schedules` - Lấy danh sách slots (filter by teacher, status, date)
+- `GET /api/schedules/:id` - Chi tiết slot
+- `PATCH /api/schedules/:id` - Cập nhật slot
+- `DELETE /api/schedules/:id` - Hủy slot (chỉ khi current_students = 0)
 
-#### Tạo DTOs:
-1. `dto/create-material.dto.ts`
-2. `dto/update-material.dto.ts`
-3. `dto/filter-material.dto.ts`
-4. `dto/create-review.dto.ts`
+#### Frontend Components
+- `ScheduleCalendar.tsx` - Calendar view với date/time picker
+- `CreateScheduleForm.tsx` - Form tạo slot
+- `ScheduleList.tsx` - Danh sách slots của teacher
+- `ScheduleCard.tsx` - Card hiển thị thông tin slot
 
-### 2.2. Backend - Services (Ngày 3-4)
-
-**Files cần tạo:**
-1. `services/material.service.ts` - CRUD cho materials
-2. `services/material-purchase.service.ts` - Xử lý mua hàng
-3. `services/material-review.service.ts` - Quản lý reviews
-4. `services/upload.service.ts` - Upload file lên AWS S3
-
-**Setup AWS S3:**
-```bash
-cd talkplatform-backend
-npm install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner
-```
-
-Tạo `.env` variables:
-```
-AWS_REGION=ap-southeast-1
-AWS_ACCESS_KEY_ID=your_key
-AWS_SECRET_ACCESS_KEY=your_secret
-AWS_S3_BUCKET=talkplatform-materials
-```
-
-### 2.3. Backend - Controllers (Ngày 5-6)
-
-**Files cần tạo:**
-1. `controllers/student-material.controller.ts` - Student endpoints
-2. `controllers/teacher-material.controller.ts` - Teacher endpoints
-3. `controllers/admin-material.controller.ts` - Admin endpoints
-
-**API Endpoints cần implement:**
-
-**Student APIs:**
-- `GET /api/v1/marketplace/materials` - Browse materials
-- `GET /api/v1/marketplace/materials/:id` - View detail
-- `POST /api/v1/marketplace/materials/:id/purchase` - Purchase
-- `GET /api/v1/marketplace/my-purchases` - My purchased materials
-- `POST /api/v1/marketplace/materials/:id/review` - Add review
-- `GET /api/v1/marketplace/materials/:id/download` - Download purchased
-
-**Teacher APIs:**
-- `POST /api/v1/marketplace/teacher/materials` - Upload material
-- `GET /api/v1/marketplace/teacher/materials` - My materials
-- `PATCH /api/v1/marketplace/teacher/materials/:id` - Update material
-- `DELETE /api/v1/marketplace/teacher/materials/:id` - Delete material
-- `GET /api/v1/marketplace/teacher/sales` - Sales statistics
-
-**Admin APIs:**
-- `GET /api/v1/marketplace/admin/materials` - All materials
-- `PATCH /api/v1/marketplace/admin/materials/:id/approve` - Approve
-- `PATCH /api/v1/marketplace/admin/materials/:id/reject` - Reject
-
-### 2.4. Frontend - Components (Ngày 7-10)
-
-**Tạo folder structure:**
-```bash
-cd talkplatform-frontend
-mkdir -p app/marketplace
-mkdir -p components/marketplace
-```
-
-**Pages cần tạo:**
-1. `app/marketplace/page.tsx` - Browse marketplace
-2. `app/marketplace/[id]/page.tsx` - Material detail
-3. `app/marketplace/my-purchases/page.tsx` - My purchases
-4. `app/teacher/materials/page.tsx` - Teacher materials management
-5. `app/teacher/materials/upload/page.tsx` - Upload new material
-
-**Components cần tạo:**
-1. `components/marketplace/material-card.tsx`
-2. `components/marketplace/material-grid.tsx`
-3. `components/marketplace/material-filters.tsx`
-4. `components/marketplace/purchase-modal.tsx`
-5. `components/marketplace/review-form.tsx`
-6. `components/marketplace/upload-form.tsx`
+#### Validation Rules
+1. Start time phải trong tương lai (> now + 1 hour)
+2. End time > Start time
+3. Duration: min 30 phút, max 4 giờ
+4. Không trùng với slots khác của cùng teacher (status != cancelled)
+5. Price > 0
 
 ---
 
-## 💳 BƯỚC 3: PAYMENT INTEGRATION (Tuần 3) - ƯU TIÊN CAO
+## 🎓 Phase 2: Student Booking System (Priority: HIGH)
 
-### 3.1. Setup Payment Providers
+### 4.2 Booking Flow
 
-**Install packages:**
-```bash
-cd talkplatform-backend
-npm install stripe @paypal/checkout-server-sdk
+#### Database Schema
+```sql
+CREATE TABLE bookings (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id),
+  schedule_id UUID NOT NULL REFERENCES schedules(id),
+  status VARCHAR(50) DEFAULT 'confirmed', -- confirmed, cancelled, completed, refunded
+  price_paid DECIMAL(10,2) NOT NULL,
+  payment_method VARCHAR(50) DEFAULT 'credit', -- credit, wallet
+  booking_time TIMESTAMP DEFAULT NOW(),
+  cancelled_at TIMESTAMP,
+  refund_amount DECIMAL(10,2),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(user_id, schedule_id) -- Không book trùng
+);
+
+CREATE INDEX idx_bookings_user ON bookings(user_id);
+CREATE INDEX idx_bookings_schedule ON bookings(schedule_id);
+CREATE INDEX idx_bookings_status ON bookings(status);
 ```
 
-### 3.2. Backend - Payment Service
+#### Backend API
+- `POST /api/bookings` - Đặt chỗ (với transaction)
+- `GET /api/bookings` - Lấy danh sách bookings của user
+- `GET /api/bookings/:id` - Chi tiết booking
+- `DELETE /api/bookings/:id` - Hủy booking (với refund logic)
 
-**Files cần tạo:**
-1. `src/features/payment/services/stripe.service.ts`
-2. `src/features/payment/services/paypal.service.ts`
-3. `src/features/payment/services/vnpay.service.ts`
-4. `src/features/payment/controllers/payment.controller.ts`
-5. `src/features/payment/controllers/webhook.controller.ts`
-
-**API Endpoints:**
-- `POST /api/v1/payment/create-intent` - Create payment intent
-- `POST /api/v1/payment/confirm` - Confirm payment
-- `POST /api/v1/payment/webhook/stripe` - Stripe webhook
-- `POST /api/v1/payment/webhook/paypal` - PayPal webhook
-- `GET /api/v1/payment/methods` - Get saved payment methods
-- `POST /api/v1/payment/methods` - Add payment method
-
-### 3.3. Frontend - Payment UI
-
-**Pages:**
-1. `app/credits/purchase/page.tsx` - Purchase credits page
-2. `app/payment/success/page.tsx` - Success page
-3. `app/payment/cancel/page.tsx` - Cancel page
-
-**Components:**
-1. `components/payment/credit-packages.tsx`
-2. `components/payment/payment-method-selector.tsx`
-3. `components/payment/stripe-checkout.tsx`
-
----
-
-## ⚡ BƯỚC 4: AUTO CREDIT DEDUCTION (Tuần 3) - ƯU TIÊN CAO
-
-### 4.1. Backend - Credit Service Enhancement
-
-**File cần sửa:**
-`src/features/credit/credit.service.ts`
-
-**Thêm methods:**
+#### Transaction Flow (ACID)
 ```typescript
-async deductCreditsForMeeting(userId, meetingId, amount)
-async refundCredits(userId, amount, reason)
-async calculateRevenueSplit(amount, teacherId, affiliateId?)
+async createBooking(userId: string, scheduleId: string) {
+  return await this.dataSource.transaction(async (manager) => {
+    // 1. Lock schedule row
+    const schedule = await manager.findOne(Schedule, {
+      where: { id: scheduleId },
+      lock: { mode: 'pessimistic_write' }
+    });
+    
+    // 2. Validate
+    if (schedule.status !== 'open') throw new Error('Schedule not available');
+    if (schedule.current_students >= schedule.max_students) throw new Error('Schedule full');
+    
+    // 3. Check user credit
+    const user = await manager.findOne(User, { where: { id: userId } });
+    if (user.credit_balance < schedule.price) throw new Error('Insufficient credit');
+    
+    // 4. Deduct credit
+    await manager.update(User, userId, {
+      credit_balance: () => `credit_balance - ${schedule.price}`
+    });
+    
+    // 5. Create booking
+    const booking = await manager.save(Booking, {
+      user_id: userId,
+      schedule_id: scheduleId,
+      price_paid: schedule.price,
+      status: 'confirmed'
+    });
+    
+    // 6. Update schedule
+    await manager.update(Schedule, scheduleId, {
+      current_students: () => 'current_students + 1',
+      status: schedule.current_students + 1 >= schedule.max_students ? 'full' : 'open'
+    });
+    
+    // 7. Create transaction record
+    await manager.save(Transaction, {
+      user_id: userId,
+      type: 'booking',
+      amount: -schedule.price,
+      reference_id: booking.id,
+      status: 'completed'
+    });
+    
+    return booking;
+  });
+}
 ```
 
-### 4.2. Backend - Meeting Service Integration
-
-**File cần sửa:**
-`src/features/meeting/meeting.service.ts`
-
-**Thêm logic:**
-- Khi user join meeting có phí → Tự động trừ credit
-- Khi meeting kết thúc → Tính revenue split cho teacher
-- Khi user cancel booking → Refund credits (nếu đủ điều kiện)
-
-### 4.3. Backend - Revenue Share Service
-
-**File cần tạo:**
-`src/features/revenue/revenue-share.service.ts`
-
-**Functions:**
-- Calculate 70/30 split (teacher/platform)
-- Calculate affiliate commission (10%)
-- Track revenue in `revenue_shares` table
+#### Frontend Components
+- `ScheduleBrowser.tsx` - Browse available schedules
+- `ScheduleDetail.tsx` - Chi tiết schedule với nút Book
+- `BookingConfirmation.tsx` - Modal xác nhận booking
+- `MyBookings.tsx` - Danh sách bookings của user
 
 ---
 
-## 📊 BƯỚC 5: TEACHER PROFILE ENHANCEMENTS (Tuần 4)
+## 💰 Phase 3: Wallet & Payment System (Priority: HIGH)
 
-### 5.1. Backend - Teacher Media
+### 5.1 Wallet Structure
 
-**Files cần tạo:**
-1. `src/features/teachers/entities/teacher-media.entity.ts`
-2. `src/features/teachers/services/teacher-media.service.ts`
+#### Database Schema
+```sql
+-- User table already has credit_balance, but we add wallet table for tracking
+CREATE TABLE wallets (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID UNIQUE NOT NULL REFERENCES users(id),
+  balance DECIMAL(10,2) DEFAULT 0 CHECK (balance >= 0),
+  hold_balance DECIMAL(10,2) DEFAULT 0 CHECK (hold_balance >= 0), -- For pending transactions
+  total_earned DECIMAL(10,2) DEFAULT 0, -- For teachers
+  total_spent DECIMAL(10,2) DEFAULT 0, -- For students
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
 
-**API Endpoints:**
-- `POST /api/v1/teachers/me/media` - Upload media
-- `GET /api/v1/teachers/:id/media` - Get teacher media
-- `DELETE /api/v1/teachers/me/media/:id` - Delete media
+CREATE TABLE transactions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id),
+  type VARCHAR(50) NOT NULL, -- deposit, booking, refund, payout, income_class, purchase_material
+  amount DECIMAL(10,2) NOT NULL,
+  balance_before DECIMAL(10,2) NOT NULL,
+  balance_after DECIMAL(10,2) NOT NULL,
+  status VARCHAR(50) DEFAULT 'pending', -- pending, completed, failed, cancelled
+  reference_id UUID, -- booking_id, schedule_id, material_id
+  reference_type VARCHAR(50), -- booking, schedule, material
+  description TEXT,
+  metadata JSONB,
+  created_at TIMESTAMP DEFAULT NOW(),
+  completed_at TIMESTAMP
+);
 
-### 5.2. Backend - Teacher Ranking
-
-**Files cần tạo:**
-1. `src/features/teachers/entities/teacher-ranking.entity.ts`
-2. `src/features/teachers/services/teacher-ranking.service.ts`
-3. `src/features/teachers/tasks/calculate-rankings.task.ts` - Cron job
-
-**Ranking formula:**
+CREATE INDEX idx_transactions_user ON transactions(user_id);
+CREATE INDEX idx_transactions_type ON transactions(type);
+CREATE INDEX idx_transactions_status ON transactions(status);
+CREATE INDEX idx_transactions_created ON transactions(created_at DESC);
 ```
-Score = (Rating × 0.4) + (Hours × 0.3) + (Reviews × 0.15) + (Response × 0.1) + (Completion × 0.05)
+
+#### Backend API
+- `GET /api/wallet/balance` - Lấy số dư
+- `POST /api/wallet/deposit` - Nạp tiền (admin only for testing)
+- `GET /api/wallet/transactions` - Lịch sử giao dịch
+- `POST /api/wallet/withdraw` - Rút tiền (teacher only)
+
+#### Admin Tool (Mock Deposit)
+```typescript
+// Admin can add credit for testing
+@Post('admin/wallet/add-credit')
+@UseGuards(AdminGuard)
+async addCredit(
+  @Body() dto: { email: string; amount: number }
+) {
+  return await this.walletService.addCredit(dto.email, dto.amount);
+}
 ```
 
-### 5.3. Frontend - Teacher Profile Page
+---
 
-**Files cần sửa/tạo:**
-1. `app/teachers/[id]/page.tsx` - Enhanced profile
-2. `components/teacher/media-gallery.tsx`
-3. `components/teacher/ranking-badge.tsx`
-4. `components/teacher/statistics-card.tsx`
+## 🎁 Phase 4: Affiliate System (Priority: MEDIUM)
+
+### 6.1 Referral Code Generation
+
+#### Database Schema
+```sql
+ALTER TABLE users ADD COLUMN affiliate_code VARCHAR(50) UNIQUE;
+ALTER TABLE users ADD COLUMN referred_by UUID REFERENCES users(id);
+ALTER TABLE users ADD COLUMN total_referrals INTEGER DEFAULT 0;
+ALTER TABLE users ADD COLUMN total_referral_earnings DECIMAL(10,2) DEFAULT 0;
+
+CREATE TABLE referral_earnings (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  referrer_id UUID NOT NULL REFERENCES users(id), -- Teacher who referred
+  referred_user_id UUID NOT NULL REFERENCES users(id), -- Student who was referred
+  schedule_id UUID NOT NULL REFERENCES schedules(id),
+  booking_id UUID NOT NULL REFERENCES bookings(id),
+  original_amount DECIMAL(10,2) NOT NULL,
+  commission_rate DECIMAL(5,2) NOT NULL, -- 0.70 for referred, 0.30 for platform
+  commission_amount DECIMAL(10,2) NOT NULL,
+  status VARCHAR(50) DEFAULT 'pending', -- pending, paid
+  created_at TIMESTAMP DEFAULT NOW(),
+  paid_at TIMESTAMP
+);
+```
+
+#### Auto-generate Affiliate Code
+```typescript
+// When teacher is verified
+async approveTeacher(teacherId: string) {
+  const code = `TEACH${teacherId.substring(0, 8).toUpperCase()}`;
+  await this.userRepository.update(teacherId, {
+    is_verified: true,
+    affiliate_code: code
+  });
+}
+```
+
+#### Tracking Referrals
+```typescript
+// During registration
+async register(dto: RegisterDto, refCode?: string) {
+  let referrerId = null;
+  
+  if (refCode) {
+    const referrer = await this.userRepository.findOne({
+      where: { affiliate_code: refCode, role: 'teacher' }
+    });
+    if (referrer) referrerId = referrer.id;
+  }
+  
+  const user = await this.userRepository.save({
+    ...dto,
+    referred_by: referrerId
+  });
+  
+  if (referrerId) {
+    await this.userRepository.increment(
+      { id: referrerId },
+      'total_referrals',
+      1
+    );
+  }
+  
+  return user;
+}
+```
+
+#### Commission Calculation
+```typescript
+async completeClass(scheduleId: string) {
+  const schedule = await this.scheduleRepository.findOne({
+    where: { id: scheduleId },
+    relations: ['teacher', 'bookings', 'bookings.user']
+  });
+  
+  for (const booking of schedule.bookings) {
+    const student = booking.user;
+    const teacher = schedule.teacher;
+    const amount = booking.price_paid;
+    
+    let teacherShare: number;
+    let commissionRate: number;
+    
+    if (student.referred_by === teacher.id) {
+      // Student came from this teacher's referral
+      teacherShare = amount * 0.70;
+      commissionRate = 0.70;
+    } else {
+      // Platform source
+      teacherShare = amount * 0.30;
+      commissionRate = 0.30;
+    }
+    
+    // Add to teacher wallet
+    await this.walletService.addIncome(teacher.id, teacherShare, {
+      type: 'income_class',
+      schedule_id: scheduleId,
+      booking_id: booking.id
+    });
+    
+    // Record commission
+    if (student.referred_by) {
+      await this.referralEarningRepository.save({
+        referrer_id: teacher.id,
+        referred_user_id: student.id,
+        schedule_id: scheduleId,
+        booking_id: booking.id,
+        original_amount: amount,
+        commission_rate: commissionRate,
+        commission_amount: teacherShare,
+        status: 'paid'
+      });
+    }
+  }
+}
+```
 
 ---
 
-## 🎓 BƯỚC 6: CLASSROOM ENHANCEMENTS (Tuần 4-5)
+## 📚 Phase 5: Marketplace (Materials) (Priority: MEDIUM)
 
-### 6.1. Backend - Bookings
+### 7.1 Upload & Sell Materials
 
-**Files cần tạo:**
-1. `src/features/classroom/entities/booking.entity.ts`
-2. `src/features/classroom/services/booking.service.ts`
-3. `src/features/classroom/controllers/booking.controller.ts`
+#### Database Schema
+```sql
+CREATE TABLE teacher_materials (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  teacher_id UUID NOT NULL REFERENCES users(id),
+  title VARCHAR(255) NOT NULL,
+  description TEXT,
+  price DECIMAL(10,2) NOT NULL CHECK (price >= 0),
+  category VARCHAR(100),
+  language VARCHAR(50),
+  level VARCHAR(50),
+  file_url TEXT NOT NULL, -- S3 private URL
+  preview_url TEXT, -- S3 public URL (first 3 pages)
+  file_size BIGINT,
+  file_type VARCHAR(50),
+  download_count INTEGER DEFAULT 0,
+  purchase_count INTEGER DEFAULT 0,
+  rating DECIMAL(3,2) DEFAULT 0,
+  status VARCHAR(50) DEFAULT 'active', -- active, inactive, deleted
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
 
-**API Endpoints:**
-- `POST /api/v1/classrooms/:id/book` - Book a class
-- `GET /api/v1/bookings/my-bookings` - My bookings
-- `PATCH /api/v1/bookings/:id/cancel` - Cancel booking
-- `GET /api/v1/teacher/bookings` - Teacher's bookings
+CREATE TABLE material_purchases (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id),
+  material_id UUID NOT NULL REFERENCES teacher_materials(id),
+  price_paid DECIMAL(10,2) NOT NULL,
+  purchased_at TIMESTAMP DEFAULT NOW(),
+  download_count INTEGER DEFAULT 0,
+  last_downloaded_at TIMESTAMP,
+  UNIQUE(user_id, material_id)
+);
 
-### 6.2. Backend - Resources & Announcements
+CREATE INDEX idx_materials_teacher ON teacher_materials(teacher_id);
+CREATE INDEX idx_materials_status ON teacher_materials(status);
+CREATE INDEX idx_purchases_user ON material_purchases(user_id);
+CREATE INDEX idx_purchases_material ON material_purchases(material_id);
+```
 
-**Files cần tạo:**
-1. `src/features/classroom/entities/classroom-resource.entity.ts`
-2. `src/features/classroom/entities/classroom-announcement.entity.ts`
-3. `src/features/classroom/services/classroom-resource.service.ts`
-4. `src/features/classroom/services/classroom-announcement.service.ts`
+#### Backend API
+- `POST /api/materials` - Upload material (teacher only)
+- `GET /api/materials` - Browse materials (with filters)
+- `GET /api/materials/:id` - Material detail
+- `POST /api/materials/:id/purchase` - Purchase material
+- `GET /api/materials/:id/download` - Download (generate signed URL)
 
-### 6.3. Frontend - Classroom UI
+#### File Upload Flow
+```typescript
+async uploadMaterial(teacherId: string, file: Express.Multer.File, dto: CreateMaterialDto) {
+  // 1. Upload original file to S3 (private bucket)
+  const fileKey = `materials/${teacherId}/${Date.now()}_${file.originalname}`;
+  const fileUrl = await this.s3Service.uploadPrivate(fileKey, file.buffer);
+  
+  // 2. Generate preview (first 3 pages for PDF)
+  let previewUrl = null;
+  if (file.mimetype === 'application/pdf') {
+    const previewBuffer = await this.pdfService.extractPages(file.buffer, 1, 3);
+    const previewKey = `previews/${teacherId}/${Date.now()}_preview.pdf`;
+    previewUrl = await this.s3Service.uploadPublic(previewKey, previewBuffer);
+  }
+  
+  // 3. Save to database
+  const material = await this.materialRepository.save({
+    teacher_id: teacherId,
+    ...dto,
+    file_url: fileUrl,
+    preview_url: previewUrl,
+    file_size: file.size,
+    file_type: file.mimetype
+  });
+  
+  return material;
+}
+```
 
-**Files cần tạo:**
-1. `app/classrooms/[id]/resources/page.tsx`
-2. `app/classrooms/[id]/announcements/page.tsx`
-3. `components/classroom/resource-list.tsx`
-4. `components/classroom/announcement-card.tsx`
+#### Purchase Flow
+```typescript
+async purchaseMaterial(userId: string, materialId: string) {
+  return await this.dataSource.transaction(async (manager) => {
+    const material = await manager.findOne(Material, { where: { id: materialId } });
+    const user = await manager.findOne(User, { where: { id: userId } });
+    
+    // Check if already purchased
+    const existing = await manager.findOne(MaterialPurchase, {
+      where: { user_id: userId, material_id: materialId }
+    });
+    if (existing) throw new Error('Already purchased');
+    
+    // Check credit
+    if (user.credit_balance < material.price) throw new Error('Insufficient credit');
+    
+    // Deduct credit
+    await manager.update(User, userId, {
+      credit_balance: () => `credit_balance - ${material.price}`
+    });
+    
+    // Calculate teacher share (70% for referred, 30% for platform)
+    const teacherShare = user.referred_by === material.teacher_id 
+      ? material.price * 0.70 
+      : material.price * 0.30;
+    
+    // Add to teacher wallet
+    await manager.update(User, material.teacher_id, {
+      credit_balance: () => `credit_balance + ${teacherShare}`
+    });
+    
+    // Create purchase record
+    const purchase = await manager.save(MaterialPurchase, {
+      user_id: userId,
+      material_id: materialId,
+      price_paid: material.price
+    });
+    
+    // Update material stats
+    await manager.increment(Material, { id: materialId }, 'purchase_count', 1);
+    
+    return purchase;
+  });
+}
+```
+
+#### Download with Signed URL
+```typescript
+async generateDownloadUrl(userId: string, materialId: string) {
+  // Check if user purchased
+  const purchase = await this.purchaseRepository.findOne({
+    where: { user_id: userId, material_id: materialId },
+    relations: ['material']
+  });
+  
+  if (!purchase) throw new Error('Material not purchased');
+  
+  // Generate signed URL (expires in 15 minutes)
+  const signedUrl = await this.s3Service.getSignedUrl(
+    purchase.material.file_url,
+    15 * 60 // 15 minutes
+  );
+  
+  // Update download stats
+  await this.purchaseRepository.update(purchase.id, {
+    download_count: () => 'download_count + 1',
+    last_downloaded_at: new Date()
+  });
+  
+  return { url: signedUrl, expiresIn: 900 };
+}
+```
 
 ---
 
-## 🎮 BƯỚC 7: FREE TALK ENHANCEMENTS (Tuần 5)
+## 🎯 Phase 6: Advanced Lobby Features (Priority: LOW)
 
-### 7.1. Backend - Global Chat
+### 8.1 Room Filters
 
-**Files cần tạo:**
-1. `src/features/chat/entities/global-chat-message.entity.ts`
-2. `src/features/chat/services/global-chat.service.ts`
-3. `src/features/chat/gateways/global-chat.gateway.ts` - WebSocket
+#### API Enhancement
+```typescript
+@Get('rooms')
+async getRooms(
+  @Query('language') language?: string,
+  @Query('level') level?: string,
+  @Query('region') region?: string,
+  @Query('status') status: string = 'active'
+) {
+  const query = this.roomRepository.createQueryBuilder('room')
+    .where('room.status = :status', { status });
+  
+  if (language) {
+    query.andWhere('room.language = :language', { language });
+  }
+  
+  if (level) {
+    query.andWhere('room.level = :level', { level });
+  }
+  
+  if (region) {
+    query.andWhere('room.region = :region', { region });
+  }
+  
+  return await query.getMany();
+}
+```
 
-### 7.2. Backend - User Matching
+### 8.2 Peer Matching (GeoIP)
 
-**Files cần tạo:**
-1. `src/features/matching/entities/user-matching-preference.entity.ts`
-2. `src/features/matching/entities/match-history.entity.ts`
-3. `src/features/matching/services/matching.service.ts`
-4. `src/features/matching/services/matching-algorithm.service.ts`
-
-**Matching algorithm:**
-- Language compatibility
-- Level compatibility
-- Topic interests
-- Region/timezone
-- Availability
-
-### 7.3. Frontend - Lobby Enhancement
-
-**Files cần sửa:**
-1. `app/lobby/page.tsx` - Add global chat
-2. `components/lobby/global-chat.tsx`
-3. `components/lobby/matching-preferences.tsx`
-4. `components/lobby/suggested-matches.tsx`
-
----
-
-## 💰 BƯỚC 8: WITHDRAWAL SYSTEM (Tuần 5-6)
-
-### 8.1. Backend - Withdrawal Service
-
-**Files cần tạo:**
-1. `src/features/withdrawal/entities/withdrawal-request.entity.ts`
-2. `src/features/withdrawal/services/withdrawal.service.ts`
-3. `src/features/withdrawal/controllers/withdrawal.controller.ts`
-
-**API Endpoints:**
-- `POST /api/v1/withdrawal/request` - Request withdrawal
-- `GET /api/v1/withdrawal/my-requests` - My requests
-- `GET /api/v1/admin/withdrawal/pending` - Admin: pending requests
-- `PATCH /api/v1/admin/withdrawal/:id/approve` - Admin: approve
-- `PATCH /api/v1/admin/withdrawal/:id/reject` - Admin: reject
-
-### 8.2. Frontend - Withdrawal UI
-
-**Files cần tạo:**
-1. `app/teacher/earnings/page.tsx` - Earnings dashboard
-2. `app/teacher/withdrawal/page.tsx` - Request withdrawal
-3. `components/teacher/earnings-chart.tsx`
-4. `components/teacher/withdrawal-form.tsx`
-
----
-
-## 🔔 BƯỚC 9: NOTIFICATIONS (Tuần 6)
-
-### 9.1. Backend - Notification Service
-
-**Files cần tạo:**
-1. `src/features/notifications/entities/notification.entity.ts`
-2. `src/features/notifications/services/notification.service.ts`
-3. `src/features/notifications/gateways/notification.gateway.ts`
-4. `src/features/notifications/controllers/notification.controller.ts`
-
-**Notification types:**
-- Booking reminders (24h, 1h before)
-- Payment received
-- New review
-- Material purchased
-- Withdrawal approved/rejected
-
-### 9.2. Frontend - Notification UI
-
-**Files cần tạo:**
-1. `app/notifications/page.tsx`
-2. `components/notifications/notification-bell.tsx`
-3. `components/notifications/notification-list.tsx`
-4. `components/notifications/notification-item.tsx`
-
----
-
-## 📧 BƯỚC 10: EMAIL SYSTEM (Tuần 6)
-
-### 10.1. Backend - Email Service
-
-**Install:**
+#### Setup GeoIP
 ```bash
-npm install @nestjs-modules/mailer nodemailer
-npm install @types/nodemailer --save-dev
+npm install maxmind
 ```
 
-**Files cần tạo:**
-1. `src/features/email/email.service.ts`
-2. `src/features/email/email.module.ts`
-3. `src/features/email/templates/` - Email templates
-4. `src/features/email/tasks/email-queue.task.ts` - Process queue
+```typescript
+import maxmind, { CityResponse } from 'maxmind';
 
-**Email templates:**
-- Welcome email
-- Booking confirmation
-- Booking reminder
-- Payment receipt
-- Withdrawal confirmation
+@Injectable()
+export class GeoIpService {
+  private lookup: maxmind.Reader<CityResponse>;
+  
+  async onModuleInit() {
+    this.lookup = await maxmind.open('GeoLite2-City.mmdb');
+  }
+  
+  getLocation(ip: string) {
+    const result = this.lookup.get(ip);
+    return {
+      country: result?.country?.iso_code,
+      city: result?.city?.names?.en,
+      latitude: result?.location?.latitude,
+      longitude: result?.location?.longitude
+    };
+  }
+}
+```
+
+#### Peer Matching API
+```typescript
+@Get('peers/nearby')
+async findNearbyPeers(@Req() req: Request) {
+  const userIp = req.ip;
+  const location = this.geoIpService.getLocation(userIp);
+  
+  // Find online users in same region
+  const peers = await this.userRepository.find({
+    where: {
+      is_online: true,
+      region_code: location.country
+    },
+    take: 10
+  });
+  
+  return peers;
+}
+```
+
+### 8.3 Topic-based Chat Rooms
+
+#### Socket Namespace Enhancement
+```typescript
+@WebSocketGateway({
+  namespace: '/chat',
+  cors: { origin: '*' }
+})
+export class ChatGateway {
+  @SubscribeMessage('join-topic')
+  handleJoinTopic(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { topic: string }
+  ) {
+    const roomName = `topic_${data.topic}`;
+    client.join(roomName);
+    
+    this.server.to(roomName).emit('user-joined', {
+      userId: client.data.userId,
+      username: client.data.username,
+      topic: data.topic
+    });
+  }
+  
+  @SubscribeMessage('topic-message')
+  handleTopicMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { topic: string; message: string }
+  ) {
+    const roomName = `topic_${data.topic}`;
+    
+    this.server.to(roomName).emit('topic-message', {
+      userId: client.data.userId,
+      username: client.data.username,
+      message: data.message,
+      topic: data.topic,
+      timestamp: new Date()
+    });
+  }
+}
+```
 
 ---
 
-## 🧪 BƯỚC 11: TESTING & OPTIMIZATION
+## 📅 Implementation Timeline
 
-### 11.1. Backend Testing
-- Unit tests cho services
-- Integration tests cho APIs
-- E2E tests cho critical flows
+### Week 1-2: Teacher Schedule Management
+- [ ] Database migration
+- [ ] Backend API (schedules)
+- [ ] Frontend components (calendar, forms)
+- [ ] Testing
 
-### 11.2. Frontend Testing
-- Component tests
-- Integration tests
-- E2E tests với Playwright/Cypress
+### Week 3-4: Student Booking System
+- [ ] Database migration (bookings)
+- [ ] Backend API with transactions
+- [ ] Frontend booking flow
+- [ ] Testing
 
-### 11.3. Performance Optimization
-- Database indexing
-- Query optimization
-- Caching với Redis
-- CDN cho static assets
-- Image optimization
+### Week 5-6: Wallet & Payment
+- [ ] Database migration (wallets, transactions)
+- [ ] Backend API
+- [ ] Admin deposit tool
+- [ ] Transaction history UI
+- [ ] Testing
 
----
+### Week 7-8: Affiliate System
+- [ ] Database migration
+- [ ] Referral code generation
+- [ ] Commission calculation logic
+- [ ] Dashboard for teachers
+- [ ] Testing
 
-## 📝 CHECKLIST TỔNG QUAN
+### Week 9-10: Marketplace
+- [ ] Database migration
+- [ ] File upload (S3)
+- [ ] Preview generation
+- [ ] Purchase flow
+- [ ] Download with signed URLs
+- [ ] Testing
 
-### Backend (58 APIs cần implement)
-- [ ] 15 Marketplace APIs
-- [ ] 8 Payment APIs
-- [ ] 6 Booking APIs
-- [ ] 5 Withdrawal APIs
-- [ ] 4 Teacher Media APIs
-- [ ] 4 Classroom Resource APIs
-- [ ] 4 Notification APIs
-- [ ] 12 Other APIs
-
-### Frontend (35+ pages cần tạo)
-- [ ] 6 Marketplace pages
-- [ ] 3 Payment pages
-- [ ] 4 Teacher pages
-- [ ] 3 Classroom pages
-- [ ] 2 Withdrawal pages
-- [ ] 1 Notification page
-- [ ] 16+ Other pages
-
-### Database
-- [x] 20 tables created
-- [ ] Indexes optimized
-- [ ] Views created
-- [ ] Sample data inserted
+### Week 11-12: Advanced Features
+- [ ] Room filters
+- [ ] GeoIP matching
+- [ ] Topic-based chat
+- [ ] Testing & optimization
 
 ---
 
-## 🚀 BẮT ĐẦU NGAY
+## 🧪 Testing Strategy
 
-**Bước tiếp theo:**
-1. ✅ Chạy SQL script (đang chờ)
-2. 🔄 Tạo Marketplace entities
-3. 🔄 Tạo Upload service với AWS S3
-4. 🔄 Implement Marketplace APIs
+### Unit Tests
+- Service layer logic
+- Transaction handling
+- Commission calculations
+- File upload/download
 
-**Câu hỏi cho bạn:**
-1. Bạn có AWS account để setup S3 không?
-2. Bạn muốn dùng Stripe hay PayPal cho payment?
-3. Bạn muốn bắt đầu với module nào trước?
+### Integration Tests
+- API endpoints
+- Database transactions
+- Socket events
+- S3 operations
+
+### E2E Tests
+- Complete booking flow
+- Purchase flow
+- Refund flow
+- Affiliate tracking
+
+---
+
+## 🔒 Security Considerations
+
+1. **Transaction Safety**: Always use database transactions for money operations
+2. **File Access**: Use signed URLs with expiration
+3. **Authorization**: Check permissions for all sensitive operations
+4. **Rate Limiting**: Prevent abuse of booking/purchase APIs
+5. **Input Validation**: Validate all user inputs
+6. **SQL Injection**: Use parameterized queries
+7. **XSS Protection**: Sanitize user-generated content
+
+---
+
+## 📊 Monitoring & Analytics
+
+1. **Transaction Monitoring**: Track all money movements
+2. **Booking Analytics**: Success rate, cancellation rate
+3. **Material Analytics**: Popular materials, download stats
+4. **Affiliate Performance**: Top referrers, conversion rates
+5. **Error Tracking**: Log all failed transactions
+
+---
+
+## 🚀 Deployment Checklist
+
+- [ ] Database migrations tested
+- [ ] Environment variables configured
+- [ ] S3 buckets created (private & public)
+- [ ] GeoIP database downloaded
+- [ ] Payment gateway configured (future)
+- [ ] Monitoring tools setup
+- [ ] Backup strategy in place
+- [ ] Load testing completed
+
+---
+
+**Last Updated**: 2025-11-25
+**Version**: 1.0

@@ -47,7 +47,7 @@ export function useGlobalChat({ enabled = true }: UseGlobalChatProps = {}): UseG
   }) => {
     // Normalize senderId to ensure consistency
     const normalizedSenderId = data.senderId || '';
-    
+
     const newMsg: IGlobalChatMessage = {
       id: data.id,
       message: data.message,
@@ -62,53 +62,66 @@ export function useGlobalChat({ enabled = true }: UseGlobalChatProps = {}): UseG
       created_at: data.timestamp || new Date().toISOString(),
     };
 
+    console.log('📥 Received message from server:', {
+      id: newMsg.id,
+      senderId: normalizedSenderId,
+      senderName: data.senderName,
+      message: data.message.substring(0, 50)
+    });
+
     setMessages(prev => {
       // Check if message already exists by ID (prevent duplicates) - EXACT same as meeting chat
       const exists = prev.some(msg => msg.id === newMsg.id);
       if (exists) {
+        console.log('⚠️ Message already exists, skipping:', newMsg.id);
         return prev;
       }
-      
+
       // Check for optimistic messages (temp-*) with same message and sender - replace them
-      // Match by message content and sender username (more reliable than sender_id)
-      // Also check if message was sent recently (within 5 seconds) to avoid false matches
+      // Match by message content and sender (more reliable)
       const now = Date.now();
       const optimisticIndex = prev.findIndex(msg => {
         if (!msg.id.startsWith('temp-')) return false;
-        
+
         // Match by message content (trimmed)
         const messageMatch = msg.message.trim() === newMsg.message.trim();
         if (!messageMatch) return false;
-        
-        // Match by sender username (most reliable)
-        const usernameMatch = msg.sender?.username === newMsg.sender?.username;
-        
-        // Match by sender_id (fallback)
-        const senderIdMatch = msg.sender_id === newMsg.sender_id || 
-                             msg.sender?.user_id === newMsg.sender_id ||
-                             msg.sender_id === newMsg.sender?.user_id;
-        
-        // Check if message was sent recently (within 5 seconds)
+
+        // Match by sender_id (most reliable for global chat)
+        const senderIdMatch = msg.sender_id === newMsg.sender_id;
+
+        // Check if message was sent recently (within 10 seconds for global chat)
         const msgTime = new Date(msg.created_at).getTime();
-        const isRecent = (now - msgTime) < 5000;
-        
-        return (usernameMatch || senderIdMatch) && isRecent;
+        const isRecent = (now - msgTime) < 10000;
+
+        const shouldReplace = senderIdMatch && isRecent;
+
+        if (shouldReplace) {
+          console.log('🔄 Replacing optimistic message:', {
+            tempId: msg.id,
+            realId: newMsg.id,
+            message: msg.message.substring(0, 30)
+          });
+        }
+
+        return shouldReplace;
       });
-      
+
       if (optimisticIndex >= 0) {
         // Replace optimistic message with real one
         const updated = [...prev];
         updated[optimisticIndex] = newMsg;
-        return updated.sort((a, b) => 
+        return updated.sort((a, b) =>
           new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         ).slice(-200);
       }
-      
+
       // Add new message and sort by timestamp
-      const updated = [...prev, newMsg].sort((a, b) => 
+      console.log('➕ Adding new message to list');
+      const updated = [...prev, newMsg].sort((a, b) =>
         new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       );
-      
+
       // Keep only last 200 messages in memory
       return updated.slice(-200);
     });
@@ -154,14 +167,14 @@ export function useGlobalChat({ enabled = true }: UseGlobalChatProps = {}): UseG
   // Send typing indicator
   const sendTyping = useCallback((isTyping: boolean) => {
     if (!socket?.connected) return;
-    
+
     socket.emit('chat:typing', { isTyping });
-    
+
     // Auto-stop typing after 3 seconds
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
-    
+
     if (isTyping) {
       typingTimeoutRef.current = setTimeout(() => {
         socket?.emit('chat:typing', { isTyping: false });
@@ -186,54 +199,60 @@ export function useGlobalChat({ enabled = true }: UseGlobalChatProps = {}): UseG
 
     try {
       setIsSending(true);
-      
+
       // Stop typing indicator
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
         typingTimeoutRef.current = null;
       }
       socket.emit('chat:typing', { isTyping: false });
-      
+
       // Optimistic update - add message immediately with temporary ID
       // This ensures it shows on the right side (as own message) immediately
-      // IMPORTANT: Use the same user_id format as backend (user.id or user.user_id)
       if (currentUser) {
-        // Normalize user_id to match backend format (use id first, fallback to user_id)
-        // Backend uses user.id from JWT, so we should use the same format
-        const normalizedUserId = currentUser.id || (currentUser as any).user_id || '';
-        
+        // Use the ID as-is from currentUser (already normalized in component)
+        const userId = currentUser.id;
+
         const tempId = `temp-${Date.now()}-${Math.random()}`;
         const optimisticMessage: IGlobalChatMessage = {
           id: tempId,
           message: trimmedMessage,
           sender: {
-            user_id: normalizedUserId,
+            user_id: userId,
             username: currentUser.username,
             avatar_url: currentUser.avatar_url,
           },
-          sender_id: normalizedUserId, // Use normalized user_id to match backend
+          sender_id: userId,
           type: 'text' as any,
           metadata: null,
           created_at: new Date().toISOString(),
         };
 
+        console.log('📤 Sending optimistic message:', {
+          tempId,
+          userId,
+          username: currentUser.username,
+          message: trimmedMessage.substring(0, 50)
+        });
+
         setMessages(prev => {
           // Check if optimistic message already exists (prevent duplicates)
-          const exists = prev.some(msg => 
-            msg.id === tempId || 
-            (msg.id.startsWith('temp-') && msg.message === trimmedMessage && msg.sender_id === currentUser.id)
+          const exists = prev.some(msg =>
+            msg.id === tempId ||
+            (msg.id.startsWith('temp-') && msg.message === trimmedMessage && msg.sender_id === userId)
           );
           if (exists) {
+            console.log('⚠️ Optimistic message already exists, skipping');
             return prev;
           }
-          
-          const updated = [...prev, optimisticMessage].sort((a, b) => 
+
+          const updated = [...prev, optimisticMessage].sort((a, b) =>
             new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
           );
           return updated.slice(-200);
         });
       }
-      
+
       // Send via Socket.IO - server will broadcast back with proper ID
       socket.emit('chat:message', { message: trimmedMessage });
     } catch (error) {
@@ -251,14 +270,14 @@ export function useGlobalChat({ enabled = true }: UseGlobalChatProps = {}): UseG
   const fetchMessages = useCallback(async () => {
     try {
       const response = await getGlobalChatMessagesApi({ page: 1, limit: 100 });
-      
+
       setMessages(prevMessages => {
         const fetchedMessages = response.data.reverse();
         const existingIds = new Set(prevMessages.map(msg => msg.id));
         const newMessages = fetchedMessages.filter(msg => !existingIds.has(msg.id));
-        
+
         if (newMessages.length > 0) {
-          const allMessages = [...prevMessages, ...newMessages].sort((a, b) => 
+          const allMessages = [...prevMessages, ...newMessages].sort((a, b) =>
             new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
           );
           return allMessages.slice(-200); // Keep only last 200
