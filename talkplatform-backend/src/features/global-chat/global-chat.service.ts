@@ -1,11 +1,14 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { Cron } from '@nestjs/schedule';
 import { GlobalChatMessage, GlobalMessageType } from './entities/global-chat-message.entity';
 import { User } from '../../users/user.entity';
 
 @Injectable()
 export class GlobalChatService {
+  private readonly logger = new Logger(GlobalChatService.name);
+
   constructor(
     @InjectRepository(GlobalChatMessage)
     private readonly chatMessageRepository: Repository<GlobalChatMessage>,
@@ -89,21 +92,34 @@ export class GlobalChatService {
       throw new NotFoundException('User not found');
     }
 
+    // Create message with sender_id directly to avoid foreign key issues
     const chatMessage = this.chatMessageRepository.create({
-      sender: user,
-      sender_id: userId,
+      sender_id: userId, // Set sender_id directly instead of relation
       message: message.trim(),
       type,
       metadata,
     });
 
-    const saved = await this.chatMessageRepository.save(chatMessage);
+    try {
+      const saved = await this.chatMessageRepository.save(chatMessage);
 
-    // Load with sender relation
-    return this.chatMessageRepository.findOne({
-      where: { id: saved.id },
-      relations: ['sender'],
-    }) as Promise<GlobalChatMessage>;
+      // Load with sender relation after save
+      const messageWithSender = await this.chatMessageRepository.findOne({
+        where: { id: saved.id },
+        relations: ['sender'],
+      });
+
+      if (!messageWithSender) {
+        // If relation load fails, return saved message without relation
+        this.logger.warn(`Failed to load sender relation for message ${saved.id}`);
+        return saved;
+      }
+
+      return messageWithSender;
+    } catch (error) {
+      this.logger.error(`Failed to save global chat message: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 
   /**
@@ -142,6 +158,31 @@ export class GlobalChatService {
     }
 
     return message;
+  }
+
+  /**
+   * Delete messages older than 24 hours (cleanup job)
+   * Runs every hour to clean up old messages
+   */
+  @Cron('0 * * * *') // Every hour at minute 0
+  async deleteOldMessages(): Promise<void> {
+    try {
+      const twentyFourHoursAgo = new Date();
+      twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+
+      const result = await this.chatMessageRepository
+        .createQueryBuilder()
+        .delete()
+        .where('created_at < :date', { date: twentyFourHoursAgo })
+        .execute();
+
+      const deletedCount = result.affected || 0;
+      if (deletedCount > 0) {
+        this.logger.log(`🧹 Cleaned up ${deletedCount} global chat messages older than 24 hours`);
+      }
+    } catch (error) {
+      this.logger.error(`❌ Failed to clean up old global chat messages: ${error.message}`, error.stack);
+    }
   }
 }
 

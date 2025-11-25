@@ -1,0 +1,85 @@
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: talkplatform-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${DB_DATABASE:-talkplatform}
+      MYSQL_USER: ${DB_USERNAME:-talkuser}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-talkpassword}
+    ports:
+      - "${DB_PORT:-3307}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d
+    networks:
+      - talkplatform-network
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD:-rootpassword}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache & Pub/Sub
+  redis:
+    image: redis:7-alpine
+    container_name: talkplatform-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+      - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf
+    networks:
+      - talkplatform-network
+    command: redis-server /usr/local/etc/redis/redis.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Redis Commander (Optional - Web UI for Redis)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: talkplatform-redis-commander
+    restart: unless-stopped
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    ports:
+      - "8081:8081"
+    networks:
+      - talkplatform-network
+    depends_on:
+      - redis
+
+  # phpMyAdmin (Optional - Web UI for MySQL)
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: talkplatform-phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: ${DB_USERNAME:-talkuser}
+      PMA_PASSWORD: ${DB_PASSWORD:-talkpassword}
+    ports:
+      - "8080:80"
+    networks:
+      - talkplatform-network
+    depends_on:
+      - mysql
+
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  talkplatform-network:
+    driver: bridge
+

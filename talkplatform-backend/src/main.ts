@@ -3,12 +3,27 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { json, urlencoded } from 'express';
+import { RedisIoAdapter } from './core/adapters/redis-io.adapter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     rawBody: true, // Enable raw body for webhook signature verification
     bodyParser: false, // Disable default body parser to configure manually
   });
+
+  // Configure Redis IoAdapter for Socket.io (enables horizontal scaling)
+  const configService = app.get(ConfigService);
+  const redisAdapter = new RedisIoAdapter(app, configService);
+  
+  try {
+    await redisAdapter.connectToRedis();
+    app.useWebSocketAdapter(redisAdapter);
+    console.log('✅ Redis IoAdapter configured for Socket.io - Ready for horizontal scaling');
+  } catch (error: any) {
+    console.error('❌ Failed to connect to Redis, Socket.io will use in-memory adapter:', error.message);
+    console.warn('⚠️  Warning: Without Redis, multiple NestJS instances cannot share socket connections');
+    console.warn('💡 To fix: Make sure Redis is running (docker-compose up -d redis)');
+  }
 
   // Configure body parser with increased limits for file uploads
   app.use(json({ limit: '50mb' }));
@@ -27,7 +42,6 @@ async function bootstrap() {
     credentials: true,
   });
 
-  const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT', 3000);
 
   // Set global prefix but exclude webhooks (for LiveKit Cloud to call directly)

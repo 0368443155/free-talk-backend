@@ -22,6 +22,7 @@ export function GlobalChatPanel({ className }: GlobalChatPanelProps) {
     isSending,
     sendMessage,
     typingUsers,
+    sendTyping,
   } = useGlobalChat({ enabled: true });
 
   const [newMessage, setNewMessage] = useState("");
@@ -166,8 +167,17 @@ export function GlobalChatPanel({ className }: GlobalChatPanelProps) {
           <Input
             ref={chatInputRef}
             value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
+            onChange={(e) => {
+              setNewMessage(e.target.value);
+              // Send typing indicator when user types
+              if (e.target.value.trim().length > 0) {
+                sendTyping(true);
+              } else {
+                sendTyping(false);
+              }
+            }}
             onKeyDown={handleChatInputKeyPress}
+            onBlur={() => sendTyping(false)}
             placeholder={isConnected ? "Send a message to everyone..." : "Connecting..."}
             disabled={!isConnected || isSending}
             className="pl-4 pr-12 bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500 focus:ring-blue-500"

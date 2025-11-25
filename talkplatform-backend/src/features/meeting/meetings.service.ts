@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   ConflictException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -18,6 +19,8 @@ import { PaginationDto } from '../../core/common/dto/pagination.dto';
 
 @Injectable()
 export class MeetingsService {
+  private readonly logger = new Logger(MeetingsService.name);
+  
   constructor(
     @InjectRepository(Meeting)
     private readonly meetingRepository: Repository<Meeting>,
@@ -170,27 +173,39 @@ export class MeetingsService {
       whereClause.status = MeetingStatus.LIVE;
     }
 
-    const [meetings, total] = await this.meetingRepository.findAndCount({
-      where: whereClause,
-      relations: ['host', 'participants', 'participants.user'],
-      order: { scheduled_at: 'DESC', created_at: 'DESC' },
-      skip,
-      take: limit,
-    });
+    try {
+      const [meetings, total] = await this.meetingRepository.findAndCount({
+        where: whereClause,
+        relations: ['host', 'participants', 'participants.user'],
+        order: { scheduled_at: 'DESC', created_at: 'DESC' },
+        skip,
+        take: limit,
+      });
 
-    // 🔥 FIX: Sync current_participants for each meeting
-    for (const meeting of meetings) {
-      const onlineCount = await this.syncCurrentParticipants(meeting.id);
-      meeting.current_participants = onlineCount;
+      // 🔥 FIX: Sync current_participants for each meeting
+      for (const meeting of meetings) {
+        const onlineCount = await this.syncCurrentParticipants(meeting.id);
+        meeting.current_participants = onlineCount;
+      }
+
+      return {
+        data: meetings,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      };
+    } catch (error) {
+      this.logger.error(`Failed to fetch public meetings: ${error.message}`, error.stack);
+      // Return empty result instead of throwing to prevent 500 error
+      return {
+        data: [],
+        total: 0,
+        page,
+        limit,
+        totalPages: 0,
+      };
     }
-
-    return {
-      data: meetings,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
   }
 
   // Find available free talk rooms (max 4 people, audio-first)

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Socket, io } from 'socket.io-client';
+import { Socket } from 'socket.io-client';
 import { useToast } from '@/components/ui/use-toast';
 import { IGlobalChatMessage, getGlobalChatMessagesApi, sendGlobalChatMessageApi } from '@/api/global-chat.rest';
+import { useGlobalChatSocket } from './use-global-chat-socket';
 
 interface UseGlobalChatProps {
   enabled?: boolean;
@@ -16,54 +17,29 @@ interface UseGlobalChatReturn {
   sendMessage: (message: string) => Promise<void>;
   fetchMessages: () => Promise<void>;
   typingUsers: Set<string>;
+  sendTyping: (isTyping: boolean) => void;
 }
 
 /**
  * Hook for global chat functionality
+ * Uses socket from useGlobalChatSocket (similar to meeting chat pattern)
  */
 export function useGlobalChat({ enabled = true }: UseGlobalChatProps = {}): UseGlobalChatReturn {
   const [messages, setMessages] = useState<IGlobalChatMessage[]>([]);
-  const [isConnected, setIsConnected] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
-  const socketRef = useRef<Socket | null>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
 
-  // Initialize socket connection
+  // Get socket from dedicated socket hook (similar to meeting chat)
+  const { socket, isConnected } = useGlobalChatSocket({ enabled });
+
+  // Setup socket listeners (similar to useMeetingChat)
   useEffect(() => {
-    if (!enabled) return;
-
-    const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-    if (!token) {
-      console.warn('No access token found for global chat');
-      return;
-    }
-
-    const baseURL = process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') || 'http://localhost:3000';
-    const socket = io(`${baseURL}/global-chat`, {
-      auth: { token },
-      transports: ['websocket', 'polling'],
-    });
-
-    socketRef.current = socket;
-
-    socket.on('connect', () => {
-      console.log('✅ Connected to global chat');
-      setIsConnected(true);
-    });
-
-    socket.on('disconnect', () => {
-      console.log('❌ Disconnected from global chat');
-      setIsConnected(false);
-    });
-
-    socket.on('connect_error', (error) => {
-      console.error('❌ Global chat connection error:', error);
-      setIsConnected(false);
-    });
+    if (!socket) return;
 
     // Handle incoming messages
-    socket.on('chat:message', (data: {
+    const handleChatMessage = (data: {
       id: string;
       message: string;
       senderId: string;
@@ -90,8 +66,12 @@ export function useGlobalChat({ enabled = true }: UseGlobalChatProps = {}): UseG
       setMessages(prev => {
         // Check if message already exists (prevent duplicates)
         const exists = prev.some(msg => msg.id === newMsg.id);
-        if (exists) return prev;
+        if (exists) {
+          console.log('💬 [GLOBAL CHAT] Message already exists, skipping:', newMsg.id);
+          return prev;
+        }
 
+        console.log('💬 [GLOBAL CHAT] Adding new message to state');
         // Add new message and sort by timestamp
         const updated = [...prev, newMsg].sort((a, b) =>
           new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -100,10 +80,10 @@ export function useGlobalChat({ enabled = true }: UseGlobalChatProps = {}): UseG
         // Keep only last 200 messages in memory
         return updated.slice(-200);
       });
-    });
+    };
 
     // Handle typing indicators
-    socket.on('chat:typing', (data: { userId: string; username: string; isTyping: boolean }) => {
+    const handleTyping = (data: { userId: string; username: string; isTyping: boolean }) => {
       setTypingUsers(prev => {
         const updated = new Set(prev);
         if (data.isTyping) {
@@ -113,22 +93,27 @@ export function useGlobalChat({ enabled = true }: UseGlobalChatProps = {}): UseG
         }
         return updated;
       });
-    });
+    };
 
     // Handle errors
-    socket.on('chat:error', (data: { message: string }) => {
+    const handleChatError = (data: { message: string }) => {
       toast({
         title: "Chat Error",
         description: data.message,
         variant: "destructive",
       });
-    });
+    };
+
+    socket.on('chat:message', handleChatMessage);
+    socket.on('chat:typing', handleTyping);
+    socket.on('chat:error', handleChatError);
 
     return () => {
-      socket.disconnect();
-      socketRef.current = null;
+      socket.off('chat:message', handleChatMessage);
+      socket.off('chat:typing', handleTyping);
+      socket.off('chat:error', handleChatError);
     };
-  }, [enabled, toast]);
+  }, [socket, toast]);
 
   // Fetch initial messages
   const fetchMessages = useCallback(async () => {
@@ -142,12 +127,43 @@ export function useGlobalChat({ enabled = true }: UseGlobalChatProps = {}): UseG
     }
   }, []);
 
+  const hasFetchedRef = useRef(false);
+  
+  // Re-fetch messages after reconnection (only once per connection)
+  useEffect(() => {
+    if (isConnected && socket && !hasFetchedRef.current) {
+      hasFetchedRef.current = true;
+      fetchMessages();
+    } else if (!isConnected) {
+      // Reset flag when disconnected
+      hasFetchedRef.current = false;
+    }
+  }, [isConnected, socket, fetchMessages]);
+
+  // Send typing indicator
+  const sendTyping = useCallback((isTyping: boolean) => {
+    if (!socket?.connected) return;
+    
+    socket.emit('chat:typing', { isTyping });
+    
+    // Auto-stop typing after 3 seconds
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    
+    if (isTyping) {
+      typingTimeoutRef.current = setTimeout(() => {
+        socket?.emit('chat:typing', { isTyping: false });
+      }, 3000);
+    }
+  }, [socket]);
+
   // Send message
   const sendMessage = useCallback(async (message: string) => {
     const trimmedMessage = message.trim();
     if (!trimmedMessage) return;
 
-    if (!socketRef.current?.connected) {
+    if (!socket?.connected) {
       toast({
         title: "Connection Error",
         description: "Please wait for connection...",
@@ -159,10 +175,18 @@ export function useGlobalChat({ enabled = true }: UseGlobalChatProps = {}): UseG
     try {
       setIsSending(true);
       
-      // Send via Socket.IO for real-time
-      socketRef.current.emit('chat:message', { message: trimmedMessage });
+      // Stop typing indicator
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+      socket.emit('chat:typing', { isTyping: false });
       
-      // Also save via API as backup
+      // Send via Socket.IO for real-time (similar to meeting chat)
+      // Server will broadcast back with proper ID, so we don't need optimistic update
+      socket.emit('chat:message', { message: trimmedMessage });
+      
+      // Also save via API as backup (optional)
       try {
         await sendGlobalChatMessageApi(trimmedMessage);
       } catch (apiError) {
@@ -178,14 +202,27 @@ export function useGlobalChat({ enabled = true }: UseGlobalChatProps = {}): UseG
     } finally {
       setIsSending(false);
     }
-  }, [toast]);
+  }, [socket, toast]);
 
-  // Initial fetch
+  // Cleanup typing timeout on unmount
   useEffect(() => {
-    if (enabled) {
-      fetchMessages();
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Initial fetch (only if not already fetched via connection)
+  useEffect(() => {
+    if (enabled && !hasFetchedRef.current) {
+      // Only fetch if socket is not connected yet (fallback)
+      if (!isConnected) {
+        fetchMessages();
+        hasFetchedRef.current = true;
+      }
     }
-  }, [enabled, fetchMessages]);
+  }, [enabled, isConnected, fetchMessages]);
 
   return {
     messages,
@@ -194,6 +231,7 @@ export function useGlobalChat({ enabled = true }: UseGlobalChatProps = {}): UseG
     sendMessage,
     fetchMessages,
     typingUsers,
+    sendTyping,
   };
 }
 

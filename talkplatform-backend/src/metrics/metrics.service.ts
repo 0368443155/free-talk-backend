@@ -6,6 +6,7 @@ import { MetricsHourly } from './metrics-hourly.entity';
 import { LiveKitMetric } from './livekit-metric.entity';
 import { CreateMetricDto } from './dto/create-metric.dto';
 import { CreateLiveKitMetricDto } from './dto/livekit-metric.dto';
+import { BandwidthRedisService } from './services/bandwidth-redis.service';
 
 @Injectable()
 export class MetricsService {
@@ -18,7 +19,8 @@ export class MetricsService {
     private hourlyRepo: Repository<MetricsHourly>,
     @InjectRepository(LiveKitMetric)
     private liveKitMetricsRepo: Repository<LiveKitMetric>,
-    private connection: Connection // Inject Connection để dùng QueryBuilder
+    private connection: Connection, // Inject Connection để dùng QueryBuilder
+    private readonly bandwidthRedisService: BandwidthRedisService, // Inject Redis service
   ) {}
 
   // Kỹ thuật 1: KHÔNG TỐT cho metrics
@@ -30,8 +32,12 @@ export class MetricsService {
   }
 
   // Kỹ thuật 2: TỐT HƠN cho 1 record metric mới
+  // Now with Redis caching for real-time access
   async goodInsertMethod(metricData: CreateMetricDto) {
-    // Chỉ chạy 1 INSERT 
+    // Store in Redis first (for real-time access)
+    await this.bandwidthRedisService.storeMetric(metricData);
+    
+    // Then store in MySQL (for persistence)
     return this.metricsRepo.insert({
       ...metricData,
       timestamp: new Date()

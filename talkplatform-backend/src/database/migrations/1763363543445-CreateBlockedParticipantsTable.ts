@@ -4,10 +4,33 @@ export class CreateBlockedParticipantsTable1763363543445 implements MigrationInt
     name = 'CreateBlockedParticipantsTable1763363543445'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`ALTER TABLE \`classroom_members\` DROP FOREIGN KEY \`FK_2421677630302069fea29b7abc5\``);
-        await queryRunner.query(`ALTER TABLE \`classrooms\` DROP FOREIGN KEY \`FK_cbc7ff02258e2de833978650949\``);
-        await queryRunner.query(`ALTER TABLE \`meetings\` DROP COLUMN \`meeting_type\``);
-        await queryRunner.query(`ALTER TABLE \`classroom_members\` DROP FOREIGN KEY \`FK_44dce22b6af24d8bbcd339d967c\``);
+        // Check and drop foreign keys only if they exist
+        const classroomMembersTable = await queryRunner.getTable('classroom_members');
+        const classroomsTable = await queryRunner.getTable('classrooms');
+        const meetingsTable = await queryRunner.getTable('meetings');
+        
+        // Drop foreign keys only if they exist
+        const fk1 = classroomMembersTable?.foreignKeys.find(fk => fk.name === 'FK_2421677630302069fea29b7abc5');
+        if (fk1) {
+            await queryRunner.query(`ALTER TABLE \`classroom_members\` DROP FOREIGN KEY \`FK_2421677630302069fea29b7abc5\``);
+        }
+        
+        const fk2 = classroomsTable?.foreignKeys.find(fk => fk.name === 'FK_cbc7ff02258e2de833978650949');
+        if (fk2) {
+            await queryRunner.query(`ALTER TABLE \`classrooms\` DROP FOREIGN KEY \`FK_cbc7ff02258e2de833978650949\``);
+        }
+        
+        // Drop meeting_type column only if it exists
+        const hasMeetingType = meetingsTable?.columns.find(col => col.name === 'meeting_type');
+        if (hasMeetingType) {
+            await queryRunner.query(`ALTER TABLE \`meetings\` DROP COLUMN \`meeting_type\``);
+        }
+        // Drop FK only if exists
+        const fk3 = classroomMembersTable?.foreignKeys.find(fk => fk.name === 'FK_44dce22b6af24d8bbcd339d967c');
+        if (fk3) {
+            await queryRunner.query(`ALTER TABLE \`classroom_members\` DROP FOREIGN KEY \`FK_44dce22b6af24d8bbcd339d967c\``);
+        }
+        
         await queryRunner.query(`ALTER TABLE \`classroom_members\` CHANGE \`joined_at\` \`joined_at\` timestamp NOT NULL`);
         await queryRunner.query(`ALTER TABLE \`classroom_members\` CHANGE \`created_at\` \`created_at\` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)`);
         await queryRunner.query(`ALTER TABLE \`classroom_members\` CHANGE \`classroom_id\` \`classroom_id\` varchar(36) NULL`);
@@ -15,9 +38,19 @@ export class CreateBlockedParticipantsTable1763363543445 implements MigrationInt
         await queryRunner.query(`ALTER TABLE \`classrooms\` CHANGE \`created_at\` \`created_at\` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)`);
         await queryRunner.query(`ALTER TABLE \`classrooms\` CHANGE \`updated_at\` \`updated_at\` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)`);
         await queryRunner.query(`ALTER TABLE \`classrooms\` CHANGE \`teacher_id\` \`teacher_id\` varchar(36) NULL`);
-        await queryRunner.query(`ALTER TABLE \`meetings\` DROP COLUMN \`language\``);
+        
+        // Modify language column only if it exists
+        const hasLanguage = meetingsTable?.columns.find(col => col.name === 'language');
+        if (hasLanguage) {
+            await queryRunner.query(`ALTER TABLE \`meetings\` DROP COLUMN \`language\``);
+        }
         await queryRunner.query(`ALTER TABLE \`meetings\` ADD \`language\` varchar(100) NULL`);
-        await queryRunner.query(`ALTER TABLE \`meetings\` DROP COLUMN \`topic\``);
+        
+        // Modify topic column only if it exists
+        const hasTopic = meetingsTable?.columns.find(col => col.name === 'topic');
+        if (hasTopic) {
+            await queryRunner.query(`ALTER TABLE \`meetings\` DROP COLUMN \`topic\``);
+        }
         await queryRunner.query(`ALTER TABLE \`meetings\` ADD \`topic\` varchar(500) NULL`);
         await queryRunner.query(`ALTER TABLE \`classroom_members\` ADD CONSTRAINT \`FK_44dce22b6af24d8bbcd339d967c\` FOREIGN KEY (\`classroom_id\`) REFERENCES \`classrooms\`(\`id\`) ON DELETE CASCADE ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE \`classroom_members\` ADD CONSTRAINT \`FK_2421677630302069fea29b7abc5\` FOREIGN KEY (\`user_id\`) REFERENCES \`users\`(\`id\`) ON DELETE NO ACTION ON UPDATE NO ACTION`);
