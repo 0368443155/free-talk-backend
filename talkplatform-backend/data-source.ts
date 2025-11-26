@@ -16,6 +16,13 @@ import {
   MetricsHourly,
 } from './src/entities';
 import { LiveKitMetric } from './src/metrics/livekit-metric.entity';
+import { Course } from './src/features/courses/entities/course.entity';
+import { CourseSession } from './src/features/courses/entities/course-session.entity';
+import { CourseEnrollment } from './src/features/courses/entities/enrollment.entity';
+import { SessionPurchase } from './src/features/courses/entities/session-purchase.entity';
+import { PaymentHold } from './src/features/courses/entities/payment-hold.entity';
+import { TeacherReview } from './src/features/teachers/entities/teacher-review.entity';
+import { TeacherAvailability } from './src/features/teachers/entities/teacher-availability.entity';
 
 dotenv.config(); // Nạp .env
 
@@ -42,7 +49,13 @@ export const dataSourceOptions: DataSourceOptions = {
     BandwidthMetric,
     MetricsHourly,
     LiveKitMetric,
-    // Note: TeacherReview and TeacherAvailability are loaded via autoLoadEntities
+    Course,
+    CourseSession,
+    CourseEnrollment,
+    SessionPurchase,
+    PaymentHold,
+    TeacherReview,
+    TeacherAvailability,
   ],
   migrations: [path.join(__dirname, 'src', 'database', 'migrations', '*{.ts,.js}')], // Đường dẫn migrations chính xác
   migrationsTableName: 'migrations_typeorm', // Tên bảng migrations
@@ -50,4 +63,4 @@ export const dataSourceOptions: DataSourceOptions = {
 };
 
 const dataSource = new DataSource(dataSourceOptions);
-export default dataSource;    
+export default dataSource;

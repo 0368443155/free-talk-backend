@@ -85,10 +85,9 @@ export default function TeacherVerificationPage() {
             setHeadline(profile.headline || '');
             setBio(profile.bio || '');
             setIntroVideoUrl(profile.intro_video_url || '');
-            setHourlyRate(profile.hourly_rate_credits?.toString() || profile.hourly_rate?.toString() || '5');
-            setLanguagesTaught(profile.languages_taught?.join(', ') || '');
-            setSpecialties(profile.specialties?.map((s: any) => typeof s === 'string' ? s : s.name || s).join(', ') || '');
-            setCountry(profile.country || '');
+            setHourlyRate(profile.hourly_rate?.toString() || '5');
+            // Note: languages_taught, specialties, and country are not available in TeacherProfileDto
+            // They will remain as empty strings or default values
           }
         } catch (e) {
           // Profile might not exist yet, ignore

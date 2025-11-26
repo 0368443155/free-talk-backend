@@ -475,18 +475,7 @@ export function AdminTeacherVerification() {
                                 className="bg-green-600 hover:bg-green-700"
                                 onClick={() => {
                                   setSelectedVerification(verification);
-                                  // Pre-fill form with data from verification if available
-                                  const additionalInfo = verification.additional_info || {};
-                                  setApproveFormData({
-                                    notes: '',
-                                    hourly_rate: 1,
-                                    hourly_rate_credits: 0,
-                                    headline: '',
-                                    bio: '',
-                                    languages_taught: [],
-                                    specialties: [],
-                                    country: '',
-                                  });
+                                  setActionNotes('');
                                   setIsApproveDialogOpen(true);
                                 }}
                               >

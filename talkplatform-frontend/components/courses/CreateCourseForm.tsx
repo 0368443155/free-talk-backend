@@ -34,7 +34,7 @@ const formSchema = z.object({
     title: z.string().min(3, 'Title must be at least 3 characters'),
     description: z.string().optional(),
     duration_hours: z.coerce.number().min(1, 'Duration must be at least 1 hour'),
-    total_sessions: z.coerce.number().min(1, 'Must have at least 1 session'),
+    total_sessions: z.coerce.number().min(0, 'Must be 0 or more').optional(),
     price_type: z.enum([PriceType.PER_SESSION, PriceType.FULL_COURSE]),
     price_per_session: z.coerce.number().min(1, 'Price must be at least $1').optional(),
     price_full_course: z.coerce.number().min(1, 'Price must be at least $1').optional(),
@@ -55,7 +55,11 @@ const formSchema = z.object({
     path: ['price_per_session'],
 });
 
-export function CreateCourseForm() {
+interface CreateCourseFormProps {
+    onSuccess?: () => void;
+}
+
+export function CreateCourseForm({ onSuccess }: CreateCourseFormProps = {}) {
     const router = useRouter();
     const { toast } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -66,9 +70,10 @@ export function CreateCourseForm() {
             title: '',
             description: '',
             duration_hours: 10,
-            total_sessions: 5,
+            total_sessions: 0, // Will be updated when sessions are added
             price_type: PriceType.PER_SESSION,
             price_per_session: 10,
+            price_full_course: undefined, // Will be set when user selects FULL_COURSE
             language: 'English',
             level: CourseLevel.BEGINNER,
             category: 'Language Learning',
@@ -89,6 +94,11 @@ export function CreateCourseForm() {
                 description: `${course.title} has been created with QR code and share link.`,
             });
 
+            // Call onSuccess callback if provided (to close dialog)
+            if (onSuccess) {
+                onSuccess();
+            }
+
             // Redirect to course detail page
             router.push(`/courses/${course.id}`);
         } catch (error: any) {
@@ -103,19 +113,8 @@ export function CreateCourseForm() {
         }
     }
 
-    return (
-        <Card className="w-full max-w-4xl mx-auto">
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-2xl">
-                    <BookOpen className="h-6 w-6" />
-                    Create New Course
-                </CardTitle>
-                <CardDescription>
-                    Fill in the details below to create a new course. A QR code and share link will be generated automatically.
-                </CardDescription>
-            </CardHeader>
-            <CardContent>
-                <Form {...form}>
+    const formContent = (
+        <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                         {/* Basic Information */}
                         <div className="space-y-4">
@@ -222,7 +221,16 @@ export function CreateCourseForm() {
                                         <FormItem>
                                             <FormLabel>Total Duration (hours) *</FormLabel>
                                             <FormControl>
-                                                <Input type="number" min="1" {...field} />
+                                                <Input 
+                                                    type="number" 
+                                                    min="1" 
+                                                    value={field.value ?? ''}
+                                                    onChange={(e) => {
+                                                        const value = e.target.value;
+                                                        field.onChange(value === '' ? undefined : (isNaN(parseFloat(value)) ? undefined : parseFloat(value)));
+                                                    }}
+                                                    onBlur={field.onBlur}
+                                                />
                                             </FormControl>
                                             <FormMessage />
                                         </FormItem>
@@ -234,10 +242,23 @@ export function CreateCourseForm() {
                                     name="total_sessions"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>Total Sessions *</FormLabel>
+                                            <FormLabel>Total Sessions (Optional)</FormLabel>
                                             <FormControl>
-                                                <Input type="number" min="1" {...field} />
+                                                <Input 
+                                                    type="number" 
+                                                    min="0" 
+                                                    placeholder="0 (will be updated when sessions are added)"
+                                                    value={field.value ?? ''}
+                                                    onChange={(e) => {
+                                                        const value = e.target.value;
+                                                        field.onChange(value === '' ? 0 : (isNaN(parseFloat(value)) ? 0 : parseFloat(value)));
+                                                    }}
+                                                    onBlur={field.onBlur}
+                                                />
                                             </FormControl>
+                                            <FormDescription>
+                                                Leave as 0 - sessions will be added later
+                                            </FormDescription>
                                             <FormMessage />
                                         </FormItem>
                                     )}
@@ -253,7 +274,17 @@ export function CreateCourseForm() {
                                                 Max Students
                                             </FormLabel>
                                             <FormControl>
-                                                <Input type="number" min="1" max="100" {...field} />
+                                                <Input 
+                                                    type="number" 
+                                                    min="1" 
+                                                    max="100" 
+                                                    value={field.value ?? ''}
+                                                    onChange={(e) => {
+                                                        const value = e.target.value;
+                                                        field.onChange(value === '' ? undefined : (isNaN(parseFloat(value)) ? undefined : parseFloat(value)));
+                                                    }}
+                                                    onBlur={field.onBlur}
+                                                />
                                             </FormControl>
                                             <FormMessage />
                                         </FormItem>
@@ -317,7 +348,12 @@ export function CreateCourseForm() {
                                                     min="1"
                                                     step="0.01"
                                                     placeholder="10.00"
-                                                    {...field}
+                                                    value={field.value ?? ''}
+                                                    onChange={(e) => {
+                                                        const value = e.target.value;
+                                                        field.onChange(value === '' ? undefined : (isNaN(parseFloat(value)) ? undefined : parseFloat(value)));
+                                                    }}
+                                                    onBlur={field.onBlur}
                                                 />
                                             </FormControl>
                                             <FormDescription>
@@ -342,7 +378,12 @@ export function CreateCourseForm() {
                                                     min="1"
                                                     step="0.01"
                                                     placeholder="80.00"
-                                                    {...field}
+                                                    value={field.value ?? ''}
+                                                    onChange={(e) => {
+                                                        const value = e.target.value;
+                                                        field.onChange(value === '' ? undefined : (isNaN(parseFloat(value)) ? undefined : parseFloat(value)));
+                                                    }}
+                                                    onBlur={field.onBlur}
                                                 />
                                             </FormControl>
                                             <FormDescription>
@@ -372,6 +413,27 @@ export function CreateCourseForm() {
                         </div>
                     </form>
                 </Form>
+    );
+
+    // If used in Dialog, don't wrap in Card
+    if (onSuccess) {
+        return formContent;
+    }
+
+    // Otherwise, wrap in Card for standalone page
+    return (
+        <Card className="w-full max-w-4xl mx-auto">
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-2xl">
+                    <BookOpen className="h-6 w-6" />
+                    Create New Course
+                </CardTitle>
+                <CardDescription>
+                    Fill in the details below to create a new course. A QR code and share link will be generated automatically.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                {formContent}
             </CardContent>
         </Card>
     );

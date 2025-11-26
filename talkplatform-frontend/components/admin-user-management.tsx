@@ -266,6 +266,28 @@ export function AdminUserManagement() {
     }
   };
 
+  const handleRevokeTeacher = async () => {
+    if (!revokeTargetId) return;
+
+    try {
+      await adminRevokeTeacherStatusApi(revokeTargetId, revokeReason || undefined);
+      toast({
+        title: "Success",
+        description: "Teacher status revoked successfully",
+      });
+      setIsRevokeDialogOpen(false);
+      setRevokeTargetId(null);
+      setRevokeReason('');
+      await fetchUsers();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || "Failed to revoke teacher status",
+        variant: "destructive",
+      });
+    }
+  };
+
   if (loading && users.length === 0) {
     return (
       <Card>

@@ -14,10 +14,9 @@ import { User } from '../../../users/user.entity';
 import { CourseSession } from './course-session.entity';
 
 export enum CourseStatus {
-    UPCOMING = 'upcoming',
-    ONGOING = 'ongoing',
-    COMPLETED = 'completed',
-    CANCELLED = 'cancelled',
+    DRAFT = 'draft',
+    PUBLISHED = 'published',
+    ARCHIVED = 'archived',
 }
 
 export enum CourseLevel {
@@ -33,10 +32,11 @@ export enum PriceType {
 
 @Entity('courses')
 @Index(['teacher_id'])
+@Index(['category'])
 @Index(['status'])
+@Index(['is_published'])
 @Check(`(price_type = 'per_session' AND price_per_session >= 1.00) OR (price_type = 'full_course' AND price_full_course >= 1.00)`)
 @Check(`current_students <= max_students`)
-@Check(`total_sessions > 0`)
 export class Course {
     @PrimaryGeneratedColumn('uuid')
     id: string;
@@ -87,9 +87,12 @@ export class Course {
     @Column({
         type: 'varchar',
         length: 50,
-        default: CourseStatus.UPCOMING,
+        default: CourseStatus.DRAFT,
     })
     status: CourseStatus;
+
+    @Column({ type: 'boolean', default: false })
+    is_published: boolean;
 
     @Column({ type: 'integer', default: 20 })
     max_students: number;
@@ -121,20 +124,16 @@ export class Course {
         return this.max_students - this.current_students;
     }
 
-    get is_upcoming(): boolean {
-        return this.status === CourseStatus.UPCOMING;
+    get is_draft(): boolean {
+        return this.status === CourseStatus.DRAFT;
     }
 
-    get is_ongoing(): boolean {
-        return this.status === CourseStatus.ONGOING;
+    get is_published_status(): boolean {
+        return this.status === CourseStatus.PUBLISHED && this.is_published;
     }
 
-    get is_completed(): boolean {
-        return this.status === CourseStatus.COMPLETED;
-    }
-
-    get is_cancelled(): boolean {
-        return this.status === CourseStatus.CANCELLED;
+    get is_archived(): boolean {
+        return this.status === CourseStatus.ARCHIVED;
     }
 
     get price(): number {

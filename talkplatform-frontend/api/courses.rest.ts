@@ -1,4 +1,6 @@
-import { axiosConfig as apiClient } from './axiosConfig';
+import axiosConfig from './axiosConfig';
+
+const apiClient = axiosConfig;
 
 // ==================== TYPES ====================
 
@@ -14,15 +16,14 @@ export enum CourseLevel {
 }
 
 export enum CourseStatus {
-    UPCOMING = 'upcoming',
-    ONGOING = 'ongoing',
-    COMPLETED = 'completed',
-    CANCELLED = 'cancelled',
+    DRAFT = 'draft',
+    PUBLISHED = 'published',
+    ARCHIVED = 'archived',
 }
 
 export enum SessionStatus {
     SCHEDULED = 'scheduled',
-    IN_PROGRESS = 'in_progress',
+    ONGOING = 'ongoing',
     COMPLETED = 'completed',
     CANCELLED = 'cancelled',
 }
@@ -41,6 +42,7 @@ export interface Course {
     level?: CourseLevel;
     category?: string;
     status: CourseStatus;
+    is_published: boolean;
     max_students: number;
     current_students: number;
     affiliate_code?: string;
@@ -69,6 +71,10 @@ export interface CourseSession {
     duration_minutes: number;
     status: SessionStatus;
     livekit_room_name?: string;
+    meeting_link?: string;
+    meeting_id?: string;
+    qr_code_url?: string;
+    qr_code_data?: string;
     actual_start_time?: string;
     actual_end_time?: string;
     actual_duration_minutes?: number;
@@ -80,7 +86,7 @@ export interface CreateCourseDto {
     title: string;
     description?: string;
     duration_hours: number;
-    total_sessions: number;
+    total_sessions?: number;
     price_type: PriceType;
     price_per_session?: number;
     price_full_course?: number;
@@ -111,7 +117,7 @@ export interface CreateSessionDto {
     scheduled_date: string;
     start_time: string;
     end_time: string;
-    duration_minutes: number;
+    duration_minutes?: number;
 }
 
 export interface UpdateSessionDto {
@@ -129,6 +135,11 @@ export interface GetCoursesQuery {
     language?: string;
     level?: CourseLevel;
     category?: string;
+    search?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    sortBy?: string;
+    sortOrder?: 'ASC' | 'DESC';
     page?: number;
     limit?: number;
 }
@@ -200,6 +211,22 @@ export async function deleteCourseApi(courseId: string): Promise<void> {
  */
 export async function regenerateQrCodeApi(courseId: string): Promise<Course> {
     const response = await apiClient.post(`/courses/${courseId}/regenerate-qr`);
+    return response.data;
+}
+
+/**
+ * Publish course (Teacher only)
+ */
+export async function publishCourseApi(courseId: string): Promise<Course> {
+    const response = await apiClient.patch(`/courses/${courseId}/publish`);
+    return response.data;
+}
+
+/**
+ * Unpublish course (Teacher only)
+ */
+export async function unpublishCourseApi(courseId: string): Promise<Course> {
+    const response = await apiClient.patch(`/courses/${courseId}/unpublish`);
     return response.data;
 }
 

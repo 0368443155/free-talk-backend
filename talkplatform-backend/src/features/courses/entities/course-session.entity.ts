@@ -12,7 +12,7 @@ import { Course } from './course.entity';
 
 export enum SessionStatus {
     SCHEDULED = 'scheduled',
-    IN_PROGRESS = 'in_progress',
+    ONGOING = 'ongoing',
     COMPLETED = 'completed',
     CANCELLED = 'cancelled',
 }
@@ -64,6 +64,18 @@ export class CourseSession {
     @Column({ type: 'varchar', length: 255, nullable: true })
     livekit_room_name: string;
 
+    @Column({ type: 'varchar', length: 500, nullable: true })
+    meeting_link: string;
+
+    @Column({ type: 'varchar', length: 100, nullable: true })
+    meeting_id: string;
+
+    @Column({ type: 'varchar', length: 500, nullable: true })
+    qr_code_url: string;
+
+    @Column({ type: 'text', nullable: true })
+    qr_code_data: string; // JSON string with session info
+
     @Column({ type: 'timestamp', nullable: true })
     actual_start_time: Date;
 
@@ -84,8 +96,12 @@ export class CourseSession {
         return this.status === SessionStatus.SCHEDULED;
     }
 
+    get is_ongoing(): boolean {
+        return this.status === SessionStatus.ONGOING;
+    }
+
     get is_in_progress(): boolean {
-        return this.status === SessionStatus.IN_PROGRESS;
+        return this.status === SessionStatus.ONGOING;
     }
 
     get is_completed(): boolean {

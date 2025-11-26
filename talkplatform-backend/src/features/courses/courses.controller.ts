@@ -11,14 +11,17 @@ import {
     Req,
     HttpCode,
     HttpStatus,
+    ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { CoursesService } from './courses.service';
 import { CreateCourseDto, UpdateCourseDto, GetCoursesQueryDto } from './dto/course.dto';
 import { CreateSessionDto, UpdateSessionDto } from './dto/session.dto';
 import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../../core/auth/guards/optional-jwt-auth.guard';
 import { RolesGuard } from '../../core/auth/guards/roles.guard';
-import { Roles } from '../../core/auth/decorators/roles.decorator';
+import { Roles } from '../../auth/roles.decorator';
+import { UserRole } from '../../users/user.entity';
 
 @ApiTags('Courses')
 @Controller('courses')
@@ -29,14 +32,17 @@ export class CoursesController {
 
     @Post()
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles('teacher')
+    @Roles(UserRole.TEACHER, UserRole.ADMIN)
     @ApiBearerAuth()
-    @ApiOperation({ summary: 'Create a new course (Teacher only)' })
+    @ApiOperation({ summary: 'Create a new course (Teacher or Admin)' })
     @ApiResponse({ status: 201, description: 'Course created successfully' })
     @ApiResponse({ status: 400, description: 'Bad request' })
-    @ApiResponse({ status: 403, description: 'Only verified teachers can create courses' })
+    @ApiResponse({ status: 403, description: 'Only teachers and admins can create courses' })
     async createCourse(@Req() req: any, @Body() dto: CreateCourseDto) {
-        const teacherId = req.user.id;
+        const teacherId = req.user?.id;
+        if (!teacherId) {
+            throw new ForbiddenException('User not authenticated');
+        }
         return this.coursesService.createCourse(teacherId, dto);
     }
 
@@ -49,9 +55,9 @@ export class CoursesController {
 
     @Get('my-courses')
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles('teacher')
+    @Roles(UserRole.TEACHER, UserRole.ADMIN)
     @ApiBearerAuth()
-    @ApiOperation({ summary: 'Get my courses (Teacher only)' })
+    @ApiOperation({ summary: 'Get my courses (Teacher or Admin)' })
     @ApiResponse({ status: 200, description: 'Courses retrieved successfully' })
     async getMyCourses(@Req() req: any, @Query('status') status?: string) {
         const teacherId = req.user.id;
@@ -59,18 +65,21 @@ export class CoursesController {
     }
 
     @Get(':id')
+    @UseGuards(OptionalJwtAuthGuard) // Optional: will parse token if present, but won't fail if missing
     @ApiOperation({ summary: 'Get course by ID' })
     @ApiResponse({ status: 200, description: 'Course retrieved successfully' })
     @ApiResponse({ status: 404, description: 'Course not found' })
-    async getCourseById(@Param('id') id: string) {
-        return this.coursesService.getCourseById(id);
+    async getCourseById(@Param('id') id: string, @Req() req?: any) {
+        // Try to get userId from request, but don't require authentication
+        const userId = req?.user?.id;
+        return this.coursesService.getCourseById(id, userId);
     }
 
     @Patch(':id')
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles('teacher')
+    @Roles(UserRole.TEACHER, UserRole.ADMIN)
     @ApiBearerAuth()
-    @ApiOperation({ summary: 'Update course (Teacher only)' })
+    @ApiOperation({ summary: 'Update course (Teacher or Admin)' })
     @ApiResponse({ status: 200, description: 'Course updated successfully' })
     @ApiResponse({ status: 403, description: 'You can only update your own courses' })
     @ApiResponse({ status: 404, description: 'Course not found' })
@@ -85,10 +94,10 @@ export class CoursesController {
 
     @Delete(':id')
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles('teacher')
+    @Roles(UserRole.TEACHER, UserRole.ADMIN)
     @ApiBearerAuth()
     @HttpCode(HttpStatus.NO_CONTENT)
-    @ApiOperation({ summary: 'Delete course (Teacher only)' })
+    @ApiOperation({ summary: 'Delete course (Teacher or Admin)' })
     @ApiResponse({ status: 204, description: 'Course deleted successfully' })
     @ApiResponse({ status: 400, description: 'Cannot delete course with enrolled students' })
     @ApiResponse({ status: 403, description: 'You can only delete your own courses' })
@@ -100,9 +109,9 @@ export class CoursesController {
 
     @Post(':id/regenerate-qr')
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles('teacher')
+    @Roles(UserRole.TEACHER, UserRole.ADMIN)
     @ApiBearerAuth()
-    @ApiOperation({ summary: 'Regenerate QR code for course (Teacher only)' })
+    @ApiOperation({ summary: 'Regenerate QR code for course (Teacher or Admin)' })
     @ApiResponse({ status: 200, description: 'QR code regenerated successfully' })
     @ApiResponse({ status: 403, description: 'You can only regenerate QR code for your own courses' })
     async regenerateQrCode(@Param('id') id: string, @Req() req: any) {
@@ -110,13 +119,40 @@ export class CoursesController {
         return this.coursesService.regenerateQrCode(id, teacherId);
     }
 
+    @Patch(':id/publish')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.TEACHER, UserRole.ADMIN)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Publish course (Teacher or Admin)' })
+    @ApiResponse({ status: 200, description: 'Course published successfully' })
+    @ApiResponse({ status: 400, description: 'Course must have at least one session and pricing set' })
+    @ApiResponse({ status: 403, description: 'You can only publish your own courses' })
+    @ApiResponse({ status: 404, description: 'Course not found' })
+    async publishCourse(@Param('id') id: string, @Req() req: any) {
+        const teacherId = req.user.id;
+        return this.coursesService.publishCourse(id, teacherId);
+    }
+
+    @Patch(':id/unpublish')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.TEACHER, UserRole.ADMIN)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Unpublish course (Teacher or Admin)' })
+    @ApiResponse({ status: 200, description: 'Course unpublished successfully' })
+    @ApiResponse({ status: 403, description: 'You can only unpublish your own courses' })
+    @ApiResponse({ status: 404, description: 'Course not found' })
+    async unpublishCourse(@Param('id') id: string, @Req() req: any) {
+        const teacherId = req.user.id;
+        return this.coursesService.unpublishCourse(id, teacherId);
+    }
+
     // ==================== SESSION ENDPOINTS ====================
 
     @Post(':id/sessions')
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles('teacher')
+    @Roles(UserRole.TEACHER, UserRole.ADMIN)
     @ApiBearerAuth()
-    @ApiOperation({ summary: 'Add session to course (Teacher only)' })
+    @ApiOperation({ summary: 'Add session to course (Teacher or Admin)' })
     @ApiResponse({ status: 201, description: 'Session added successfully' })
     @ApiResponse({ status: 400, description: 'Session number already exists' })
     @ApiResponse({ status: 403, description: 'You can only add sessions to your own courses' })
@@ -147,9 +183,9 @@ export class CoursesController {
 
     @Patch(':id/sessions/:sessionId')
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles('teacher')
+    @Roles(UserRole.TEACHER, UserRole.ADMIN)
     @ApiBearerAuth()
-    @ApiOperation({ summary: 'Update session (Teacher only)' })
+    @ApiOperation({ summary: 'Update session (Teacher or Admin)' })
     @ApiResponse({ status: 200, description: 'Session updated successfully' })
     @ApiResponse({ status: 403, description: 'You can only update sessions of your own courses' })
     @ApiResponse({ status: 404, description: 'Session not found' })
@@ -164,10 +200,10 @@ export class CoursesController {
 
     @Delete(':id/sessions/:sessionId')
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles('teacher')
+    @Roles(UserRole.TEACHER, UserRole.ADMIN)
     @ApiBearerAuth()
     @HttpCode(HttpStatus.NO_CONTENT)
-    @ApiOperation({ summary: 'Delete session (Teacher only)' })
+    @ApiOperation({ summary: 'Delete session (Teacher or Admin)' })
     @ApiResponse({ status: 204, description: 'Session deleted successfully' })
     @ApiResponse({ status: 403, description: 'You can only delete sessions of your own courses' })
     @ApiResponse({ status: 404, description: 'Session not found' })

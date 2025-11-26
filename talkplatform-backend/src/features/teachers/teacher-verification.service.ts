@@ -52,7 +52,7 @@ export class TeacherVerificationService {
     this.uploadBaseDir = path.join(process.cwd(), 'uploads', 'teacher-verification');
     this.imageUploadDir = path.join(this.uploadBaseDir, 'image');
     this.documentUploadDir = path.join(this.uploadBaseDir, 'document');
-    
+
     // Tạo thư mục ngay lập tức (sync) để đảm bảo tồn tại khi service được khởi tạo
     this.ensureDirectoryExistsSync(this.uploadBaseDir);
     this.ensureDirectoryExistsSync(this.imageUploadDir);
@@ -232,7 +232,7 @@ export class TeacherVerificationService {
     // Lấy thông tin từ verification để tạo profile
     const yearsOfExperience = verification.years_of_experience || 0;
     const previousPlatforms = verification.previous_platforms || [];
-    
+
     // Extract certifications info from verification
     const degreeCertificates = verification.degree_certificates || [];
     const teachingCertificates = verification.teaching_certificates || [];
@@ -241,12 +241,12 @@ export class TeacherVerificationService {
       // Cập nhật profile hiện có - chỉ set verified status
       profile.is_verified = true;
       profile.status = TeacherStatus.APPROVED;
-      
+
       // Cập nhật từ verification data nếu chưa có trong profile
       if (!profile.years_experience && yearsOfExperience > 0) {
         profile.years_experience = yearsOfExperience;
       }
-      
+
       // Cập nhật certifications nếu có
       if (degreeCertificates.length > 0 || teachingCertificates.length > 0) {
         const certs = [
@@ -267,7 +267,7 @@ export class TeacherVerificationService {
           profile.certifications = certs as any;
         }
       }
-      
+
       await this.teacherProfileRepository.save(profile);
       this.logger.log(`✅ Updated teacher profile for user ${verification.user_id}`);
     } else {
@@ -278,7 +278,7 @@ export class TeacherVerificationService {
         is_verified: true,
         status: TeacherStatus.APPROVED,
         hourly_rate: 1,
-        hourly_rate_credits: null,
+        hourly_rate_credits: undefined,
         average_rating: 0,
         total_hours_taught: 0,
         total_reviews: 0,

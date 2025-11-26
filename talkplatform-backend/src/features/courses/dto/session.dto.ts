@@ -62,14 +62,15 @@ export class CreateSessionDto {
     })
     end_time: string;
 
-    @ApiProperty({
+    @ApiPropertyOptional({
         example: 90,
-        description: 'Duration in minutes',
+        description: 'Duration in minutes (auto-calculated from start_time and end_time if not provided)',
         minimum: 15
     })
     @IsInt()
     @Min(15, { message: 'Session must be at least 15 minutes' })
-    duration_minutes: number;
+    @IsOptional()
+    duration_minutes?: number;
 }
 
 export class UpdateSessionDto {

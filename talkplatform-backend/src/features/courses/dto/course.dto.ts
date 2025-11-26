@@ -39,14 +39,15 @@ export class CreateCourseDto {
     @Min(1)
     duration_hours: number;
 
-    @ApiProperty({
-        example: 10,
-        description: 'Total number of sessions',
-        minimum: 1
+    @ApiPropertyOptional({
+        example: 0,
+        description: 'Total number of sessions (auto-calculated when sessions are added, default: 0)',
+        minimum: 0
     })
     @IsInt()
-    @Min(1)
-    total_sessions: number;
+    @Min(0)
+    @IsOptional()
+    total_sessions?: number;
 
     @ApiProperty({
         enum: PriceType,
@@ -183,7 +184,7 @@ export class GetCoursesQueryDto {
     @IsOptional()
     teacher_id?: string;
 
-    @ApiPropertyOptional({ example: 'upcoming', description: 'Filter by status' })
+    @ApiPropertyOptional({ example: 'published', description: 'Filter by status' })
     @IsString()
     @IsOptional()
     status?: string;
@@ -202,6 +203,31 @@ export class GetCoursesQueryDto {
     @IsString()
     @IsOptional()
     category?: string;
+
+    @ApiPropertyOptional({ example: 'conversation', description: 'Search in title and description' })
+    @IsString()
+    @IsOptional()
+    search?: string;
+
+    @ApiPropertyOptional({ example: 0, description: 'Minimum price filter' })
+    @IsNumber()
+    @IsOptional()
+    minPrice?: number;
+
+    @ApiPropertyOptional({ example: 200, description: 'Maximum price filter' })
+    @IsNumber()
+    @IsOptional()
+    maxPrice?: number;
+
+    @ApiPropertyOptional({ example: 'created_at', description: 'Sort field (created_at, price_full_course, title, current_students)' })
+    @IsString()
+    @IsOptional()
+    sortBy?: string;
+
+    @ApiPropertyOptional({ example: 'DESC', description: 'Sort order (ASC or DESC)' })
+    @IsString()
+    @IsOptional()
+    sortOrder?: string;
 
     @ApiPropertyOptional({ example: 1, description: 'Page number', minimum: 1 })
     @IsInt()

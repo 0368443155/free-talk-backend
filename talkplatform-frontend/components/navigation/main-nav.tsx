@@ -65,6 +65,17 @@ const navigationItems: NavItem[] = [
         badge: 'Popular'
     },
     {
+        title: 'Courses',
+        href: '/courses',
+        icon: BookOpen,
+        description: 'Browse and manage courses',
+        badge: 'New',
+        submenu: [
+            { title: 'Browse Courses', href: '/courses', icon: Search },
+            { title: 'My Learning', href: '/student/my-learning', icon: GraduationCap }
+        ]
+    },
+    {
         title: 'Marketplace',
         href: '/marketplace',
         icon: ShoppingBag,
