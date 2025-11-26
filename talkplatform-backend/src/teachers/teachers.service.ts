@@ -102,9 +102,9 @@ export class TeachersService {
                         total_students: profile.total_students || 0,
                         avg_response_time_hours: profile.avg_response_time_hours || 24,
                         is_available: profile.is_available !== undefined ? profile.is_available : true,
-                        country: profile.country || null,
+                        country: profile.country ?? undefined,
                         status: profile.status || 'pending',
-                        hourly_rate_credits: profile.hourly_rate_credits || null,
+                        hourly_rate_credits: profile.hourly_rate_credits ?? undefined,
                     };
                 });
             return { teachers: sanitizedTeachers, total };
@@ -117,18 +117,49 @@ export class TeachersService {
 
     // API lấy chi tiết teacher (public)
     async getTeacherById(id: string): Promise<Partial<User & TeacherProfile>> {
-        const teacher = await this.usersRepository.findOne({
+        console.log(`[TeachersService] getTeacherById called with id: ${id}`);
+        
+        // Try to find teacher by user ID first
+        let teacher = await this.usersRepository.findOne({
             where: { id: id, role: UserRole.TEACHER },
             relations: ['teacherProfile'], //tự động join teacherProfile
         });
 
-        if (!teacher || !teacher.teacherProfile) {
-            throw new NotFoundException(`Teacher with ID "${id}" not found`)
+        // If not found, try to find by teacher profile user_id
+        if (!teacher) {
+            console.log(`[TeachersService] Teacher not found by user ID, trying by profile user_id`);
+            const profile = await this.teacherProfilesRepository.findOne({
+                where: { user_id: id },
+                relations: ['user'],
+            });
+            
+            if (profile && profile.user) {
+                teacher = profile.user;
+                teacher.teacherProfile = profile;
+            }
         }
 
-        if (!teacher.teacherProfile.is_verified) {
-            throw new ForbiddenException(`Teacher profile "${id}" is not verified yet`);
+        console.log(`[TeachersService] Found teacher:`, teacher ? { 
+            id: teacher.id, 
+            username: teacher.username, 
+            hasProfile: !!teacher.teacherProfile,
+            profileVerified: teacher.teacherProfile?.is_verified 
+        } : 'null');
+
+        if (!teacher) {
+            console.log(`[TeachersService] Teacher with ID "${id}" not found`);
+            throw new NotFoundException(`Teacher with ID "${id}" not found`);
         }
+
+        if (!teacher.teacherProfile) {
+            console.log(`[TeachersService] Teacher with ID "${id}" has no profile`);
+            throw new NotFoundException(`Teacher profile for ID "${id}" not found`);
+        }
+
+        // Allow unverified teachers to be viewed (remove this check for now)
+        // if (!teacher.teacherProfile.is_verified) {
+        //     throw new ForbiddenException(`Teacher profile "${id}" is not verified yet`);
+        // }
 
         //reviews, schedules
         // const reviews = await this.reviewsService.getReviewsByTeacher(id, { limit: 5 });
@@ -137,13 +168,19 @@ export class TeachersService {
         const { password, ...userSafe } = teacher;
         // delete userSafe.email; // Cân nhắc ẩn email
 
-        return {
+        const result = {
             ...userSafe,
             ...userSafe.teacherProfile,
+            // Ensure id and user_id are set correctly
+            id: userSafe.id,
+            user_id: userSafe.id,
             // recentReviews: reviews.reviews,
             // upcomingSchedules: schedules,
             // stats: { ... } // Thêm sau
         };
+
+        console.log(`[TeachersService] Returning teacher data for id: ${id}`);
+        return result;
     }
 
     //API cập nhật Profile teacher {yêu cầu login teacher}

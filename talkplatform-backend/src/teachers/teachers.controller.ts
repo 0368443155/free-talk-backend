@@ -37,15 +37,6 @@ export class TeachersController {
         }
     }
 
-    // GET /teachers/:id
-    @Get(':id')
-    async getTeacherById(@Param('id') id: string) {
-        // Validate UUID nếu cần
-        // if (!isValidUUID(id)) throw new BadRequestException('Invalid teacher ID format');
-        return this.teachersService.getTeacherById(id);
-        // Lưu ý: Service sẽ throw NotFoundException nếu không tìm thấy
-    }
-
     // --- API Cập nhật Profile Teacher (Yêu cầu login Teacher) ---
     // PATCH /teachers/me/profile
     @Patch('me/profile') // Sử dụng 'me' để chỉ người dùng hiện tại
@@ -74,6 +65,23 @@ export class TeachersController {
     async getMyProfile(@Req() req: RequestWithUser) {
         const userId = (req as any).user.id;
         return this.teachersService.getProfileByUserId(userId);
+    }
+
+    // GET /teachers/:id - Must be after /me routes to avoid route conflicts
+    @Get(':id')
+    async getTeacherById(@Param('id') id: string) {
+        console.log(`[TeachersController] getTeacherById called with id: ${id}`);
+        try {
+            // Validate UUID nếu cần
+            // if (!isValidUUID(id)) throw new BadRequestException('Invalid teacher ID format');
+            const result = await this.teachersService.getTeacherById(id);
+            console.log(`[TeachersController] Successfully retrieved teacher with id: ${id}`);
+            return result;
+        } catch (error) {
+            console.error(`[TeachersController] Error getting teacher by id ${id}:`, error);
+            throw error;
+        }
+        // Lưu ý: Service sẽ throw NotFoundException nếu không tìm thấy
     }
 
     // (Sau này có thể thêm API đăng ký Teacher ở đây POST /teachers/register hoặc để trong AuthController)

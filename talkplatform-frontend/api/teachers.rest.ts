@@ -107,7 +107,14 @@ export const getTeachersApi = async (query?: GetTeachersQuery): Promise<GetTeach
   if (query?.sortOrder) params.append('sortOrder', query.sortOrder);
   if (query?.isVerified !== undefined) params.append('isVerified', query.isVerified);
 
-  const res = await axiosConfig.get(`/teachers?${params.toString()}`);
+  const queryString = params.toString();
+  const res = await axiosConfig.get(`/teachers${queryString ? `?${queryString}` : ''}`);
+  return res.data;
+};
+
+// Get teacher by ID
+export const getTeacherByIdApi = async (teacherId: string): Promise<TeacherListItem> => {
+  const res = await axiosConfig.get(`/teachers/${teacherId}`);
   return res.data;
 };
 

@@ -1,8 +1,22 @@
 import axios from 'axios';
 import { tokenManager } from '@/utils/token-manager';
 
+// Get base URL - prioritize NEXT_PUBLIC_API_URL, fallback to NEXT_PUBLIC_SERVER, then default
+const getBaseURL = () => {
+  if (typeof window !== 'undefined') {
+    // Client-side
+    return process.env.NEXT_PUBLIC_API_URL || 
+           process.env.NEXT_PUBLIC_SERVER || 
+           'http://localhost:3000/api/v1';
+  }
+  // Server-side
+  return process.env.NEXT_PUBLIC_API_URL || 
+         process.env.NEXT_PUBLIC_SERVER || 
+         'http://localhost:3000/api/v1';
+};
+
 const axiosConfig = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1',
+  baseURL: getBaseURL(),
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',

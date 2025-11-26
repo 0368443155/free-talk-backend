@@ -1,4 +1,3 @@
-```
 "use client";
 export const dynamic = 'force-dynamic';
 
@@ -230,6 +229,23 @@ export default function LoginPage() {
               </div>
             </div>
             <div className="mt-4">
+              <Button
+                variant="outline"
+                className="w-full h-11 bg-white/50 border-white/20 hover:bg-white/70 text-foreground backdrop-blur-sm flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all"
+                onClick={() => {
+                  // Handle Google login
+                  window.location.href = `${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000'}/api/v1/auth/google`;
+                }}
+                disabled={isLoading}
+              >
+                <svg
+                  className="w-5 h-5"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    fill="currentColor"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.54-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
                   />
                   <path
                     fill="currentColor"
@@ -261,4 +277,4 @@ export default function LoginPage() {
       </Card>
     </div>
   );
-}```
+}
