@@ -15,7 +15,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { CoursesService } from './courses.service';
-import { CreateCourseDto, UpdateCourseDto, GetCoursesQueryDto } from './dto/course.dto';
+import { CreateCourseDto, UpdateCourseDto, GetCoursesQueryDto, CreateCourseWithSessionsDto } from './dto/course.dto';
 import { CreateSessionDto, UpdateSessionDto } from './dto/session.dto';
 import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../../core/auth/guards/optional-jwt-auth.guard';
@@ -44,6 +44,22 @@ export class CoursesController {
             throw new ForbiddenException('User not authenticated');
         }
         return this.coursesService.createCourse(teacherId, dto);
+    }
+
+    @Post('with-sessions')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.TEACHER, UserRole.ADMIN)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Create course with sessions and materials (Teacher or Admin)' })
+    @ApiResponse({ status: 201, description: 'Course with sessions created successfully' })
+    @ApiResponse({ status: 400, description: 'Bad request' })
+    @ApiResponse({ status: 403, description: 'Only teachers and admins can create courses' })
+    async createCourseWithSessions(@Req() req: any, @Body() dto: CreateCourseWithSessionsDto) {
+        const teacherId = req.user?.id;
+        if (!teacherId) {
+            throw new ForbiddenException('User not authenticated');
+        }
+        return this.coursesService.createCourseWithSessions(teacherId, dto);
     }
 
     @Get()

@@ -7,6 +7,7 @@ import { EnrollmentController } from './enrollment.controller';
 import { EnrollmentService } from './enrollment.service';
 import { Course } from './entities/course.entity';
 import { CourseSession } from './entities/course-session.entity';
+import { SessionMaterial } from './entities/session-material.entity';
 import { CourseEnrollment } from './entities/enrollment.entity';
 import { SessionPurchase } from './entities/session-purchase.entity';
 import { PaymentHold } from './entities/payment-hold.entity';
@@ -18,6 +19,7 @@ import { QrCodeService } from '../../common/services/qr-code.service';
         TypeOrmModule.forFeature([
             Course,
             CourseSession,
+            SessionMaterial,
             CourseEnrollment,
             SessionPurchase,
             PaymentHold,

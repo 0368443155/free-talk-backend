@@ -3,12 +3,14 @@ import {
     PrimaryGeneratedColumn,
     Column,
     ManyToOne,
+    OneToMany,
     CreateDateColumn,
     UpdateDateColumn,
     JoinColumn,
     Index,
 } from 'typeorm';
 import { Course } from './course.entity';
+import { SessionMaterial } from './session-material.entity';
 
 export enum SessionStatus {
     SCHEDULED = 'scheduled',
@@ -90,6 +92,9 @@ export class CourseSession {
 
     @UpdateDateColumn({ type: 'timestamp' })
     updated_at: Date;
+
+    @OneToMany(() => SessionMaterial, (material) => material.session, { cascade: true })
+    materials: SessionMaterial[];
 
     // Virtual properties
     get is_scheduled(): boolean {

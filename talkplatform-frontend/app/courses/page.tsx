@@ -8,14 +8,6 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from '@/components/ui/dialog';
-import {
     BookOpen,
     Clock,
     Users,
@@ -27,10 +19,24 @@ import {
     Calendar,
     GraduationCap,
     Plus,
+    Edit,
+    Trash2,
+    Eye,
+    EyeOff,
 } from 'lucide-react';
-import { getCoursesApi, Course } from '@/api/courses.rest';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { getCoursesApi, getMyCoursesApi, deleteCourseApi, publishCourseApi, unpublishCourseApi, Course, CourseStatus } from '@/api/courses.rest';
 import { useUser } from '@/store/user-store';
-import { CreateCourseForm } from '@/components/courses/CreateCourseForm';
 
 export default function CoursesPage() {
     const router = useRouter();
@@ -38,16 +44,23 @@ export default function CoursesPage() {
     const { userInfo: user } = useUser();
 
     const [courses, setCourses] = useState<Course[]>([]);
+    const [myCourses, setMyCourses] = useState<Course[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadingMyCourses, setLoadingMyCourses] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
-    const [createDialogOpen, setCreateDialogOpen] = useState(false);
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+    const [courseToDelete, setCourseToDelete] = useState<Course | null>(null);
+    const [activeTab, setActiveTab] = useState('browse');
 
     const isTeacher = user?.role === 'teacher' || user?.role === 'admin';
 
     useEffect(() => {
         loadCourses();
-    }, []);
+        if (isTeacher) {
+            loadMyCourses();
+        }
+    }, [isTeacher]);
 
     const loadCourses = async () => {
         try {
@@ -62,6 +75,75 @@ export default function CoursesPage() {
             });
         } finally {
             setLoading(false);
+        }
+    };
+
+    const loadMyCourses = async () => {
+        try {
+            setLoadingMyCourses(true);
+            const data = await getMyCoursesApi();
+            setMyCourses(data);
+        } catch (error: any) {
+            toast({
+                title: "Error",
+                description: error.response?.data?.message || "Failed to load your courses",
+                variant: "destructive",
+            });
+        } finally {
+            setLoadingMyCourses(false);
+        }
+    };
+
+    const handleDeleteCourse = async () => {
+        if (!courseToDelete) return;
+
+        try {
+            await deleteCourseApi(courseToDelete.id);
+            toast({
+                title: "Success",
+                description: "Course deleted successfully",
+            });
+            setDeleteDialogOpen(false);
+            setCourseToDelete(null);
+            loadMyCourses();
+            // Also reload browse courses in case it was published
+            if (activeTab === 'browse') {
+                loadCourses();
+            }
+        } catch (error: any) {
+            toast({
+                title: "Error",
+                description: error.response?.data?.message || "Failed to delete course",
+                variant: "destructive",
+            });
+        }
+    };
+
+    const handleTogglePublish = async (course: Course) => {
+        try {
+            if (course.is_published) {
+                await unpublishCourseApi(course.id);
+                toast({
+                    title: "Success",
+                    description: "Course unpublished successfully",
+                });
+            } else {
+                await publishCourseApi(course.id);
+                toast({
+                    title: "Success",
+                    description: "Course published successfully",
+                });
+            }
+            loadMyCourses();
+            if (activeTab === 'browse') {
+                loadCourses();
+            }
+        } catch (error: any) {
+            toast({
+                title: "Error",
+                description: error.response?.data?.message || "Failed to update course",
+                variant: "destructive",
+            });
         }
     };
 
@@ -88,28 +170,10 @@ export default function CoursesPage() {
                         </div>
                         <div className="flex gap-2">
                             {isTeacher && (
-                                <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-                                    <DialogTrigger asChild>
-                                        <Button>
-                                            <Plus className="w-4 h-4 mr-2" />
-                                            Create Course
-                                        </Button>
-                                    </DialogTrigger>
-                                    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                                        <DialogHeader>
-                                            <DialogTitle>Create New Course</DialogTitle>
-                                            <DialogDescription>
-                                                Fill in the details below to create a new course
-                                            </DialogDescription>
-                                        </DialogHeader>
-                                        <CreateCourseForm 
-                                            onSuccess={() => {
-                                                setCreateDialogOpen(false);
-                                                loadCourses(); // Reload courses list
-                                            }} 
-                                        />
-                                    </DialogContent>
-                                </Dialog>
+                                <Button onClick={() => router.push('/courses/create')}>
+                                    <Plus className="w-4 h-4 mr-2" />
+                                    Create Course
+                                </Button>
                             )}
                             <Button variant="outline" onClick={() => router.push('/student/my-learning')}>
                                 <GraduationCap className="w-4 h-4 mr-2" />
@@ -149,119 +213,301 @@ export default function CoursesPage() {
 
             {/* Content */}
             <div className="max-w-7xl mx-auto px-4 py-8">
-                {loading ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {[1, 2, 3, 4, 5, 6].map((i) => (
-                            <Card key={i} className="animate-pulse">
-                                <CardHeader>
-                                    <div className="h-6 bg-gray-200 rounded w-3/4 mb-2"></div>
-                                    <div className="h-4 bg-gray-200 rounded w-full"></div>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="space-y-2">
-                                        <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-                                        <div className="h-4 bg-gray-200 rounded w-2/3"></div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))}
-                    </div>
-                ) : filteredCourses.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {filteredCourses.map((course) => (
-                            <Card
-                                key={course.id}
-                                className="hover:shadow-lg transition-shadow cursor-pointer"
-                                onClick={() => router.push(`/courses/${course.id}`)}
-                            >
-                                <CardHeader>
-                                    <div className="flex justify-between items-start mb-2">
-                                        <Badge variant="secondary">{course.category || 'General'}</Badge>
-                                        {course.level && (
-                                            <Badge variant="outline">{course.level}</Badge>
-                                        )}
-                                    </div>
-                                    <CardTitle className="text-xl">{course.title}</CardTitle>
-                                    <CardDescription className="line-clamp-2">
-                                        {course.description}
-                                    </CardDescription>
-                                </CardHeader>
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                    <TabsList className="mb-6">
+                        <TabsTrigger value="browse">Browse Courses</TabsTrigger>
+                        {isTeacher && (
+                            <TabsTrigger value="my-courses">My Own Courses</TabsTrigger>
+                        )}
+                    </TabsList>
 
-                                <CardContent className="space-y-3">
-                                    <div className="flex items-center justify-between text-sm text-gray-600">
-                                        <div className="flex items-center gap-1">
-                                            <BookOpen className="w-4 h-4" />
-                                            <span>{course.total_sessions} sessions</span>
-                                        </div>
-                                        <div className="flex items-center gap-1">
-                                            <Clock className="w-4 h-4" />
-                                            <span>{course.duration_hours}h</span>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center justify-between text-sm text-gray-600">
-                                        <div className="flex items-center gap-1">
-                                            <Users className="w-4 h-4" />
-                                            <span>
-                                                {course.current_students}/{course.max_students} students
-                                            </span>
-                                        </div>
-                                        {course.language && (
-                                            <Badge variant="outline" className="text-xs">
-                                                {course.language}
-                                            </Badge>
-                                        )}
-                                    </div>
-
-                                    {course.teacher && (
-                                        <div className="flex items-center gap-2 pt-2 border-t">
-                                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
-                                                <span className="text-xs font-bold text-white">
-                                                    {course.teacher.username.substring(0, 2).toUpperCase()}
-                                                </span>
+                    {/* Browse Courses Tab */}
+                    <TabsContent value="browse">
+                        {loading ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {[1, 2, 3, 4, 5, 6].map((i) => (
+                                    <Card key={i} className="animate-pulse">
+                                        <CardHeader>
+                                            <div className="h-6 bg-gray-200 rounded w-3/4 mb-2"></div>
+                                            <div className="h-4 bg-gray-200 rounded w-full"></div>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="space-y-2">
+                                                <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+                                                <div className="h-4 bg-gray-200 rounded w-2/3"></div>
                                             </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-medium truncate">
-                                                    {course.teacher.username}
-                                                </p>
-                                                <p className="text-xs text-gray-500">Teacher</p>
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
+                        ) : filteredCourses.length > 0 ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {filteredCourses.map((course) => (
+                                    <Card
+                                        key={course.id}
+                                        className="hover:shadow-lg transition-shadow cursor-pointer"
+                                        onClick={() => router.push(`/courses/${course.id}`)}
+                                    >
+                                        <CardHeader>
+                                            <div className="flex justify-between items-start mb-2">
+                                                <Badge variant="secondary">{course.category || 'General'}</Badge>
+                                                {course.level && (
+                                                    <Badge variant="outline">{course.level}</Badge>
+                                                )}
                                             </div>
-                                        </div>
+                                            <CardTitle className="text-xl">{course.title}</CardTitle>
+                                            <CardDescription className="line-clamp-2">
+                                                {course.description}
+                                            </CardDescription>
+                                        </CardHeader>
+
+                                        <CardContent className="space-y-3">
+                                            <div className="flex items-center justify-between text-sm text-gray-600">
+                                                <div className="flex items-center gap-1">
+                                                    <BookOpen className="w-4 h-4" />
+                                                    <span>{course.total_sessions} sessions</span>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <Clock className="w-4 h-4" />
+                                                    <span>{course.duration_hours}h</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center justify-between text-sm text-gray-600">
+                                                <div className="flex items-center gap-1">
+                                                    <Users className="w-4 h-4" />
+                                                    <span>
+                                                        {course.current_students}/{course.max_students} students
+                                                    </span>
+                                                </div>
+                                                {course.language && (
+                                                    <Badge variant="outline" className="text-xs">
+                                                        {course.language}
+                                                    </Badge>
+                                                )}
+                                            </div>
+
+                                            {course.teacher && (
+                                                <div className="flex items-center gap-2 pt-2 border-t">
+                                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+                                                        <span className="text-xs font-bold text-white">
+                                                            {course.teacher.username.substring(0, 2).toUpperCase()}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-medium truncate">
+                                                            {course.teacher.username}
+                                                        </p>
+                                                        <p className="text-xs text-gray-500">Teacher</p>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </CardContent>
+
+                                        <CardFooter className="flex justify-between items-center">
+                                            <div className="text-2xl font-bold text-blue-600">
+                                                ${course.price_full_course || course.price_per_session}
+                                            </div>
+                                            <Button size="sm">
+                                                View Details
+                                            </Button>
+                                        </CardFooter>
+                                    </Card>
+                                ))}
+                            </div>
+                        ) : (
+                            <Card>
+                                <CardContent className="p-12 text-center">
+                                    <BookOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                                    <h3 className="text-lg font-medium text-gray-900 mb-2">
+                                        No courses found
+                                    </h3>
+                                    <p className="text-gray-600 mb-4">
+                                        {searchTerm
+                                            ? `No courses match "${searchTerm}"`
+                                            : 'No courses available yet'}
+                                    </p>
+                                    {searchTerm && (
+                                        <Button onClick={() => setSearchTerm('')}>
+                                            Clear Search
+                                        </Button>
                                     )}
                                 </CardContent>
-
-                                <CardFooter className="flex justify-between items-center">
-                                    <div className="text-2xl font-bold text-blue-600">
-                                        ${course.price_full_course}
-                                    </div>
-                                    <Button size="sm">
-                                        View Details
-                                    </Button>
-                                </CardFooter>
                             </Card>
-                        ))}
-                    </div>
-                ) : (
-                    <Card>
-                        <CardContent className="p-12 text-center">
-                            <BookOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                            <h3 className="text-lg font-medium text-gray-900 mb-2">
-                                No courses found
-                            </h3>
-                            <p className="text-gray-600 mb-4">
-                                {searchTerm
-                                    ? `No courses match "${searchTerm}"`
-                                    : 'No courses available yet'}
-                            </p>
-                            {searchTerm && (
-                                <Button onClick={() => setSearchTerm('')}>
-                                    Clear Search
-                                </Button>
+                        )}
+                    </TabsContent>
+
+                    {/* My Own Courses Tab (Teacher/Admin only) */}
+                    {isTeacher && (
+                        <TabsContent value="my-courses">
+                            {loadingMyCourses ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {[1, 2, 3].map((i) => (
+                                        <Card key={i} className="animate-pulse">
+                                            <CardHeader>
+                                                <div className="h-6 bg-gray-200 rounded w-3/4 mb-2"></div>
+                                                <div className="h-4 bg-gray-200 rounded w-full"></div>
+                                            </CardHeader>
+                                        </Card>
+                                    ))}
+                                </div>
+                            ) : myCourses.length > 0 ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {myCourses.map((course) => (
+                                        <Card
+                                            key={course.id}
+                                            className="hover:shadow-lg transition-shadow"
+                                        >
+                                            <CardHeader>
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <div className="flex gap-2">
+                                                        <Badge variant="secondary">{course.category || 'General'}</Badge>
+                                                        {course.is_published ? (
+                                                            <Badge variant="default" className="bg-green-500">
+                                                                <Eye className="w-3 h-3 mr-1" />
+                                                                Published
+                                                            </Badge>
+                                                        ) : (
+                                                            <Badge variant="outline">
+                                                                <EyeOff className="w-3 h-3 mr-1" />
+                                                                Draft
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <CardTitle className="text-xl">{course.title}</CardTitle>
+                                                <CardDescription className="line-clamp-2">
+                                                    {course.description}
+                                                </CardDescription>
+                                            </CardHeader>
+
+                                            <CardContent className="space-y-3">
+                                                <div className="flex items-center justify-between text-sm text-gray-600">
+                                                    <div className="flex items-center gap-1">
+                                                        <BookOpen className="w-4 h-4" />
+                                                        <span>{course.total_sessions} sessions</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1">
+                                                        <Clock className="w-4 h-4" />
+                                                        <span>{course.duration_hours}h</span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center justify-between text-sm text-gray-600">
+                                                    <div className="flex items-center gap-1">
+                                                        <Users className="w-4 h-4" />
+                                                        <span>
+                                                            {course.current_students}/{course.max_students} students
+                                                        </span>
+                                                    </div>
+                                                    {course.language && (
+                                                        <Badge variant="outline" className="text-xs">
+                                                            {course.language}
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                            </CardContent>
+
+                                            <CardFooter className="flex flex-col gap-2">
+                                                <div className="flex justify-between items-center w-full">
+                                                    <div className="text-xl font-bold text-blue-600">
+                                                        ${course.price_full_course || course.price_per_session}
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-2 w-full">
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        className="flex-1"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            router.push(`/courses/${course.id}?edit=true`);
+                                                        }}
+                                                    >
+                                                        <Edit className="w-4 h-4 mr-1" />
+                                                        Edit
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleTogglePublish(course);
+                                                        }}
+                                                    >
+                                                        {course.is_published ? (
+                                                            <EyeOff className="w-4 h-4" />
+                                                        ) : (
+                                                            <Eye className="w-4 h-4" />
+                                                        )}
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="destructive"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setCourseToDelete(course);
+                                                            setDeleteDialogOpen(true);
+                                                        }}
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </Button>
+                                                </div>
+                                                <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    className="w-full"
+                                                    onClick={() => router.push(`/courses/${course.id}`)}
+                                                >
+                                                    View Details
+                                                </Button>
+                                            </CardFooter>
+                                        </Card>
+                                    ))}
+                                </div>
+                            ) : (
+                                <Card>
+                                    <CardContent className="p-12 text-center">
+                                        <BookOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                                        <h3 className="text-lg font-medium text-gray-900 mb-2">
+                                            No courses yet
+                                        </h3>
+                                        <p className="text-gray-600 mb-4">
+                                            Create your first course to get started
+                                        </p>
+                                        <Button onClick={() => router.push('/courses/create')}>
+                                            <Plus className="w-4 h-4 mr-2" />
+                                            Create Course
+                                        </Button>
+                                    </CardContent>
+                                </Card>
                             )}
-                        </CardContent>
-                    </Card>
-                )}
+                        </TabsContent>
+                    )}
+                </Tabs>
             </div>
+
+            {/* Delete Confirmation Dialog */}
+            <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This action cannot be undone. This will permanently delete the course
+                            "{courseToDelete?.title}" and all its sessions.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={handleDeleteCourse}
+                            className="bg-red-600 hover:bg-red-700"
+                        >
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

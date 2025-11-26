@@ -28,6 +28,12 @@ export enum SessionStatus {
     CANCELLED = 'cancelled',
 }
 
+export enum MaterialType {
+    DOCUMENT = 'document',
+    VIDEO = 'video',
+    LINK = 'link',
+}
+
 export interface Course {
     id: string;
     teacher_id: string;
@@ -59,6 +65,22 @@ export interface Course {
     sessions?: CourseSession[];
 }
 
+export interface SessionMaterial {
+    id: string;
+    session_id: string;
+    type: MaterialType;
+    title: string;
+    description?: string;
+    file_url?: string;
+    file_name?: string;
+    file_size?: number;
+    file_type?: string;
+    display_order: number;
+    is_required: boolean;
+    created_at: string;
+    updated_at: string;
+}
+
 export interface CourseSession {
     id: string;
     course_id: string;
@@ -80,6 +102,7 @@ export interface CourseSession {
     actual_duration_minutes?: number;
     created_at: string;
     updated_at: string;
+    materials?: SessionMaterial[];
 }
 
 export interface CreateCourseDto {
@@ -96,6 +119,19 @@ export interface CreateCourseDto {
     max_students?: number;
 }
 
+export interface CreateCourseWithSessionsDto {
+    title: string;
+    description?: string;
+    category?: string;
+    level?: CourseLevel;
+    language?: string;
+    price_full_course?: number;
+    price_per_session?: number;
+    max_students?: number;
+    duration_hours?: number;
+    sessions: CreateSessionWithMaterialsDto[];
+}
+
 export interface UpdateCourseDto {
     title?: string;
     description?: string;
@@ -108,6 +144,28 @@ export interface UpdateCourseDto {
     level?: CourseLevel;
     category?: string;
     max_students?: number;
+}
+
+export interface CreateSessionMaterialDto {
+    type: MaterialType;
+    title: string;
+    description?: string;
+    file_url?: string;
+    file_name?: string;
+    file_size?: number;
+    file_type?: string;
+    display_order?: number;
+    is_required?: boolean;
+}
+
+export interface CreateSessionWithMaterialsDto {
+    session_number: number;
+    title: string;
+    description?: string;
+    scheduled_date: string;
+    start_time: string;
+    end_time: string;
+    materials?: CreateSessionMaterialDto[];
 }
 
 export interface CreateSessionDto {
@@ -159,6 +217,14 @@ export interface CoursesResponse {
  */
 export async function createCourseApi(data: CreateCourseDto): Promise<Course> {
     const response = await apiClient.post('/courses', data);
+    return response.data;
+}
+
+/**
+ * Create course with sessions and materials (Teacher only)
+ */
+export async function createCourseWithSessionsApi(data: CreateCourseWithSessionsDto): Promise<Course> {
+    const response = await apiClient.post('/courses/with-sessions', data);
     return response.data;
 }
 

@@ -9,9 +9,13 @@ import {
     IsInt,
     ValidateIf,
     IsPositive,
+    IsArray,
+    ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CourseLevel, PriceType } from '../entities/course.entity';
+import { CreateSessionWithMaterialsDto } from './session-material.dto';
 
 export class CreateCourseDto {
     @ApiProperty({
@@ -241,4 +245,64 @@ export class GetCoursesQueryDto {
     @Max(100)
     @IsOptional()
     limit?: number;
+}
+
+export class CreateCourseWithSessionsDto {
+    // Course info
+    @ApiProperty({ example: 'English Conversation Mastery', description: 'Course title' })
+    @IsString()
+    @IsNotEmpty()
+    title: string;
+
+    @ApiPropertyOptional({ example: 'Master English conversation...', description: 'Course description' })
+    @IsString()
+    @IsOptional()
+    description?: string;
+
+    @ApiPropertyOptional({ example: 'Language Learning', description: 'Course category' })
+    @IsString()
+    @IsOptional()
+    category?: string;
+
+    @ApiPropertyOptional({ enum: CourseLevel, description: 'Course level' })
+    @IsEnum(CourseLevel)
+    @IsOptional()
+    level?: CourseLevel;
+
+    @ApiPropertyOptional({ example: 'English', description: 'Teaching language' })
+    @IsString()
+    @IsOptional()
+    language?: string;
+
+    @ApiPropertyOptional({ example: 100, description: 'Full course price', minimum: 1 })
+    @IsNumber()
+    @Min(1)
+    @IsOptional()
+    price_full_course?: number;
+
+    @ApiPropertyOptional({ example: 10, description: 'Price per session', minimum: 1 })
+    @IsNumber()
+    @Min(1)
+    @IsOptional()
+    price_per_session?: number;
+
+    @ApiPropertyOptional({ example: 30, description: 'Maximum students', minimum: 1, maximum: 100, default: 30 })
+    @IsInt()
+    @Min(1)
+    @Max(100)
+    @IsOptional()
+    max_students?: number;
+
+    @ApiPropertyOptional({ example: 20, description: 'Total duration in hours', minimum: 1 })
+    @IsInt()
+    @Min(1)
+    @IsOptional()
+    duration_hours?: number;
+
+    // Sessions
+    @ApiProperty({ type: [CreateSessionWithMaterialsDto], description: 'Sessions with materials' })
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => CreateSessionWithMaterialsDto)
+    sessions: CreateSessionWithMaterialsDto[];
 }
