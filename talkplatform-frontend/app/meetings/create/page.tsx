@@ -170,22 +170,26 @@ export default function CreateMeetingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Create a Meeting</h1>
-          <p className="text-gray-600">Set up your conversation space and connect with others</p>
+    <div className="min-h-screen p-4 md:p-8">
+      <div className="container mx-auto max-w-4xl relative">
+        {/* Decorative elements */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob -z-10"></div>
+        <div className="absolute bottom-0 left-0 w-64 h-64 bg-secondary/10 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-2000 -z-10"></div>
+
+        <div className="mb-8 text-center md:text-left">
+          <h1 className="text-4xl font-bold font-heading bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary mb-2">Create a Meeting</h1>
+          <p className="text-muted-foreground text-lg">Set up your conversation space and connect with others</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-8">
           {/* Meeting Type Selection */}
-          <Card>
+          <Card className="glass-card border-white/20">
             <CardHeader>
-              <CardTitle>Meeting Type</CardTitle>
+              <CardTitle className="font-heading text-xl">Meeting Type</CardTitle>
             </CardHeader>
             <CardContent>
               <Tabs value={meetingData.meeting_type} onValueChange={(value) => handleMeetingTypeChange(value as MeetingType)}>
-                <TabsList className="grid w-full grid-cols-4">
+                <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 bg-black/5 dark:bg-white/10">
                   <TabsTrigger value={MeetingType.FREE_TALK}>Free Talk</TabsTrigger>
                   <TabsTrigger value={MeetingType.TEACHER_CLASS}>Teaching</TabsTrigger>
                   <TabsTrigger value={MeetingType.WORKSHOP}>Workshop</TabsTrigger>
@@ -193,9 +197,23 @@ export default function CreateMeetingPage() {
                 </TabsList>
 
                 {Object.values(MeetingType).map((type) => (
-                  <TabsContent key={type} value={type} className="mt-4">
-                    <div className="p-4 bg-blue-50 rounded-lg">
-                      <p className="text-sm text-blue-800">{getMeetingTypeDescription(type)}</p>
+                  <TabsContent key={type} value={type} className="mt-6 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="p-6 bg-primary/5 border border-primary/10 rounded-xl flex items-start gap-4">
+                      <div className="p-2 bg-primary/10 rounded-lg">
+                        {type === MeetingType.FREE_TALK && <Users className="w-6 h-6 text-primary" />}
+                        {type === MeetingType.TEACHER_CLASS && <Video className="w-6 h-6 text-primary" />}
+                        {type === MeetingType.WORKSHOP && <Users className="w-6 h-6 text-primary" />}
+                        {type === MeetingType.PRIVATE_SESSION && <Mic className="w-6 h-6 text-primary" />}
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-primary mb-1">
+                          {type === MeetingType.FREE_TALK && "Free Talk"}
+                          {type === MeetingType.TEACHER_CLASS && "Teacher Class"}
+                          {type === MeetingType.WORKSHOP && "Workshop"}
+                          {type === MeetingType.PRIVATE_SESSION && "Private Session"}
+                        </h4>
+                        <p className="text-sm text-muted-foreground">{getMeetingTypeDescription(type)}</p>
+                      </div>
                     </div>
                   </TabsContent>
                 ))}
@@ -204,12 +222,12 @@ export default function CreateMeetingPage() {
           </Card>
 
           {/* Basic Information */}
-          <Card>
+          <Card className="glass-card border-white/20">
             <CardHeader>
-              <CardTitle>Basic Information</CardTitle>
+              <CardTitle className="font-heading text-xl">Basic Information</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
+            <CardContent className="space-y-6">
+              <div className="space-y-2">
                 <Label htmlFor="title">Meeting Title *</Label>
                 <Input
                   id="title"
@@ -217,10 +235,11 @@ export default function CreateMeetingPage() {
                   onChange={(e) => setMeetingData({ ...meetingData, title: e.target.value })}
                   placeholder="Enter a catchy title for your meeting"
                   required
+                  className="bg-white/50 dark:bg-black/20 border-white/20 focus:border-primary"
                 />
               </div>
 
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="description">Description</Label>
                 <Textarea
                   id="description"
@@ -228,14 +247,15 @@ export default function CreateMeetingPage() {
                   onChange={(e) => setMeetingData({ ...meetingData, description: e.target.value })}
                   placeholder="Describe what participants can expect..."
                   rows={3}
+                  className="bg-white/50 dark:bg-black/20 border-white/20 focus:border-primary resize-none"
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
                   <Label htmlFor="language">Language</Label>
                   <Select value={meetingData.language} onValueChange={(value) => setMeetingData({ ...meetingData, language: value })}>
-                    <SelectTrigger>
+                    <SelectTrigger className="bg-white/50 dark:bg-black/20 border-white/20">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -250,10 +270,10 @@ export default function CreateMeetingPage() {
                   </Select>
                 </div>
 
-                <div>
+                <div className="space-y-2">
                   <Label htmlFor="level">Level</Label>
                   <Select value={meetingData.level} onValueChange={(value) => setMeetingData({ ...meetingData, level: value as MeetingLevel })}>
-                    <SelectTrigger>
+                    <SelectTrigger className="bg-white/50 dark:bg-black/20 border-white/20">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -266,66 +286,76 @@ export default function CreateMeetingPage() {
                 </div>
               </div>
 
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="topic">Topic</Label>
                 <Input
                   id="topic"
                   value={meetingData.topic}
                   onChange={(e) => setMeetingData({ ...meetingData, topic: e.target.value })}
                   placeholder="What will you talk about?"
+                  className="bg-white/50 dark:bg-black/20 border-white/20 focus:border-primary"
                 />
               </div>
 
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="region">Region (Optional)</Label>
                 <Input
                   id="region"
                   value={meetingData.region}
                   onChange={(e) => setMeetingData({ ...meetingData, region: e.target.value })}
                   placeholder="e.g., US-West, EU-Central"
+                  className="bg-white/50 dark:bg-black/20 border-white/20 focus:border-primary"
                 />
               </div>
             </CardContent>
           </Card>
 
           {/* Meeting Settings */}
-          <Card>
+          <Card className="glass-card border-white/20">
             <CardHeader>
-              <CardTitle>Meeting Settings</CardTitle>
+              <CardTitle className="font-heading text-xl">Meeting Settings</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
                   <Label htmlFor="max_participants">Max Participants</Label>
-                  <Input
-                    id="max_participants"
-                    type="number"
-                    min="2"
-                    max="1000"
-                    value={meetingData.max_participants}
-                    onChange={(e) => setMeetingData({ ...meetingData, max_participants: parseInt(e.target.value) || 4 })}
-                  />
+                  <div className="relative">
+                    <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="max_participants"
+                      type="number"
+                      min="2"
+                      max="1000"
+                      value={meetingData.max_participants}
+                      onChange={(e) => setMeetingData({ ...meetingData, max_participants: parseInt(e.target.value) || 4 })}
+                      className="pl-9 bg-white/50 dark:bg-black/20 border-white/20 focus:border-primary"
+                    />
+                  </div>
                 </div>
 
                 {meetingData.pricing_type === PricingType.CREDITS && (
-                  <div>
+                  <div className="space-y-2">
                     <Label htmlFor="price_credits">Price (Credits)</Label>
-                    <Input
-                      id="price_credits"
-                      type="number"
-                      min="0"
-                      value={meetingData.price_credits}
-                      onChange={(e) => setMeetingData({ ...meetingData, price_credits: parseInt(e.target.value) || 0 })}
-                    />
+                    <div className="relative">
+                      <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        id="price_credits"
+                        type="number"
+                        min="0"
+                        value={meetingData.price_credits}
+                        onChange={(e) => setMeetingData({ ...meetingData, price_credits: parseInt(e.target.value) || 0 })}
+                        className="pl-9 bg-white/50 dark:bg-black/20 border-white/20 focus:border-primary"
+                      />
+                    </div>
                   </div>
                 )}
               </div>
 
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Audio-First Meeting</Label>
-                    <p className="text-sm text-gray-500">Emphasize voice communication over video</p>
+              <div className="space-y-4 pt-4 border-t border-white/10">
+                <div className="flex items-center justify-between p-3 rounded-lg hover:bg-white/5 transition-colors">
+                  <div className="space-y-0.5">
+                    <Label className="text-base">Audio-First Meeting</Label>
+                    <p className="text-sm text-muted-foreground">Emphasize voice communication over video</p>
                   </div>
                   <Switch
                     checked={meetingData.is_audio_first}
@@ -333,10 +363,10 @@ export default function CreateMeetingPage() {
                   />
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Requires Approval</Label>
-                    <p className="text-sm text-gray-500">Host must approve participants before they can join</p>
+                <div className="flex items-center justify-between p-3 rounded-lg hover:bg-white/5 transition-colors">
+                  <div className="space-y-0.5">
+                    <Label className="text-base">Requires Approval</Label>
+                    <p className="text-sm text-muted-foreground">Host must approve participants before they can join</p>
                   </div>
                   <Switch
                     checked={meetingData.requires_approval}
@@ -344,10 +374,10 @@ export default function CreateMeetingPage() {
                   />
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Private Meeting</Label>
-                    <p className="text-sm text-gray-500">Not visible in public listings</p>
+                <div className="flex items-center justify-between p-3 rounded-lg hover:bg-white/5 transition-colors">
+                  <div className="space-y-0.5">
+                    <Label className="text-base">Private Meeting</Label>
+                    <p className="text-sm text-muted-foreground">Not visible in public listings</p>
                   </div>
                   <Switch
                     checked={meetingData.is_private}
@@ -359,9 +389,9 @@ export default function CreateMeetingPage() {
           </Card>
 
           {/* Tags */}
-          <Card>
+          <Card className="glass-card border-white/20">
             <CardHeader>
-              <CardTitle>Tags</CardTitle>
+              <CardTitle className="font-heading text-xl">Tags</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex gap-2">
@@ -370,18 +400,19 @@ export default function CreateMeetingPage() {
                   onChange={(e) => setCurrentTag(e.target.value)}
                   placeholder="Add a tag (e.g., conversation, grammar, business)"
                   onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
+                  className="bg-white/50 dark:bg-black/20 border-white/20 focus:border-primary"
                 />
-                <Button type="button" onClick={addTag} variant="outline">
+                <Button type="button" onClick={addTag} variant="outline" className="border-primary/20 hover:bg-primary/10 hover:text-primary">
                   <Tag className="w-4 h-4 mr-2" />
                   Add
                 </Button>
               </div>
 
               {meetingData.tags && meetingData.tags.length > 0 && (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 pt-2">
                   {meetingData.tags.map((tag, index) => (
-                    <Badge key={index} variant="secondary" className="cursor-pointer" onClick={() => removeTag(tag)}>
-                      {tag} ×
+                    <Badge key={index} variant="secondary" className="cursor-pointer hover:bg-destructive hover:text-destructive-foreground transition-colors px-3 py-1" onClick={() => removeTag(tag)}>
+                      {tag} <span className="ml-1 opacity-70">×</span>
                     </Badge>
                   ))}
                 </div>
@@ -390,11 +421,11 @@ export default function CreateMeetingPage() {
           </Card>
 
           {/* Submit */}
-          <div className="flex justify-end gap-4">
-            <Button type="button" variant="outline" onClick={() => router.back()}>
+          <div className="flex justify-end gap-4 pt-4">
+            <Button type="button" variant="ghost" onClick={() => router.back()} className="hover:bg-white/10">
               Cancel
             </Button>
-            <Button type="submit" disabled={isLoading}>
+            <Button type="submit" disabled={isLoading} className="bg-gradient-to-r from-primary to-secondary hover:opacity-90 shadow-lg shadow-primary/25 min-w-[150px]">
               {isLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />

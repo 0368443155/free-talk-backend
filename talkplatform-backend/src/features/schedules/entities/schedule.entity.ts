@@ -10,7 +10,7 @@ import {
     Index,
     Check,
 } from 'typeorm';
-import { User } from '../../users/user.entity';
+import { User } from '../../../users/user.entity';
 
 export enum ScheduleStatus {
     OPEN = 'open',

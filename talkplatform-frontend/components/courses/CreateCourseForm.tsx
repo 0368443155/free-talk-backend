@@ -26,7 +26,7 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { useToast } from '@/hooks/use-toast';
+import { useToast } from '@/components/ui/use-toast';
 import { createCourseApi, PriceType, CourseLevel } from '@/api/courses.rest';
 import { Loader2, BookOpen, DollarSign, Clock, Users } from 'lucide-react';
 

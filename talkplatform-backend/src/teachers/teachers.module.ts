@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { TeacherProfile } from './teacher-profile.entity';
+import { TeacherProfile } from '../features/teachers/entities/teacher-profile.entity';
 import { TeachersService } from './teachers.service';
 import { TeachersController } from './teachers.controller';
 import { User } from 'src/users/user.entity';
@@ -15,4 +15,4 @@ import { UsersModule } from 'src/users/users.module';
   controllers: [TeachersController],
   exports: [TeachersService], // Sẽ export service sau
 })
-export class TeachersModule {}
+export class TeachersModule { }

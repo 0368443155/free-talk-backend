@@ -387,7 +387,7 @@ export function GreenRoom({ onJoinMeeting, onCancel, meetingTitle, isWaitingRoom
       virtualBackground,
       backgroundBlur,
       audioLevel,
-      mediaStream: currentStreamRef.current || null, // Pass stream to reuse
+      mediaStream: currentStreamRef.current || undefined, // Pass stream to reuse
     };
 
     onJoinMeeting(deviceSettings);

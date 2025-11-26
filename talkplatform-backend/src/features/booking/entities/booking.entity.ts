@@ -43,21 +43,21 @@ export class Booking {
   @JoinColumn({ name: 'meeting_id' })
   meeting: Meeting;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'uuid', insert: false, update: false })
   meeting_id: string;
 
   @ManyToOne(() => User, { nullable: false })
   @JoinColumn({ name: 'student_id' })
   student: User;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'uuid', insert: false, update: false })
   student_id: string;
 
   @ManyToOne(() => User, { nullable: false })
   @JoinColumn({ name: 'teacher_id' })
   teacher: User;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'uuid', insert: false, update: false })
   teacher_id: string;
 
   @Column({

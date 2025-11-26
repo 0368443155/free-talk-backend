@@ -2,22 +2,22 @@ import { ForbiddenException, Injectable, InternalServerErrorException, NotFoundE
 import { InjectRepository } from '@nestjs/typeorm';
 import { User, UserRole } from 'src/users/user.entity';
 import { Repository } from 'typeorm';
-import { TeacherProfile } from './teacher-profile.entity';
+import { TeacherProfile } from '../features/teachers/entities/teacher-profile.entity';
 import { GetTeachersQueryDto } from './dto/get-teachers-query-dto';
 import { UpdateTeacherProfileDto } from './dto/update-teacher-profile.dto';
 
 @Injectable()
 export class TeachersService {
     constructor(
-        @InjectRepository(User) 
+        @InjectRepository(User)
         private usersRepository: Repository<User>,
 
         @InjectRepository(TeacherProfile)
         private teacherProfilesRepository: Repository<TeacherProfile>,
-    ) {}
+    ) { }
 
     //API lấy danh sách giáo viên <public>
-    async getTeachers(queryDto: GetTeachersQueryDto): Promise<{ teachers: Partial<User & TeacherProfile>[], total: number}> {
+    async getTeachers(queryDto: GetTeachersQueryDto): Promise<{ teachers: Partial<User & TeacherProfile>[], total: number }> {
         const {
             page = 1,
             limit = 20,
@@ -29,30 +29,30 @@ export class TeachersService {
             isVerified = 'true' //mặc định là string: true
         } = queryDto;
 
-        const skip = (page - 1)* limit;
+        const skip = (page - 1) * limit;
         const verifiedStatus = isVerified === 'true' //chuyển string sang boolean
 
         //dùng querybuilder để join và filter
         const query = this.usersRepository.createQueryBuilder('user')
             .innerJoinAndSelect('user.teacherProfile', 'profile') //join với teacherProfile
-            .where('user.role = :role', {role: 'teacher'}) //chỉ lấy role teacher
-            .andWhere('profile.is_verified = :isVerified', {isVerified: verifiedStatus}); //lọc theo isVerified
-        
+            .where('user.role = :role', { role: 'teacher' }) //chỉ lấy role teacher
+            .andWhere('profile.is_verified = :isVerified', { isVerified: verifiedStatus }); //lọc theo isVerified
+
         //filter theo search
-        if(search){
-            query.andWhere('(user.username LIKE :search OR profile.headline LIKE :search)', {search: `%${search}%`})
+        if (search) {
+            query.andWhere('(user.username LIKE :search OR profile.headline LIKE :search)', { search: `%${search}%` })
         }
 
         //filter theo maxRate
-        if(maxRate !== undefined){
-            query.andWhere('profile.hourly_rate <= :maxRate', {maxRate})
+        if (maxRate !== undefined) {
+            query.andWhere('profile.hourly_rate_credits <= :maxRate', { maxRate })
         }
 
         //sorting
         let orderBy: string;
         switch (sortBy) {
             case 'rate':
-                orderBy = 'profile.hourly_rate';
+                orderBy = 'profile.hourly_rate_credits';
                 break;
             case 'hours':
                 orderBy = 'profile.total_hours_taught'; // Giả sử có cột này
@@ -73,11 +73,11 @@ export class TeachersService {
             const [teacher, total] = await query.getManyAndCount();
 
             //loại bỏ các trường nhạy cảm như email
-            const sanitizedTeachers = teacher.map( teacher => {
-                const {password, ...userSafe} = teacher;
-                return {...userSafe, ...userSafe.teacherProfile}; //gộp user và profile
+            const sanitizedTeachers = teacher.map(teacher => {
+                const { password, ...userSafe } = teacher;
+                return { ...userSafe, ...userSafe.teacherProfile }; //gộp user và profile
             });
-            return {teachers : sanitizedTeachers, total};
+            return { teachers: sanitizedTeachers, total };
         } catch (error) {
             console.error("Error fetching teachers:", error);
             throw new InternalServerErrorException("Couldnt fetch teachers list.");
@@ -85,17 +85,17 @@ export class TeachersService {
     }
 
     // API lấy chi tiết teacher (public)
-    async getTeacherById(id: string): Promise<Partial<User & TeacherProfile>>{
+    async getTeacherById(id: string): Promise<Partial<User & TeacherProfile>> {
         const teacher = await this.usersRepository.findOne({
-            where: {id: id, role: UserRole.TEACHER},
+            where: { id: id, role: UserRole.TEACHER },
             relations: ['teacherProfile'], //tự động join teacherProfile
         });
 
-        if (!teacher || !teacher.teacherProfile){
+        if (!teacher || !teacher.teacherProfile) {
             throw new NotFoundException(`Teacher with ID "${id}" not found`)
         }
 
-        if (!teacher.teacherProfile.is_verified){
+        if (!teacher.teacherProfile.is_verified) {
             throw new ForbiddenException(`Teacher profile "${id}" is not verified yet`);
         }
 
@@ -118,13 +118,13 @@ export class TeachersService {
     //API cập nhật Profile teacher {yêu cầu login teacher}
     async updateTeacherProfile(userId: string, updateDto: UpdateTeacherProfileDto): Promise<TeacherProfile> {
         //tìm profilêtacher dựa trên userID (khóa ngoại Tc Prf)
-        let profile = await this.teacherProfilesRepository.findOneBy({user_id: userId});
+        let profile = await this.teacherProfilesRepository.findOneBy({ user_id: userId });
 
-        if (!profile){
+        if (!profile) {
             // If missing (e.g. user just became teacher), create a minimal profile first
             profile = new TeacherProfile();
             profile.user_id = userId;
-            profile.hourly_rate = 1;
+            profile.hourly_rate_credits = 1;
             profile.average_rating = 0;
             profile.total_hours_taught = 0;
             profile.is_verified = false;
@@ -134,7 +134,7 @@ export class TeachersService {
         if (updateDto.headline !== undefined) profile.headline = updateDto.headline;
         if (updateDto.bio !== undefined) profile.bio = updateDto.bio;
         if (updateDto.introVideoUrl !== undefined) profile.intro_video_url = updateDto.introVideoUrl;
-        if (updateDto.hourlyRate !== undefined) profile.hourly_rate = updateDto.hourlyRate;
+        if (updateDto.hourlyRate !== undefined) profile.hourly_rate_credits = updateDto.hourlyRate;
         // Thêm các trường khác...
 
         try {
@@ -165,7 +165,7 @@ export class TeachersService {
             profile.user_id = userId;
             profile.user = user;
             // Optional fields left undefined initially
-            profile.hourly_rate = 1;
+            profile.hourly_rate_credits = 1;
             profile.average_rating = 0;
             profile.total_hours_taught = 0;
             profile.is_verified = false;

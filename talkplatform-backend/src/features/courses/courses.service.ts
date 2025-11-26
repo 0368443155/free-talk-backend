@@ -9,7 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, FindOptionsWhere } from 'typeorm';
 import { Course, CourseStatus, PriceType } from './entities/course.entity';
 import { CourseSession, SessionStatus } from './entities/course-session.entity';
-import { User } from '../../users/user.entity';
+import { User, UserRole } from '../../users/user.entity';
 import { CreateCourseDto, UpdateCourseDto, GetCoursesQueryDto } from './dto/course.dto';
 import { CreateSessionDto, UpdateSessionDto } from './dto/session.dto';
 import { QrCodeService } from '../../common/services/qr-code.service';
@@ -30,20 +30,15 @@ export class CoursesService {
         private readonly configService: ConfigService,
     ) { }
 
-    /**
-     * Create a new course
-     */
     async createCourse(teacherId: string, dto: CreateCourseDto): Promise<Course> {
-        // 1. Validate teacher
         const teacher = await this.userRepository.findOne({
-            where: { id: teacherId, role: 'teacher', is_verified: true }
+            where: { id: teacherId, role: UserRole.TEACHER }
         });
 
         if (!teacher) {
-            throw new ForbiddenException('Only verified teachers can create courses');
+            throw new ForbiddenException('Only teachers can create courses');
         }
 
-        // 2. Validate pricing
         if (dto.price_type === PriceType.PER_SESSION && (!dto.price_per_session || dto.price_per_session < 1)) {
             throw new BadRequestException('Price per session must be at least $1.00');
         }
@@ -52,10 +47,8 @@ export class CoursesService {
             throw new BadRequestException('Full course price must be at least $1.00');
         }
 
-        // 3. Generate affiliate code
         const affiliateCode = this.generateAffiliateCode();
 
-        // 4. Create course
         const course = this.courseRepository.create({
             teacher_id: teacherId,
             ...dto,
@@ -65,11 +58,9 @@ export class CoursesService {
 
         const savedCourse = await this.courseRepository.save(course);
 
-        // 5. Generate share link
         const frontendUrl = this.configService.get('FRONTEND_URL') || 'http://localhost:3001';
         const shareLink = `${frontendUrl}/courses/${savedCourse.id}`;
 
-        // 6. Generate QR code
         try {
             const qrCodeDataUrl = await this.qrCodeService.generateDataUrl(shareLink);
 
@@ -82,7 +73,6 @@ export class CoursesService {
             savedCourse.qr_code_url = qrCodeDataUrl;
         } catch (error) {
             this.logger.error(`Failed to generate QR code for course ${savedCourse.id}: ${error.message}`);
-            // Continue without QR code - can be regenerated later
         }
 
         this.logger.log(`✅ Course created: ${savedCourse.title} by teacher ${teacher.username}`);
@@ -90,9 +80,6 @@ export class CoursesService {
         return savedCourse;
     }
 
-    /**
-     * Get all courses with filters
-     */
     async getCourses(query: GetCoursesQueryDto): Promise<{
         data: Course[];
         total: number;
@@ -135,9 +122,6 @@ export class CoursesService {
         };
     }
 
-    /**
-     * Get course by ID
-     */
     async getCourseById(courseId: string): Promise<Course> {
         const course = await this.courseRepository.findOne({
             where: { id: courseId },
@@ -151,9 +135,6 @@ export class CoursesService {
         return course;
     }
 
-    /**
-     * Update course
-     */
     async updateCourse(
         courseId: string,
         teacherId: string,
@@ -161,22 +142,19 @@ export class CoursesService {
     ): Promise<Course> {
         const course = await this.getCourseById(courseId);
 
-        // Check ownership
         if (course.teacher_id !== teacherId) {
             throw new ForbiddenException('You can only update your own courses');
         }
 
-        // Validate pricing if changed
         if (dto.price_type) {
-            if (dto.price_type === PriceType.PER_SESSION && dto.price_per_session < 1) {
+            if (dto.price_type === PriceType.PER_SESSION && dto.price_per_session && dto.price_per_session < 1) {
                 throw new BadRequestException('Price per session must be at least $1.00');
             }
-            if (dto.price_type === PriceType.FULL_COURSE && dto.price_full_course < 1) {
+            if (dto.price_type === PriceType.FULL_COURSE && dto.price_full_course && dto.price_full_course < 1) {
                 throw new BadRequestException('Full course price must be at least $1.00');
             }
         }
 
-        // Update course
         await this.courseRepository.update(courseId, dto);
 
         this.logger.log(`✏️ Course updated: ${courseId}`);
@@ -184,18 +162,13 @@ export class CoursesService {
         return this.getCourseById(courseId);
     }
 
-    /**
-     * Delete course (only if no enrollments)
-     */
     async deleteCourse(courseId: string, teacherId: string): Promise<void> {
         const course = await this.getCourseById(courseId);
 
-        // Check ownership
         if (course.teacher_id !== teacherId) {
             throw new ForbiddenException('You can only delete your own courses');
         }
 
-        // Check if course has students
         if (course.current_students > 0) {
             throw new BadRequestException('Cannot delete course with enrolled students');
         }
@@ -205,9 +178,6 @@ export class CoursesService {
         this.logger.log(`🗑️ Course deleted: ${courseId}`);
     }
 
-    /**
-     * Add session to course
-     */
     async addSession(
         courseId: string,
         teacherId: string,
@@ -215,12 +185,10 @@ export class CoursesService {
     ): Promise<CourseSession> {
         const course = await this.getCourseById(courseId);
 
-        // Check ownership
         if (course.teacher_id !== teacherId) {
             throw new ForbiddenException('You can only add sessions to your own courses');
         }
 
-        // Check if session number already exists
         const existingSession = await this.sessionRepository.findOne({
             where: {
                 course_id: courseId,
@@ -232,15 +200,12 @@ export class CoursesService {
             throw new BadRequestException(`Session number ${dto.session_number} already exists`);
         }
 
-        // Validate time range
         if (dto.end_time <= dto.start_time) {
             throw new BadRequestException('End time must be after start time');
         }
 
-        // Generate LiveKit room name
         const livekitRoomName = `course_${courseId}_session_${dto.session_number}`;
 
-        // Create session
         const session = this.sessionRepository.create({
             course_id: courseId,
             ...dto,
@@ -255,11 +220,8 @@ export class CoursesService {
         return savedSession;
     }
 
-    /**
-     * Get all sessions for a course
-     */
     async getCourseSessions(courseId: string): Promise<CourseSession[]> {
-        const course = await this.getCourseById(courseId);
+        await this.getCourseById(courseId);
 
         const sessions = await this.sessionRepository.find({
             where: { course_id: courseId },
@@ -269,9 +231,6 @@ export class CoursesService {
         return sessions;
     }
 
-    /**
-     * Get session by ID
-     */
     async getSessionById(sessionId: string): Promise<CourseSession> {
         const session = await this.sessionRepository.findOne({
             where: { id: sessionId },
@@ -285,9 +244,6 @@ export class CoursesService {
         return session;
     }
 
-    /**
-     * Update session
-     */
     async updateSession(
         sessionId: string,
         teacherId: string,
@@ -295,12 +251,10 @@ export class CoursesService {
     ): Promise<CourseSession> {
         const session = await this.getSessionById(sessionId);
 
-        // Check ownership
         if (session.course.teacher_id !== teacherId) {
             throw new ForbiddenException('You can only update sessions of your own courses');
         }
 
-        // Validate time if changed
         if (dto.start_time && dto.end_time && dto.end_time <= dto.start_time) {
             throw new BadRequestException('End time must be after start time');
         }
@@ -312,32 +266,21 @@ export class CoursesService {
         return this.getSessionById(sessionId);
     }
 
-    /**
-     * Delete session
-     */
     async deleteSession(sessionId: string, teacherId: string): Promise<void> {
         const session = await this.getSessionById(sessionId);
 
-        // Check ownership
         if (session.course.teacher_id !== teacherId) {
             throw new ForbiddenException('You can only delete sessions of your own courses');
         }
-
-        // Check if session has purchases (will implement later)
-        // For now, allow deletion
 
         await this.sessionRepository.delete(sessionId);
 
         this.logger.log(`🗑️ Session deleted: ${sessionId}`);
     }
 
-    /**
-     * Regenerate QR code for course
-     */
     async regenerateQrCode(courseId: string, teacherId: string): Promise<Course> {
         const course = await this.getCourseById(courseId);
 
-        // Check ownership
         if (course.teacher_id !== teacherId) {
             throw new ForbiddenException('You can only regenerate QR code for your own courses');
         }
@@ -365,18 +308,12 @@ export class CoursesService {
         return course;
     }
 
-    /**
-     * Helper: Generate affiliate code
-     */
     private generateAffiliateCode(): string {
         const timestamp = Date.now().toString(36);
         const random = Math.random().toString(36).substring(2, 8);
         return `COURSE_${timestamp}${random}`.toUpperCase();
     }
 
-    /**
-     * Get teacher's courses
-     */
     async getTeacherCourses(
         teacherId: string,
         status?: CourseStatus

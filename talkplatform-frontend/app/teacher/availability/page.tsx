@@ -25,7 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { 
+import {
   Calendar,
   Clock,
   Plus,
@@ -46,7 +46,7 @@ import {
 export default function TeacherAvailabilityPage() {
   const router = useRouter();
   const { toast } = useToast();
-  
+
   const [loading, setLoading] = useState(true);
   const [slots, setSlots] = useState<BookingSlot[]>([]);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -111,12 +111,12 @@ export default function TeacherAvailabilityPage() {
         end_time: formData.end_time,
         price_credits: parseInt(formData.price_credits),
       });
-      
+
       toast({
         title: "Success",
         description: "Availability slot created successfully",
       });
-      
+
       setCreateDialogOpen(false);
       setFormData({
         date: '',
@@ -153,12 +153,12 @@ export default function TeacherAvailabilityPage() {
     try {
       setDeleting(true);
       await deleteBookingSlotApi(slotToDelete.id);
-      
+
       toast({
         title: "Success",
         description: "Slot deleted successfully",
       });
-      
+
       setDeleteDialogOpen(false);
       setSlotToDelete(null);
       await loadSlots();
@@ -194,12 +194,13 @@ export default function TeacherAvailabilityPage() {
   // Group slots by date
   const slotsByDate = slots.reduce((acc, slot) => {
     // Handle both Date objects and string dates
-    const dateKey = slot.date instanceof Date
-      ? slot.date.toISOString().split('T')[0]
-      : typeof slot.date === 'string' 
-        ? slot.date.split('T')[0]
-        : String(slot.date);
-    
+    const dateValue = slot.date as any;
+    const dateKey = dateValue instanceof Date
+      ? dateValue.toISOString().split('T')[0]
+      : typeof dateValue === 'string'
+        ? dateValue.split('T')[0]
+        : String(dateValue);
+
     if (!acc[dateKey]) {
       acc[dateKey] = [];
     }

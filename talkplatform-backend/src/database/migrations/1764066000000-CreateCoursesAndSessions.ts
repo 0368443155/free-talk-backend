@@ -9,13 +9,15 @@ export class CreateCoursesAndSessions1764066000000 implements MigrationInterface
                 columns: [
                     {
                         name: 'id',
-                        type: 'uuid',
+                        type: 'char',
+                        length: '36',
                         isPrimary: true,
-                        default: 'uuid_generate_v4()',
+                        generationStrategy: 'uuid',
                     },
                     {
                         name: 'teacher_id',
-                        type: 'uuid',
+                        type: 'char',
+                        length: '36',
                         isNullable: false,
                     },
                     {
@@ -31,12 +33,12 @@ export class CreateCoursesAndSessions1764066000000 implements MigrationInterface
                     },
                     {
                         name: 'duration_hours',
-                        type: 'integer',
+                        type: 'int',
                         isNullable: false,
                     },
                     {
                         name: 'total_sessions',
-                        type: 'integer',
+                        type: 'int',
                         isNullable: false,
                     },
                     {
@@ -87,12 +89,12 @@ export class CreateCoursesAndSessions1764066000000 implements MigrationInterface
                     },
                     {
                         name: 'max_students',
-                        type: 'integer',
+                        type: 'int',
                         default: 20,
                     },
                     {
                         name: 'current_students',
-                        type: 'integer',
+                        type: 'int',
                         default: 0,
                     },
                     {
@@ -121,6 +123,7 @@ export class CreateCoursesAndSessions1764066000000 implements MigrationInterface
                         name: 'updated_at',
                         type: 'timestamp',
                         default: 'CURRENT_TIMESTAMP',
+                        onUpdate: 'CURRENT_TIMESTAMP',
                     },
                 ],
             }),
@@ -134,18 +137,20 @@ export class CreateCoursesAndSessions1764066000000 implements MigrationInterface
                 columns: [
                     {
                         name: 'id',
-                        type: 'uuid',
+                        type: 'char',
+                        length: '36',
                         isPrimary: true,
-                        default: 'uuid_generate_v4()',
+                        generationStrategy: 'uuid',
                     },
                     {
                         name: 'course_id',
-                        type: 'uuid',
+                        type: 'char',
+                        length: '36',
                         isNullable: false,
                     },
                     {
                         name: 'session_number',
-                        type: 'integer',
+                        type: 'int',
                         isNullable: false,
                     },
                     {
@@ -176,7 +181,7 @@ export class CreateCoursesAndSessions1764066000000 implements MigrationInterface
                     },
                     {
                         name: 'duration_minutes',
-                        type: 'integer',
+                        type: 'int',
                         isNullable: false,
                     },
                     {
@@ -204,7 +209,7 @@ export class CreateCoursesAndSessions1764066000000 implements MigrationInterface
                     },
                     {
                         name: 'actual_duration_minutes',
-                        type: 'integer',
+                        type: 'int',
                         isNullable: true,
                     },
                     {
@@ -216,6 +221,7 @@ export class CreateCoursesAndSessions1764066000000 implements MigrationInterface
                         name: 'updated_at',
                         type: 'timestamp',
                         default: 'CURRENT_TIMESTAMP',
+                        onUpdate: 'CURRENT_TIMESTAMP',
                     },
                 ],
             }),
@@ -294,7 +300,7 @@ export class CreateCoursesAndSessions1764066000000 implements MigrationInterface
             }),
         );
 
-        // Add check constraints
+        // Add check constraints (MySQL syntax)
         await queryRunner.query(`
       ALTER TABLE courses 
       ADD CONSTRAINT valid_price CHECK (

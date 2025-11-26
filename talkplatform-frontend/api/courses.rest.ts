@@ -1,4 +1,4 @@
-import { apiClient } from './client';
+import { axiosConfig as apiClient } from './axiosConfig';
 
 // ==================== TYPES ====================
 

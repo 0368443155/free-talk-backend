@@ -15,7 +15,6 @@ export class QrCodeService {
             const qrCodeDataUrl = await QRCode.toDataURL(text, {
                 errorCorrectionLevel: 'M',
                 type: 'image/png',
-                quality: 0.92,
                 margin: 1,
                 width: 300,
                 color: {
@@ -42,7 +41,6 @@ export class QrCodeService {
             const buffer = await QRCode.toBuffer(text, {
                 errorCorrectionLevel: 'M',
                 type: 'png',
-                quality: 0.92,
                 margin: 1,
                 width: 300,
             });
@@ -65,7 +63,6 @@ export class QrCodeService {
             await QRCode.toFile(filePath, text, {
                 errorCorrectionLevel: 'M',
                 type: 'png',
-                quality: 0.92,
                 margin: 1,
                 width: 300,
             });

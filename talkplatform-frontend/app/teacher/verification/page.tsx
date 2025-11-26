@@ -10,12 +10,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
-import { 
-  Upload, 
-  FileText, 
-  CheckCircle2, 
-  XCircle, 
-  Clock, 
+import {
+  Upload,
+  FileText,
+  CheckCircle2,
+  XCircle,
+  Clock,
   AlertCircle,
   Loader2,
   Eye,
@@ -35,11 +35,11 @@ import {
 export default function TeacherVerificationPage() {
   const router = useRouter();
   const { toast } = useToast();
-  
+
   const [loading, setLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState(true);
   const [verificationStatus, setVerificationStatus] = useState<VerificationStatusResponse | null>(null);
-  
+
   // Form state
   const [identityCardFront, setIdentityCardFront] = useState<File | null>(null);
   const [identityCardBack, setIdentityCardBack] = useState<File | null>(null);
@@ -165,7 +165,7 @@ export default function TeacherVerificationPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!identityCardFrontUrl || !identityCardBackUrl) {
       toast({
         title: "Required Fields",
@@ -193,19 +193,19 @@ export default function TeacherVerificationPage() {
           file_url: item.url,
           year: new Date().getFullYear(),
         })),
-        cv_url: cvUrl,
+        cv_url: cvUrl || undefined,
         years_of_experience: yearsOfExperience ? parseInt(yearsOfExperience) : undefined,
         previous_platforms: previousPlatforms ? previousPlatforms.split(',').map(p => p.trim()) : undefined,
         references: references.length > 0 ? references : undefined,
       };
 
       await submitVerificationApi(submitData);
-      
+
       toast({
         title: "Success",
         description: "Verification documents submitted successfully. Please wait for admin review.",
       });
-      
+
       await loadVerificationStatus();
     } catch (error: any) {
       toast({
@@ -386,7 +386,7 @@ export default function TeacherVerificationPage() {
             {/* Additional Info */}
             <div className="space-y-4">
               <Label className="text-base font-semibold">Additional Information</Label>
-              
+
               <div>
                 <Label>Years of Experience</Label>
                 <Input

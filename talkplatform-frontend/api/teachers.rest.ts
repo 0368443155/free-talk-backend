@@ -56,6 +56,56 @@ export const getTeacherProfileByIdApi = async (teacherId: string): Promise<Teach
   }
 };
 
+// ==================== Get Teachers List API ====================
+
+export interface GetTeachersQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+  minRating?: number;
+  maxRate?: number;
+  sortBy?: 'rating' | 'rate' | 'hours' | 'newest';
+  sortOrder?: 'asc' | 'desc';
+  isVerified?: 'true' | 'false';
+}
+
+export interface TeacherListItem {
+  id: string;
+  username: string;
+  email: string;
+  avatar_url?: string;
+  role: string;
+  created_at: string;
+  headline?: string;
+  bio?: string;
+  intro_video_url?: string;
+  hourly_rate: number;
+  average_rating: number;
+  total_hours_taught: number;
+  is_verified: boolean;
+}
+
+export interface GetTeachersResponse {
+  teachers: TeacherListItem[];
+  total: number;
+}
+
+export const getTeachersApi = async (query?: GetTeachersQuery): Promise<GetTeachersResponse> => {
+  const params = new URLSearchParams();
+
+  if (query?.page) params.append('page', query.page.toString());
+  if (query?.limit) params.append('limit', query.limit.toString());
+  if (query?.search) params.append('search', query.search);
+  if (query?.minRating) params.append('minRating', query.minRating.toString());
+  if (query?.maxRate) params.append('maxRate', query.maxRate.toString());
+  if (query?.sortBy) params.append('sortBy', query.sortBy);
+  if (query?.sortOrder) params.append('sortOrder', query.sortOrder);
+  if (query?.isVerified !== undefined) params.append('isVerified', query.isVerified);
+
+  const res = await axiosConfig.get(`/teachers?${params.toString()}`);
+  return res.data;
+};
+
 // ==================== Teacher Verification API ====================
 
 export enum VerificationStatus {

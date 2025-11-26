@@ -2,38 +2,111 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+
+    --primary: 262.1 83.3% 57.8%; /* Violet 600 */
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 310 60% 70%; /* Soft Pink */
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+
+    --accent: 190 90% 50%; /* Cyan */
+    --accent-foreground: 222.2 47.4% 11.2%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 262.1 83.3% 57.8%;
+
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 263.4 70% 50.4%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 263.4 70% 50.4%;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    background-image: 
+      radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
+      radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
+      radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
+    background-attachment: fixed;
+  }
+  
+  /* Light mode gradient */
+  :root body {
+     background-image: 
+      radial-gradient(at 0% 0%, hsla(252,100%,96%,1) 0, transparent 50%), 
+      radial-gradient(at 50% 0%, hsla(220,100%,96%,1) 0, transparent 50%), 
+      radial-gradient(at 100% 0%, hsla(340,100%,96%,1) 0, transparent 50%);
+  }
 }
 
-/* Blob animation for login/register pages */
+/* Glassmorphism Utilities */
+.glass {
+  @apply bg-white/70 backdrop-blur-lg border border-white/20 shadow-xl;
+}
+
+.glass-dark {
+  @apply bg-black/30 backdrop-blur-lg border border-white/10 shadow-xl;
+}
+
+.glass-card {
+  @apply bg-white/80 backdrop-blur-md border border-white/40 shadow-sm hover:shadow-md transition-all duration-300;
+}
+
+/* Animations */
 @keyframes blob {
-  0% {
-    transform: translate(0px, 0px) scale(1);
-  }
-  33% {
-    transform: translate(30px, -50px) scale(1.1);
-  }
-  66% {
-    transform: translate(-20px, 20px) scale(0.9);
-  }
-  100% {
-    transform: translate(0px, 0px) scale(1);
-  }
+  0% { transform: translate(0px, 0px) scale(1); }
+  33% { transform: translate(30px, -50px) scale(1.1); }
+  66% { transform: translate(-20px, 20px) scale(0.9); }
+  100% { transform: translate(0px, 0px) scale(1); }
 }
 
 .animate-blob {
@@ -53,7 +126,12 @@ body.in-meeting-room nav,
 body.in-meeting-room [data-breadcrumb],
 body.in-meeting-room footer,
 body.in-meeting-room > div > div > nav:first-child,
-body.in-meeting-room > div > div > footer:last-child {
+body.in-meeting-room > div > div > footer:last-child,
+body.in-meeting-room header,
+body.in-meeting-room .main-nav,
+body.in-meeting-room .footer-nav,
+body.in-meeting-room [class*="main-nav"],
+body.in-meeting-room [class*="footer-nav"] {
   display: none !important;
 }
 
@@ -62,13 +140,4 @@ body.in-meeting-room main {
   overflow: hidden;
   padding: 0 !important;
   margin: 0 !important;
-}
-
-/* More specific selectors for header and footer */
-body.in-meeting-room header,
-body.in-meeting-room .main-nav,
-body.in-meeting-room .footer-nav,
-body.in-meeting-room [class*="main-nav"],
-body.in-meeting-room [class*="footer-nav"] {
-  display: none !important;
 }

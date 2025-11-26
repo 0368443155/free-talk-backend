@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, Eye, EyeOff } from "lucide-react";
+import { Loader2, Eye, EyeOff, UserPlus } from "lucide-react";
 import { registerApi } from "@/api/user.rest";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -114,27 +114,25 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
       {/* Decorative background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-pink-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-2000"></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-blue-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-4000"></div>
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary/20 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-secondary/20 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-2000"></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-accent/20 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-4000"></div>
       </div>
 
-      <Card className="w-full max-w-md relative z-10 shadow-2xl border-0 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
+      <Card className="w-full max-w-md relative z-10 glass-card border-white/20">
         <CardHeader className="space-y-1 pb-6">
           <div className="flex justify-center mb-4">
-            <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-600 rounded-2xl flex items-center justify-center shadow-lg">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-              </svg>
+            <div className="w-16 h-16 bg-gradient-to-br from-primary to-secondary rounded-2xl flex items-center justify-center shadow-lg shadow-primary/20">
+              <UserPlus className="w-8 h-8 text-white" />
             </div>
           </div>
-          <CardTitle className="text-3xl font-bold text-center bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+          <CardTitle className="text-3xl font-bold text-center font-heading bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
             Create Account
           </CardTitle>
-          <CardDescription className="text-center text-gray-600 dark:text-gray-400">
+          <CardDescription className="text-center text-muted-foreground">
             Join us and start your journey
           </CardDescription>
         </CardHeader>
@@ -147,7 +145,7 @@ export default function RegisterPage() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <Label htmlFor="email" className="text-sm font-medium">
                 Email
               </Label>
               <Input
@@ -159,12 +157,12 @@ export default function RegisterPage() {
                 onChange={handleInputChange}
                 required
                 disabled={isLoading}
-                className="h-11 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 focus:border-purple-500 focus:ring-purple-500"
+                className="h-11 bg-white/50 border-white/20 focus:border-primary focus:ring-primary backdrop-blur-sm transition-all"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="username" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <Label htmlFor="username" className="text-sm font-medium">
                 Username
               </Label>
               <Input
@@ -176,12 +174,12 @@ export default function RegisterPage() {
                 onChange={handleInputChange}
                 required
                 disabled={isLoading}
-                className="h-11 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 focus:border-purple-500 focus:ring-purple-500"
+                className="h-11 bg-white/50 border-white/20 focus:border-primary focus:ring-primary backdrop-blur-sm transition-all"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <Label htmlFor="password" className="text-sm font-medium">
                 Password
               </Label>
               <div className="relative">
@@ -194,13 +192,13 @@ export default function RegisterPage() {
                   onChange={handleInputChange}
                   required
                   disabled={isLoading}
-                  className="h-11 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 focus:border-purple-500 focus:ring-purple-500 pr-10"
+                  className="h-11 bg-white/50 border-white/20 focus:border-primary focus:ring-primary backdrop-blur-sm pr-10 transition-all"
                 />
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-gray-500 hover:text-gray-700"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-muted-foreground hover:text-foreground"
                   onClick={() => setShowPassword(!showPassword)}
                   disabled={isLoading}
                 >
@@ -214,7 +212,7 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <Label htmlFor="confirmPassword" className="text-sm font-medium">
                 Confirm Password
               </Label>
               <div className="relative">
@@ -227,13 +225,13 @@ export default function RegisterPage() {
                   onChange={handleInputChange}
                   required
                   disabled={isLoading}
-                  className="h-11 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 focus:border-purple-500 focus:ring-purple-500 pr-10"
+                  className="h-11 bg-white/50 border-white/20 focus:border-primary focus:ring-primary backdrop-blur-sm pr-10 transition-all"
                 />
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-gray-500 hover:text-gray-700"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-muted-foreground hover:text-foreground"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   disabled={isLoading}
                 >
@@ -246,9 +244,9 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            <Button 
-              type="submit" 
-              className="w-full h-11 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-200" 
+            <Button
+              type="submit"
+              className="w-full h-11 bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-white font-semibold shadow-lg shadow-primary/20 transition-all duration-200"
               disabled={isLoading}
             >
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -259,10 +257,10 @@ export default function RegisterPage() {
           <div className="mt-6">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t border-gray-300 dark:border-gray-700" />
+                <span className="w-full border-t border-white/20" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-white dark:bg-gray-800 px-2 text-gray-500 dark:text-gray-400">
+                <span className="bg-transparent px-2 text-muted-foreground">
                   Or continue with
                 </span>
               </div>
@@ -270,7 +268,7 @@ export default function RegisterPage() {
             <div className="mt-4">
               <Button
                 variant="outline"
-                className="w-full h-11 border-2 border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all"
+                className="w-full h-11 border-2 border-white/20 bg-white/50 hover:bg-white/80 transition-all"
                 onClick={() => {
                   // Redirect to Google OAuth
                   window.location.href = `${window.location.origin}/api/auth/google`;
@@ -300,9 +298,9 @@ export default function RegisterPage() {
           </div>
 
           <div className="mt-6 text-center">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-sm text-muted-foreground">
               Already have an account?{" "}
-              <Link href="/login" className="font-semibold text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300 transition-colors">
+              <Link href="/login" className="font-semibold text-primary hover:text-secondary transition-colors">
                 Sign in
               </Link>
             </p>

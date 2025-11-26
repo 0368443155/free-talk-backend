@@ -30,7 +30,7 @@ export class BookingSlot {
   @JoinColumn({ name: 'teacher_id' })
   teacher: TeacherProfile;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'uuid', insert: false, update: false })
   teacher_id: string;
 
   /**
@@ -62,16 +62,16 @@ export class BookingSlot {
    */
   @OneToOne(() => Booking, (booking) => booking.meeting, { nullable: true })
   @JoinColumn({ name: 'booking_id' })
-  booking: Booking;
+  booking: Booking | null;
 
-  @Column({ type: 'uuid', nullable: true })
-  booking_id: string;
+  @Column({ type: 'uuid', nullable: true, insert: false, update: false })
+  booking_id: string | null;
 
   /**
    * Học viên đã đặt (nếu có)
    */
   @Column({ type: 'uuid', nullable: true })
-  student_id: string;
+  student_id: string | null;
 
   /**
    * Giá (credits) cho slot này

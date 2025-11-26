@@ -210,7 +210,7 @@ export default function MainNav() {
     const isTeacher = user?.role === 'teacher' || user?.role === 'admin';
     const isAdmin = user?.role === 'admin';
     const isStudent = user?.role === 'student' || !user?.role;
-    
+
     // Build navigation items based on role
     // Remove duplicates by filtering unique hrefs
     const currentNavItems = [...navigationItems];
@@ -236,13 +236,13 @@ export default function MainNav() {
     }
 
     return (
-        <nav className="bg-white shadow-sm border-b sticky top-0 z-50">
+        <nav className="glass sticky top-0 z-50 border-b border-white/20">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex justify-between h-16">
                     {/* Logo and Main Navigation */}
                     <div className="flex">
                         <div className="flex-shrink-0 flex items-center">
-                            <Link href="/dashboard" className="text-2xl font-bold text-blue-600">
+                            <Link href="/dashboard" className="text-2xl font-bold font-heading bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
                                 TalkConnect
                             </Link>
                         </div>
@@ -253,9 +253,9 @@ export default function MainNav() {
                                 <div key={`nav-${item.href}-${index}`} className="relative group">
                                     <Link
                                         href={item.href}
-                                        className={`px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${isActive(item.href)
-                                                ? 'bg-blue-100 text-blue-700'
-                                                : 'text-gray-700 hover:text-blue-600 hover:bg-gray-50'
+                                        className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-2 ${isActive(item.href)
+                                            ? 'bg-primary/10 text-primary'
+                                            : 'text-muted-foreground hover:text-primary hover:bg-primary/5'
                                             }`}
                                     >
                                         <item.icon className="w-4 h-4" />
@@ -269,13 +269,13 @@ export default function MainNav() {
 
                                     {/* Submenu Dropdown */}
                                     {item.submenu && (
-                                        <div className="absolute left-0 mt-2 w-56 bg-white rounded-md shadow-lg border opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                                        <div className="absolute left-0 mt-2 w-56 glass rounded-xl shadow-xl border border-white/20 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 overflow-hidden">
                                             <div className="py-1">
                                                 {item.submenu.map((subitem) => (
                                                     <Link
                                                         key={subitem.href}
                                                         href={subitem.href}
-                                                        className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600"
+                                                        className="flex items-center gap-3 px-4 py-3 text-sm text-muted-foreground hover:bg-primary/5 hover:text-primary transition-colors"
                                                     >
                                                         <subitem.icon className="w-4 h-4" />
                                                         {subitem.title}
@@ -304,7 +304,7 @@ export default function MainNav() {
                         {/* Credits Display */}
                         <Link
                             href="/credits/balance"
-                            className="hidden md:flex items-center gap-2 px-3 py-1 bg-green-50 text-green-700 rounded-full text-sm font-medium hover:bg-green-100 transition-colors"
+                            className="hidden md:flex items-center gap-2 px-3 py-1 bg-green-500/10 text-green-700 rounded-full text-sm font-medium hover:bg-green-500/20 transition-colors border border-green-200/50"
                         >
                             <Wallet className="w-4 h-4" />
                             {user?.credit_balance || 0} Credits
@@ -467,8 +467,8 @@ export default function MainNav() {
                                     <Link
                                         href={item.href}
                                         className={`block px-3 py-2 rounded-md text-base font-medium transition-colors ${isActive(item.href)
-                                                ? 'bg-blue-100 text-blue-700'
-                                                : 'text-gray-700 hover:text-blue-600 hover:bg-gray-50'
+                                            ? 'bg-blue-100 text-blue-700'
+                                            : 'text-gray-700 hover:text-blue-600 hover:bg-gray-50'
                                             }`}
                                         onClick={() => setMobileMenuOpen(false)}
                                     >

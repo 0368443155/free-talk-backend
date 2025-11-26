@@ -1,3 +1,4 @@
+```
 "use client";
 export const dynamic = 'force-dynamic';
 
@@ -9,14 +10,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, Eye, EyeOff } from "lucide-react";
+import { Loader2, Eye, EyeOff, LogIn } from "lucide-react";
 // Clerk removed - using custom auth
 import { loginApi } from "@/api/user.rest";
 import { useUser } from "@/store/user-store";
 import { useToast } from "@/components/ui/use-toast";
 import { setCookie } from 'cookies-next';
-// SỬA LỖI: Xóa setCookie vì chúng ta thống nhất dùng localStorage
-// import { setCookie } from "cookies-next";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -129,27 +128,25 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
       {/* Decorative background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-2000"></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-indigo-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-4000"></div>
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary/20 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-secondary/20 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-2000"></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-accent/20 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-4000"></div>
       </div>
 
-      <Card className="w-full max-w-md relative z-10 shadow-2xl border-0 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
+      <Card className="w-full max-w-md relative z-10 glass-card border-white/20">
         <CardHeader className="space-y-1 pb-6">
           <div className="flex justify-center mb-4">
-            <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
+            <div className="w-16 h-16 bg-gradient-to-br from-primary to-secondary rounded-2xl flex items-center justify-center shadow-lg shadow-primary/20">
+              <LogIn className="w-8 h-8 text-white" />
             </div>
           </div>
-          <CardTitle className="text-3xl font-bold text-center bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+          <CardTitle className="text-3xl font-bold text-center font-heading bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
             Welcome Back
           </CardTitle>
-          <CardDescription className="text-center text-gray-600 dark:text-gray-400">
+          <CardDescription className="text-center text-muted-foreground">
             Sign in to continue to your account
           </CardDescription>
         </CardHeader>
@@ -162,7 +159,7 @@ export default function LoginPage() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <Label htmlFor="email" className="text-sm font-medium">
                 Email
               </Label>
               <Input
@@ -174,12 +171,12 @@ export default function LoginPage() {
                 onChange={handleInputChange}
                 required
                 disabled={isLoading}
-                className="h-11 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 focus:border-blue-500 focus:ring-blue-500"
+                className="h-11 bg-white/50 border-white/20 focus:border-primary focus:ring-primary backdrop-blur-sm transition-all"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <Label htmlFor="password" className="text-sm font-medium">
                 Password
               </Label>
               <div className="relative">
@@ -192,13 +189,13 @@ export default function LoginPage() {
                   onChange={handleInputChange}
                   required
                   disabled={isLoading}
-                  className="h-11 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 focus:border-blue-500 focus:ring-blue-500 pr-10"
+                  className="h-11 bg-white/50 border-white/20 focus:border-primary focus:ring-primary backdrop-blur-sm pr-10 transition-all"
                 />
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-gray-500 hover:text-gray-700"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-muted-foreground hover:text-foreground"
                   onClick={() => setShowPassword(!showPassword)}
                   disabled={isLoading}
                 >
@@ -213,7 +210,7 @@ export default function LoginPage() {
 
             <Button 
               type="submit" 
-              className="w-full h-11 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-200" 
+              className="w-full h-11 bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-white font-semibold shadow-lg shadow-primary/20 transition-all duration-200" 
               disabled={isLoading}
             >
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -224,27 +221,15 @@ export default function LoginPage() {
           <div className="mt-6">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t border-gray-300 dark:border-gray-700" />
+                <span className="w-full border-t border-white/20" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-white dark:bg-gray-800 px-2 text-gray-500 dark:text-gray-400">
+                <span className="bg-transparent px-2 text-muted-foreground">
                   Or continue with
                 </span>
               </div>
             </div>
             <div className="mt-4">
-              <Button
-                variant="outline"
-                className="w-full h-11 border-2 border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all"
-                onClick={() => {
-                  // Redirect to Google OAuth
-                  window.location.href = `${window.location.origin}/api/auth/google`;
-                }}
-              >
-                <svg className="mr-2 h-5 w-5" viewBox="0 0 24 24">
-                  <path
-                    fill="currentColor"
-                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
                   />
                   <path
                     fill="currentColor"
@@ -265,9 +250,9 @@ export default function LoginPage() {
           </div>
 
           <div className="mt-6 text-center">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-sm text-muted-foreground">
               Don't have an account?{" "}
-              <Link href="/register" className="font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors">
+              <Link href="/register" className="font-semibold text-primary hover:text-secondary transition-colors">
                 Sign up
               </Link>
             </p>
@@ -277,3 +262,4 @@ export default function LoginPage() {
     </div>
   );
 }
+```

@@ -34,7 +34,7 @@ export class BookingService {
     private readonly userRepository: Repository<User>,
     @InjectDataSource()
     private readonly dataSource: DataSource,
-  ) {}
+  ) { }
 
   /**
    * Đặt lịch với Pessimistic Locking
@@ -87,9 +87,9 @@ export class BookingService {
 
       // 6. Tạo Booking
       const booking = manager.create(Booking, {
-        meeting_id: savedMeeting.id,
-        student_id: student.id,
-        teacher_id: teacher.id,
+        meeting: savedMeeting,
+        student: student,
+        teacher: teacher,
         status: BookingStatus.CONFIRMED,
         credits_paid: slot.price_credits,
         scheduled_at: new Date(`${slot.date.toISOString().split('T')[0]}T${slot.start_time}`),
@@ -100,7 +100,7 @@ export class BookingService {
 
       // 7. Cập nhật slot
       slot.is_booked = true;
-      slot.booking_id = savedBooking.id;
+      slot.booking = savedBooking;
       slot.student_id = student.id;
       await manager.save(BookingSlot, slot);
 
@@ -180,8 +180,8 @@ export class BookingService {
 
     if (slot) {
       slot.is_booked = false;
-      slot.booking_id = null as any;
-      slot.student_id = null as any;
+      slot.booking = null;
+      slot.student_id = null;
       await this.slotRepository.save(slot);
     }
 
@@ -213,13 +213,23 @@ export class BookingService {
    * Lấy danh sách bookings của user
    */
   async getMyBookings(userId: string, role: 'student' | 'teacher') {
-    const where: any = role === 'student' ? { student_id: userId } : { teacher_id: userId };
+    try {
+      const where: any = role === 'student' ? { student_id: userId } : { teacher_id: userId };
 
-    return await this.bookingRepository.find({
-      where,
-      relations: ['meeting', 'student', 'teacher'],
-      order: { scheduled_at: 'DESC' },
-    });
+      this.logger.log(`Getting bookings for user ${userId} with role ${role}`);
+
+      const bookings = await this.bookingRepository.find({
+        where,
+        relations: ['meeting', 'student', 'teacher'],
+        order: { scheduled_at: 'DESC' },
+      });
+
+      this.logger.log(`Found ${bookings.length} bookings`);
+      return bookings;
+    } catch (error) {
+      this.logger.error(`Error getting bookings: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 
   /**

@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Crown, Shield, UserX, VolumeX, MicOff, VideoOff, MonitorUp } from "lucide-react";
+import { Crown, Shield, UserX, VolumeX, MicOff, VideoOff, MonitorUp, Mic, Video } from "lucide-react";
 import { IMeetingParticipant, ParticipantRole } from "@/api/meeting.rest";
 import { Socket } from "socket.io-client";
 import { useToast } from "@/components/ui/use-toast";
@@ -44,11 +44,11 @@ export function MeetingParticipantsPanel({
   const handleMute = (participantUserId: string, participantName: string, currentIsMuted: boolean) => {
     // Toggle: if currently muted, unmute; if not muted, mute
     const shouldMute = !currentIsMuted;
-    
+
     if (socket?.connected) {
-      socket.emit('admin:mute-user', { 
-        targetUserId: participantUserId, 
-        mute: shouldMute 
+      socket.emit('admin:mute-user', {
+        targetUserId: participantUserId,
+        mute: shouldMute
       });
       toast({ title: shouldMute ? `Muted ${participantName}` : `Unmuted ${participantName}` });
     }
@@ -58,11 +58,11 @@ export function MeetingParticipantsPanel({
   const handleVideoOff = (participantUserId: string, participantName: string, currentIsVideoOff: boolean) => {
     // Toggle: if currently video off, turn on; if video on, turn off
     const shouldTurnOff = !currentIsVideoOff;
-    
+
     if (socket?.connected) {
-      socket.emit('admin:video-off-user', { 
-        targetUserId: participantUserId, 
-        videoOff: shouldTurnOff 
+      socket.emit('admin:video-off-user', {
+        targetUserId: participantUserId,
+        videoOff: shouldTurnOff
       });
       toast({ title: shouldTurnOff ? `Turned off ${participantName}'s camera` : `Turned on ${participantName}'s camera` });
     }
@@ -71,8 +71,8 @@ export function MeetingParticipantsPanel({
 
   const handleStopShare = (participantUserId: string, participantName: string) => {
     if (socket?.connected) {
-      socket.emit('admin:stop-share-user', { 
-        targetUserId: participantUserId 
+      socket.emit('admin:stop-share-user', {
+        targetUserId: participantUserId
       });
       toast({ title: `Stopped ${participantName}'s screen share` });
     }
@@ -105,7 +105,7 @@ export function MeetingParticipantsPanel({
                   </Badge>
                 </div>
               </div>
-              
+
               {/* Host actions */}
               {canManageParticipant && participant.is_online && (
                 <div className="flex items-center gap-1">
@@ -168,10 +168,10 @@ export function MeetingParticipantsPanel({
                           <MonitorUp className="w-4 h-4 mr-2" />
                           Stop screen share
                         </Button>
-                        
+
                         {/* Separator */}
                         <div className="h-px bg-gray-600 my-1" />
-                        
+
                         {/* Room management */}
                         <Button
                           size="sm"

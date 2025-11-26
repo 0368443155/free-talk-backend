@@ -36,15 +36,15 @@ import { MeetingDialogs } from './meeting-dialogs';
 import { useMeetingYouTube } from '@/hooks/use-meeting-youtube';
 import { useMeetingChat } from '@/hooks/use-meeting-chat';
 import { useMeetingParticipants } from '@/hooks/use-meeting-participants';
-import { 
-  IMeetingChatMessage, 
-  MessageType, 
-  IMeetingParticipant, 
-  ParticipantRole, 
-  joinMeetingApi, 
-  joinPublicMeetingApi, 
-  leaveMeetingApi, 
-  leavePublicMeetingApi, 
+import {
+  IMeetingChatMessage,
+  MessageType,
+  IMeetingParticipant,
+  ParticipantRole,
+  joinMeetingApi,
+  joinPublicMeetingApi,
+  leaveMeetingApi,
+  leavePublicMeetingApi,
   lockMeetingApi,
   unlockMeetingApi,
   lockPublicMeetingApi,
@@ -157,7 +157,7 @@ export function LiveKitRoomWrapper({
   const [isSending, setIsSending] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const chatInputRef = useRef<HTMLInputElement>(null);
-  
+
   // isJoining is now managed by useMeetingJoin hook
 
   const { toast } = useToast();
@@ -271,14 +271,14 @@ export function LiveKitRoomWrapper({
         title: "Connected",
         description: "You have joined the meeting",
       });
-      
+
       // Enable camera and microphone IMMEDIATELY based on deviceSettings from green-room
       // Use connectedRoom.localParticipant directly (guaranteed to be available)
       setTimeout(async () => {
         // Priority: deviceSettings (from green-room) > database state
         let shouldEnableCamera = deviceSettings?.videoEnabled ?? true;
         let shouldEnableMic = deviceSettings?.audioEnabled ?? true;
-        
+
         // Override with database state if available (for rejoin scenarios)
         if (currentParticipant) {
           const dbIsMuted = (currentParticipant as any).is_muted ?? false;
@@ -286,10 +286,10 @@ export function LiveKitRoomWrapper({
           shouldEnableCamera = !dbIsVideoOff;
           shouldEnableMic = !dbIsMuted;
         }
-        
+
         // Use connectedRoom.localParticipant directly - it's guaranteed to be available
         const roomLocalParticipant = connectedRoom?.localParticipant;
-        
+
         console.log('🎥 Enabling camera/mic on room connect:', {
           deviceSettings,
           shouldEnableCamera,
@@ -298,34 +298,30 @@ export function LiveKitRoomWrapper({
           hasRoom: !!connectedRoom,
           hasMediaStream: !!deviceSettings?.mediaStream
         });
-        
+
         if (roomLocalParticipant) {
           try {
             // 🔥 FIX: Reuse stream from green-room to avoid duplicate permission requests
             if (deviceSettings?.mediaStream) {
               console.log('🔄 Reusing media stream from green-room to avoid duplicate permission requests');
               const stream = deviceSettings.mediaStream;
-              
+
               // Create LocalTracks from existing stream
               const videoTrack = stream.getVideoTracks()[0];
               const audioTrack = stream.getAudioTracks()[0];
-              
+
               if (videoTrack && shouldEnableCamera) {
-                // Use device ID from green-room to create track with same device
-                // Note: Browser may still request permission as this is a new getUserMedia call
-                const deviceId = videoTrack.getSettings().deviceId || deviceSettings.videoInput;
-                await enableCamera(true, deviceId);
+                // Enable camera (device selection handled by LiveKit)
+                await enableCamera(true);
                 setIsCameraEnabledState(true);
               } else if (!shouldEnableCamera) {
                 await enableCamera(false);
                 setIsCameraEnabledState(false);
               }
-              
+
               if (audioTrack && shouldEnableMic) {
-                // Use device ID from green-room to create track with same device
-                // Note: Browser may still request permission as this is a new getUserMedia call
-                const deviceId = audioTrack.getSettings().deviceId || deviceSettings.audioInput;
-                await enableMicrophone(true, deviceId);
+                // Enable microphone (device selection handled by LiveKit)
+                await enableMicrophone(true);
                 setIsMicEnabledState(true);
               } else if (!shouldEnableMic) {
                 await enableMicrophone(false);
@@ -342,7 +338,7 @@ export function LiveKitRoomWrapper({
                 setIsCameraEnabledState(false);
                 console.log('✅ Camera disabled on room connect');
               }
-              
+
               if (shouldEnableMic) {
                 await enableMicrophone(true);
                 setIsMicEnabledState(true);
@@ -488,7 +484,7 @@ export function LiveKitRoomWrapper({
   // Use refs to prevent duplicate toast notifications
   const lastMuteEventRef = useRef<{ userId: string; isMuted: boolean; timestamp: number } | null>(null);
   const lastVideoEventRef = useRef<{ userId: string; isVideoOff: boolean; timestamp: number } | null>(null);
-  
+
   useEffect(() => {
     if (!socket) return;
 
@@ -496,38 +492,38 @@ export function LiveKitRoomWrapper({
       // Prevent duplicate events within 1 second
       const now = Date.now();
       const lastEvent = lastMuteEventRef.current;
-      if (lastEvent && 
-          lastEvent.userId === data.userId && 
-          lastEvent.isMuted === data.isMuted && 
-          (now - lastEvent.timestamp) < 1000) {
+      if (lastEvent &&
+        lastEvent.userId === data.userId &&
+        lastEvent.isMuted === data.isMuted &&
+        (now - lastEvent.timestamp) < 1000) {
         console.log('⚠️ Duplicate mute event ignored:', data);
         return;
       }
       lastMuteEventRef.current = { ...data, timestamp: now };
-      
+
       // If it's the current user, enforce the mute state
       if (data.userId === user.id) {
         // Update UI state immediately using hook
         forceMicState(!data.isMuted);
-        
+
         // Always enforce the state from server (don't check current state)
         if (data.isMuted) {
           enableMicrophone(false);
-          toast({ 
-            title: "You have been muted by the host", 
+          toast({
+            title: "You have been muted by the host",
             description: "Your microphone has been turned off.",
-            variant: "default" 
+            variant: "default"
           });
         } else {
           enableMicrophone(true);
-          toast({ 
-            title: "You have been unmuted by the host", 
+          toast({
+            title: "You have been unmuted by the host",
             description: "Your microphone has been turned on.",
-            variant: "default" 
+            variant: "default"
           });
         }
       }
-      
+
       // If host, refresh participants to update UI
       if (isHost) {
         console.log('🔄 Host: Participant mute state changed, refreshing UI', data);
@@ -540,15 +536,15 @@ export function LiveKitRoomWrapper({
       // Prevent duplicate events within 1 second
       const now = Date.now();
       const lastEvent = lastVideoEventRef.current;
-      if (lastEvent && 
-          lastEvent.userId === data.userId && 
-          lastEvent.isVideoOff === data.isVideoOff && 
-          (now - lastEvent.timestamp) < 1000) {
+      if (lastEvent &&
+        lastEvent.userId === data.userId &&
+        lastEvent.isVideoOff === data.isVideoOff &&
+        (now - lastEvent.timestamp) < 1000) {
         console.log('⚠️ Duplicate video event ignored:', data);
         return;
       }
       lastVideoEventRef.current = { ...data, timestamp: now };
-      
+
       // If it's the current user, enforce the video state
       if (data.userId === user.id) {
         const videoTracks = Array.from(localParticipant?.videoTrackPublications.values() || []);
@@ -557,10 +553,10 @@ export function LiveKitRoomWrapper({
         const hasVideoTrack = cameraTracks.length > 0 && cameraTracks[0].track !== undefined;
         // Check if video track is enabled (not muted and track exists)
         const isCurrentlyEnabled = hasVideoTrack && cameraTracks[0].track && !cameraTracks[0].track.isMuted;
-        
+
         // Update UI state immediately using hook
         forceCameraState(!data.isVideoOff);
-        
+
         console.log('🎥 Force video state check:', {
           userId: data.userId,
           isVideoOff: data.isVideoOff,
@@ -569,25 +565,25 @@ export function LiveKitRoomWrapper({
           trackMuted: cameraTracks[0]?.track?.isMuted,
           uiStateUpdated: !data.isVideoOff
         });
-        
+
         // Only change if state is different
         if (data.isVideoOff && isCurrentlyEnabled) {
           enableCamera(false);
-          toast({ 
-            title: "Your camera has been turned off", 
+          toast({
+            title: "Your camera has been turned off",
             description: "The host has disabled your camera.",
-            variant: "default" 
+            variant: "default"
           });
         } else if (!data.isVideoOff && !isCurrentlyEnabled) {
           enableCamera(true);
-          toast({ 
-            title: "Your camera has been turned on", 
+          toast({
+            title: "Your camera has been turned on",
             description: "The host has enabled your camera.",
-            variant: "default" 
+            variant: "default"
           });
         }
       }
-      
+
       // If host, refresh participants to update UI
       if (isHost) {
         console.log('🔄 Host: Participant video state changed, refreshing UI', data);
@@ -602,10 +598,10 @@ export function LiveKitRoomWrapper({
           .some(pub => pub.source === 'screen_share');
         if (isSharing) {
           stopScreenShare();
-          toast({ 
-            title: "Screen sharing stopped", 
+          toast({
+            title: "Screen sharing stopped",
             description: "The host has stopped your screen sharing.",
-            variant: "default" 
+            variant: "default"
           });
         }
       }
@@ -741,7 +737,7 @@ export function LiveKitRoomWrapper({
     if (youtubePlayerRef.current) {
       youtubePlayerRef.current.handleTogglePlay();
     }
-    setYoutubeIsPlaying(prev => !prev);
+    setYoutubeIsPlaying(!youtubeIsPlaying);
   };
 
   const handleYoutubeClear = () => {
@@ -803,7 +799,7 @@ export function LiveKitRoomWrapper({
   const handleRefresh = async () => {
     try {
       console.log('🔄 Refreshing LiveKit connection (preserving state)...');
-      
+
       // Save current device settings to preserve state
       const currentSettings = deviceSettings || {
         audioInput: '',
@@ -815,38 +811,38 @@ export function LiveKitRoomWrapper({
         backgroundBlur: 0,
         audioLevel: 0,
       };
-      
+
       // Disconnect current LiveKit connection
       if (room) {
         console.log('🔌 Disconnecting current LiveKit connection...');
         await disconnect();
       }
-      
+
       // Clear current token to force reconnection
       setLivekitToken(null);
       setLivekitWsUrl('');
-      
+
       // Small delay to ensure disconnect completes
       await new Promise(resolve => setTimeout(resolve, 500));
-      
+
       // Request new token (will trigger reconnection)
       console.log('🔐 Requesting new LiveKit token...');
       const data = await generateLiveKitTokenApi(meetingId);
-      
+
       if (!data || !data.token || !data.wsUrl) {
         throw new Error('Invalid token response from server');
       }
-      
+
       console.log('✅ New LiveKit token received, reconnecting...');
       setLivekitToken(data.token);
       setLivekitWsUrl(data.wsUrl);
-      
+
       // Restore device settings so camera/mic state is preserved
       setDeviceSettings(currentSettings);
-      
+
       // Note: useLiveKit hook will automatically reconnect when token changes
       // Camera/mic state will be restored from deviceSettings in onConnected callback
-      
+
       toast({
         title: "Reconnecting",
         description: "Refreshing connection while preserving your settings...",
@@ -872,9 +868,9 @@ export function LiveKitRoomWrapper({
     if (!targetParticipant) return;
     // Emit socket event for real-time notification
     if (socket?.connected) {
-      socket.emit('admin:kick-user', { 
-        targetUserId: targetParticipant.id, 
-        reason: 'Kicked by host' 
+      socket.emit('admin:kick-user', {
+        targetUserId: targetParticipant.id,
+        reason: 'Kicked by host'
       });
     }
     // Call API to actually kick
@@ -892,9 +888,9 @@ export function LiveKitRoomWrapper({
     if (!targetParticipant) return;
     // Emit socket event for real-time notification
     if (socket?.connected) {
-      socket.emit('admin:block-user', { 
-        targetUserId: targetParticipant.id, 
-        reason: 'Blocked by host' 
+      socket.emit('admin:block-user', {
+        targetUserId: targetParticipant.id,
+        reason: 'Blocked by host'
       });
     }
     // Call API to actually block
@@ -919,12 +915,12 @@ export function LiveKitRoomWrapper({
       // Emit socket event for real-time notification and database update
       // Socket event will handle both database update and broadcast
       if (socket?.connected) {
-        socket.emit('admin:mute-user', { 
-          targetUserId: participantUserId, 
-          mute: shouldMute 
+        socket.emit('admin:mute-user', {
+          targetUserId: participantUserId,
+          mute: shouldMute
         });
-        
-        toast({ 
+
+        toast({
           title: shouldMute ? `Muted participant` : `Unmuted participant`
         });
       } else {
@@ -935,7 +931,7 @@ export function LiveKitRoomWrapper({
         });
         return;
       }
-      
+
       // Force refresh participants to get updated state from database
       // Small delay to ensure database update is complete
       setTimeout(async () => {
@@ -976,9 +972,9 @@ export function LiveKitRoomWrapper({
 
       // Emit socket event for real-time notification and database update
       if (socket?.connected) {
-        socket.emit('admin:video-off-user', { 
-          targetUserId: participantUserId, 
-          videoOff: shouldTurnOff 
+        socket.emit('admin:video-off-user', {
+          targetUserId: participantUserId,
+          videoOff: shouldTurnOff
         });
       } else {
         console.error('❌ Socket not connected');
@@ -989,11 +985,11 @@ export function LiveKitRoomWrapper({
         });
         return;
       }
-      
-      toast({ 
+
+      toast({
         title: shouldTurnOff ? `Turned off participant's camera` : `Turned on participant's camera`
       });
-      
+
       // Force refresh participants to get updated state
       await fetchParticipants();
       setParticipantsRefreshKey(prev => prev + 1);
@@ -1010,7 +1006,7 @@ export function LiveKitRoomWrapper({
   const handleStopScreenShareParticipant = async (participantUserId: string) => {
     try {
       if (socket?.connected) {
-        socket.emit('admin:stop-screen-share', { 
+        socket.emit('admin:stop-screen-share', {
           targetUserId: participantUserId
         });
       }
@@ -1113,7 +1109,7 @@ export function LiveKitRoomWrapper({
         <div className="px-4 py-2 bg-gray-800 flex items-center justify-between border-b border-gray-700">
           <div className="flex items-center gap-4 flex-1 min-w-0">
             <h1 className="text-sm font-semibold truncate">Meeting {meetingId}</h1>
-            
+
             {/* LiveKit Connection Status - Rounded rectangle like image 1 */}
             <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-700 rounded-lg border border-gray-600">
               <span className="text-xs text-gray-300">LiveKit Connection</span>
@@ -1128,9 +1124,9 @@ export function LiveKitRoomWrapper({
           <div className="flex items-center">
             <button
               className={`px-4 py-2 text-sm font-medium transition-colors ${showParticipants ? 'text-white bg-gray-700' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
-              onClick={() => { 
-                setShowParticipants(true); 
-                setShowChat(false); 
+              onClick={() => {
+                setShowParticipants(true);
+                setShowChat(false);
                 setShowYouTubeSearch(false);
                 // Auto-open sidebar if collapsed
                 if (isSidebarCollapsed) {
@@ -1144,9 +1140,9 @@ export function LiveKitRoomWrapper({
             <div className="w-px h-4 bg-gray-600"></div>
             <button
               className={`px-4 py-2 text-sm font-medium transition-colors ${showChat ? 'text-white bg-gray-700' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
-              onClick={() => { 
-                setShowChat(true); 
-                setShowParticipants(false); 
+              onClick={() => {
+                setShowChat(true);
+                setShowParticipants(false);
                 setShowYouTubeSearch(false);
                 // Auto-open sidebar if collapsed
                 if (isSidebarCollapsed) {
@@ -1160,9 +1156,9 @@ export function LiveKitRoomWrapper({
             <div className="w-px h-4 bg-gray-600"></div>
             <button
               className={`px-4 py-2 text-sm font-medium transition-colors ${showYouTubeSearch ? 'text-white bg-gray-700' : 'text-gray-300 hover:text-white hover:bg-gray-700'}`}
-              onClick={() => { 
-                setShowYouTubeSearch(!showYouTubeSearch); 
-                setShowParticipants(false); 
+              onClick={() => {
+                setShowYouTubeSearch(!showYouTubeSearch);
+                setShowParticipants(false);
                 setShowChat(false);
                 // Auto-open sidebar if collapsed
                 if (isSidebarCollapsed) {
@@ -1210,7 +1206,7 @@ export function LiveKitRoomWrapper({
                       // Layout with screen share: Screen share left, participants right of screen share
                       // Include ALL participants in the grid (camera tracks), screen share is shown separately
                       // This ensures camera is always visible, even when sharing screen
-                      
+
                       return (
                         <div className="flex-1 flex h-full gap-2 p-2">
                           {/* Screen Share - Full size on left */}
@@ -1227,11 +1223,10 @@ export function LiveKitRoomWrapper({
                           {/* Participants Grid - Vertical on right of screen share */}
                           {/* Show ALL participants including the one sharing screen (their camera will show) */}
                           {regularParticipants.length > 0 && (
-                            <div className={`flex-shrink-0 flex flex-col gap-2 overflow-y-auto transition-all duration-300 ${
-                              isSidebarCollapsed 
-                                ? 'w-80' // Expand when sidebar is collapsed
-                                : 'w-64' // Normal width when sidebar is open
-                            }`}>
+                            <div className={`flex-shrink-0 flex flex-col gap-2 overflow-y-auto transition-all duration-300 ${isSidebarCollapsed
+                              ? 'w-80' // Expand when sidebar is collapsed
+                              : 'w-64' // Normal width when sidebar is open
+                              }`}>
                               {regularParticipants.map((participant) => (
                                 <div key={participant.identity} className="flex-shrink-0">
                                   <ParticipantTile
@@ -1248,10 +1243,10 @@ export function LiveKitRoomWrapper({
                       // Normal grid layout when no screen share
                       // CRITICAL: Filter out duplicate participants (same identity)
                       // This prevents showing multiple tiles for the same participant
-                      const uniqueParticipants = regularParticipants.filter((p, index, self) => 
+                      const uniqueParticipants = regularParticipants.filter((p, index, self) =>
                         index === self.findIndex(pp => pp.identity === p.identity)
                       );
-                      
+
                       return (
                         <div className="h-full overflow-auto p-4">
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -1291,11 +1286,10 @@ export function LiveKitRoomWrapper({
               <Button
                 variant="ghost"
                 size="icon"
-                className={`absolute top-1/2 -translate-y-1/2 z-20 h-10 w-10 rounded-full bg-gray-700 hover:bg-gray-600 border border-gray-600 shadow-lg ${
-                  isSidebarCollapsed 
-                    ? 'right-2' 
-                    : 'right-[320px]' // 80 * 4 = 320px (w-80)
-                } transition-all duration-300`}
+                className={`absolute top-1/2 -translate-y-1/2 z-20 h-10 w-10 rounded-full bg-gray-700 hover:bg-gray-600 border border-gray-600 shadow-lg ${isSidebarCollapsed
+                  ? 'right-2'
+                  : 'right-[320px]' // 80 * 4 = 320px (w-80)
+                  } transition-all duration-300`}
                 onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
               >
                 {isSidebarCollapsed ? (
@@ -1305,272 +1299,271 @@ export function LiveKitRoomWrapper({
                 )}
               </Button>
 
-              <div className={`bg-gray-800 border-l border-gray-700 flex flex-col flex-shrink-0 transition-all duration-300 ${
-                isSidebarCollapsed ? 'w-0 overflow-hidden' : 'w-80'
-              } h-full`}>
-              {/* Participants Panel */}
-              {showParticipants && (
-                <ScrollArea className="flex-1 p-4 min-h-0">
-                  <div className="space-y-2">
-                    {participants.map((participant) => {
-                      const participantUserId = participant.user?.id || (participant.user as any)?.user_id;
-                      const isCurrentUser = participantUserId === user.id;
-                      const canManageParticipant = isHost && !isCurrentUser && participant.role !== ParticipantRole.HOST;
+              <div className={`bg-gray-800 border-l border-gray-700 flex flex-col flex-shrink-0 transition-all duration-300 ${isSidebarCollapsed ? 'w-0 overflow-hidden' : 'w-80'
+                } h-full`}>
+                {/* Participants Panel */}
+                {showParticipants && (
+                  <ScrollArea className="flex-1 p-4 min-h-0">
+                    <div className="space-y-2">
+                      {participants.map((participant) => {
+                        const participantUserId = participant.user?.id || (participant.user as any)?.user_id;
+                        const isCurrentUser = participantUserId === user.id;
+                        const canManageParticipant = isHost && !isCurrentUser && participant.role !== ParticipantRole.HOST;
 
-                      return (
-                        <div key={participant.id} className="flex items-center justify-between p-2 bg-gray-700 rounded">
-                          <div className="flex items-center gap-2 flex-1">
-                            <Avatar className="w-8 h-8">
-                              <AvatarImage src={(participant.user as any)?.avatar_url} />
-                              <AvatarFallback>{(participant.user as any)?.name?.[0] || '?'}</AvatarFallback>
-                            </Avatar>
-                            <div className="flex-1">
-                              <div className="flex items-center gap-1">
-                                {getRoleIcon(participant.role)}
-                                <span className="text-sm text-white">{(participant.user as any)?.name || 'Unknown'}</span>
-                                {isCurrentUser && <span className="text-xs text-gray-400">(You)</span>}
+                        return (
+                          <div key={participant.id} className="flex items-center justify-between p-2 bg-gray-700 rounded">
+                            <div className="flex items-center gap-2 flex-1">
+                              <Avatar className="w-8 h-8">
+                                <AvatarImage src={(participant.user as any)?.avatar_url} />
+                                <AvatarFallback>{(participant.user as any)?.name?.[0] || '?'}</AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1">
+                                <div className="flex items-center gap-1">
+                                  {getRoleIcon(participant.role)}
+                                  <span className="text-sm text-white">{(participant.user as any)?.name || 'Unknown'}</span>
+                                  {isCurrentUser && <span className="text-xs text-gray-400">(You)</span>}
+                                </div>
+                                <Badge variant={participant.is_online ? "default" : "secondary"} className="text-xs">
+                                  {participant.is_online ? "Online" : "Offline"}
+                                </Badge>
                               </div>
-                              <Badge variant={participant.is_online ? "default" : "secondary"} className="text-xs">
-                                {participant.is_online ? "Online" : "Offline"}
-                              </Badge>
                             </div>
-                          </div>
-                          
-                          {/* Host actions */}
-                          {canManageParticipant && participant.is_online && (() => {
-                            // Get LiveKit participant for real-time state - identity format is "user-{userId}"
-                            const livekitParticipant = livekitParticipants.find(p => {
-                              // Match identity like "user-123" with userId "123"
-                              const identityUserId = p.identity?.replace('user-', '');
-                              return identityUserId === participantUserId || p.identity === `user-${participantUserId}` || p.identity === participantUserId;
-                            });
-                            
-                            // Get real-time states from LiveKit
-                            const isMicMuted = livekitParticipant?.tracks.audio?.track?.isMuted ?? false;
-                            const isVideoEnabled = !!livekitParticipant?.tracks.video?.track;
-                            const isScreenSharing = !!livekitParticipant?.tracks.screen?.track;
-                            
-                            // Also check database state as fallback (for when LiveKit hasn't updated yet)
-                            // Database state from participant object
-                            const dbIsMuted = (participant as any).is_muted ?? false;
-                            const dbIsVideoOff = (participant as any).is_video_off ?? false;
-                            
-                            // Use database state as source of truth (for host controls)
-                            // LiveKit state is for display only, but host actions should be based on database
-                            const finalIsMicMuted = dbIsMuted;
-                            const finalIsVideoEnabled = !dbIsVideoOff;
-                            
-                            console.log('🔍 Participant state check:', {
-                              participantUserId,
-                              livekitIdentity: livekitParticipant?.identity,
-                              isMicMuted: finalIsMicMuted,
-                              isVideoEnabled: finalIsVideoEnabled,
-                              isScreenSharing,
-                              dbIsMuted,
-                              dbIsVideoOff,
-                              refreshKey: participantsRefreshKey
-                            });
 
-                            return (
-                              <div className="flex items-center gap-1">
-                                <Popover>
-                                  <PopoverTrigger asChild>
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-8 w-8 text-gray-400 hover:text-white hover:bg-gray-600"
-                                      title="Manage participant"
-                                    >
-                                      <Shield className="w-4 h-4" />
-                                    </Button>
-                                  </PopoverTrigger>
-                                  <PopoverContent className="w-48 p-2 bg-gray-800 border-gray-700" align="end">
-                                    <div className="flex flex-col gap-1">
-                                      {/* Toggle Mic - shows opposite action */}
+                            {/* Host actions */}
+                            {canManageParticipant && participant.is_online && (() => {
+                              // Get LiveKit participant for real-time state - identity format is "user-{userId}"
+                              const livekitParticipant = livekitParticipants.find(p => {
+                                // Match identity like "user-123" with userId "123"
+                                const identityUserId = p.identity?.replace('user-', '');
+                                return identityUserId === participantUserId || p.identity === `user-${participantUserId}` || p.identity === participantUserId;
+                              });
+
+                              // Get real-time states from LiveKit
+                              const isMicMuted = livekitParticipant?.tracks.audio?.track?.isMuted ?? false;
+                              const isVideoEnabled = !!livekitParticipant?.tracks.video?.track;
+                              const isScreenSharing = !!livekitParticipant?.tracks.screen?.track;
+
+                              // Also check database state as fallback (for when LiveKit hasn't updated yet)
+                              // Database state from participant object
+                              const dbIsMuted = (participant as any).is_muted ?? false;
+                              const dbIsVideoOff = (participant as any).is_video_off ?? false;
+
+                              // Use database state as source of truth (for host controls)
+                              // LiveKit state is for display only, but host actions should be based on database
+                              const finalIsMicMuted = dbIsMuted;
+                              const finalIsVideoEnabled = !dbIsVideoOff;
+
+                              console.log('🔍 Participant state check:', {
+                                participantUserId,
+                                livekitIdentity: livekitParticipant?.identity,
+                                isMicMuted: finalIsMicMuted,
+                                isVideoEnabled: finalIsVideoEnabled,
+                                isScreenSharing,
+                                dbIsMuted,
+                                dbIsVideoOff,
+                                refreshKey: participantsRefreshKey
+                              });
+
+                              return (
+                                <div className="flex items-center gap-1">
+                                  <Popover>
+                                    <PopoverTrigger asChild>
                                       <Button
-                                        size="sm"
+                                        size="icon"
                                         variant="ghost"
-                                        className="w-full justify-start text-orange-400 hover:text-orange-300 hover:bg-gray-700"
-                                        onClick={() => handleMuteParticipant(participantUserId)}
+                                        className="h-8 w-8 text-gray-400 hover:text-white hover:bg-gray-600"
+                                        title="Manage participant"
                                       >
-                                        {finalIsMicMuted ? (
-                                          <>
-                                            <Mic className="w-4 h-4 mr-2" />
-                                            Unmute mic
-                                          </>
-                                        ) : (
-                                          <>
-                                            <MicOff className="w-4 h-4 mr-2" />
-                                            Mute mic
-                                          </>
-                                        )}
+                                        <Shield className="w-4 h-4" />
                                       </Button>
-                                      
-                                      {/* Toggle Camera - shows opposite action */}
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        className="w-full justify-start text-blue-400 hover:text-blue-300 hover:bg-gray-700"
-                                        onClick={() => handleVideoOffParticipant(participantUserId)}
-                                      >
-                                        {finalIsVideoEnabled ? (
-                                          <>
-                                            <VideoOff className="w-4 h-4 mr-2" />
-                                            Turn off camera
-                                          </>
-                                        ) : (
-                                          <>
-                                            <Video className="w-4 h-4 mr-2" />
-                                            Turn on camera
-                                          </>
-                                        )}
-                                      </Button>
-                                      
-                                      {/* Stop Screen Share - only show if sharing */}
-                                      {isScreenSharing && (
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-48 p-2 bg-gray-800 border-gray-700" align="end">
+                                      <div className="flex flex-col gap-1">
+                                        {/* Toggle Mic - shows opposite action */}
                                         <Button
                                           size="sm"
                                           variant="ghost"
-                                          className="w-full justify-start text-purple-400 hover:text-purple-300 hover:bg-gray-700"
-                                          onClick={() => handleStopScreenShareParticipant(participantUserId)}
+                                          className="w-full justify-start text-orange-400 hover:text-orange-300 hover:bg-gray-700"
+                                          onClick={() => handleMuteParticipant(participantUserId)}
                                         >
-                                          <MonitorOff className="w-4 h-4 mr-2" />
-                                          Stop screen share
+                                          {finalIsMicMuted ? (
+                                            <>
+                                              <Mic className="w-4 h-4 mr-2" />
+                                              Unmute mic
+                                            </>
+                                          ) : (
+                                            <>
+                                              <MicOff className="w-4 h-4 mr-2" />
+                                              Mute mic
+                                            </>
+                                          )}
                                         </Button>
-                                      )}
-                                      
-                                      <div className="h-px bg-gray-600 my-1" />
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        className="w-full justify-start text-yellow-400 hover:text-yellow-300 hover:bg-gray-700"
-                                        onClick={() => handleKickParticipant(participantUserId, (participant.user as any)?.name || 'Unknown')}
-                                      >
-                                        <UserX className="w-4 h-4 mr-2" />
-                                        Kick
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-gray-700"
-                                        onClick={() => handleBlockParticipant(participantUserId, (participant.user as any)?.name || 'Unknown')}
-                                      >
-                                        <VolumeX className="w-4 h-4 mr-2" />
-                                        Block
-                                      </Button>
-                                    </div>
-                                  </PopoverContent>
-                                </Popover>
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </ScrollArea>
-              )}
 
-              {/* Chat Panel */}
-              {showChat && (
-                <div className="flex-1 flex flex-col h-full min-h-0 relative z-10">
-                  <div className="flex items-center justify-between p-4 border-b border-gray-700 flex-shrink-0">
-                    <h3 className="font-semibold">Meeting Chat</h3>
-                    <Button variant="ghost" size="sm" onClick={() => setShowChat(false)}>
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-                  <div className="flex-1 min-h-0 overflow-hidden relative">
-                    <MeetingChat
-                      messages={chatMessages}
-                      isOnline={isOnline}
-                      currentUserId={user.id}
-                      onSendMessage={handleSendChatMessage}
-                      onSendReaction={handleSendReaction}
-                    />
-                  </div>
-                </div>
-              )}
+                                        {/* Toggle Camera - shows opposite action */}
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="w-full justify-start text-blue-400 hover:text-blue-300 hover:bg-gray-700"
+                                          onClick={() => handleVideoOffParticipant(participantUserId)}
+                                        >
+                                          {finalIsVideoEnabled ? (
+                                            <>
+                                              <VideoOff className="w-4 h-4 mr-2" />
+                                              Turn off camera
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Video className="w-4 h-4 mr-2" />
+                                              Turn on camera
+                                            </>
+                                          )}
+                                        </Button>
 
-              {/* YouTube Search Panel */}
-              {showYouTubeSearch && (
-                <div className="flex-1 flex flex-col overflow-hidden bg-[#0f0f0f]">
-                  {/* Player Controls */}
-                  {youtubeVideoId && (
-                    <div className="p-4 border-b border-gray-800 bg-[#0f0f0f] flex-shrink-0">
-                      <div className="flex flex-col gap-3">
-                        {isHost && (
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              onClick={handleYoutubeTogglePlay}
-                              className="flex-1 bg-[#272727] hover:bg-[#3f3f3f] text-white border-0"
-                            >
-                              {youtubeIsPlaying ? (
-                                <>
-                                  <Pause className="w-4 h-4 mr-2" />
-                                  Pause
-                                </>
-                              ) : (
-                                <>
-                                  <Play className="w-4 h-4 mr-2" />
-                                  Play
-                                </>
-                              )}
-                            </Button>
-                            <Button
-                              size="sm"
-                              onClick={handleYoutubeClear}
-                              variant="ghost"
-                              className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
-                            >
-                              <X className="w-4 h-4" />
-                            </Button>
+                                        {/* Stop Screen Share - only show if sharing */}
+                                        {isScreenSharing && (
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="w-full justify-start text-purple-400 hover:text-purple-300 hover:bg-gray-700"
+                                            onClick={() => handleStopScreenShareParticipant(participantUserId)}
+                                          >
+                                            <MonitorOff className="w-4 h-4 mr-2" />
+                                            Stop screen share
+                                          </Button>
+                                        )}
+
+                                        <div className="h-px bg-gray-600 my-1" />
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="w-full justify-start text-yellow-400 hover:text-yellow-300 hover:bg-gray-700"
+                                          onClick={() => handleKickParticipant(participantUserId, (participant.user as any)?.name || 'Unknown')}
+                                        >
+                                          <UserX className="w-4 h-4 mr-2" />
+                                          Kick
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-gray-700"
+                                          onClick={() => handleBlockParticipant(participantUserId, (participant.user as any)?.name || 'Unknown')}
+                                        >
+                                          <VolumeX className="w-4 h-4 mr-2" />
+                                          Block
+                                        </Button>
+                                      </div>
+                                    </PopoverContent>
+                                  </Popover>
+                                </div>
+                              );
+                            })()}
                           </div>
-                        )}
-                        
-                        <div className="flex items-center gap-3 bg-[#272727] rounded-lg px-3 py-2">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={handleYoutubeMute}
-                            className="text-gray-300 hover:text-white p-0 h-auto"
-                          >
-                            {youtubeVolume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-                          </Button>
-                          <Slider
-                            value={[youtubeVolume]}
-                            onValueChange={(v) => setYoutubeVolume(v[0])}
-                            min={0}
-                            max={100}
-                            step={1}
-                            className="flex-1"
-                          />
-                          <span className="text-xs text-gray-300 min-w-[36px] text-right">{youtubeVolume}%</span>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                )}
+
+                {/* Chat Panel */}
+                {showChat && (
+                  <div className="flex-1 flex flex-col h-full min-h-0 relative z-10">
+                    <div className="flex items-center justify-between p-4 border-b border-gray-700 flex-shrink-0">
+                      <h3 className="font-semibold">Meeting Chat</h3>
+                      <Button variant="ghost" size="sm" onClick={() => setShowChat(false)}>
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    <div className="flex-1 min-h-0 overflow-hidden relative">
+                      <MeetingChat
+                        messages={chatMessages}
+                        isOnline={isOnline}
+                        currentUserId={user.id}
+                        onSendMessage={handleSendChatMessage}
+                        onSendReaction={handleSendReaction}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* YouTube Search Panel */}
+                {showYouTubeSearch && (
+                  <div className="flex-1 flex flex-col overflow-hidden bg-[#0f0f0f]">
+                    {/* Player Controls */}
+                    {youtubeVideoId && (
+                      <div className="p-4 border-b border-gray-800 bg-[#0f0f0f] flex-shrink-0">
+                        <div className="flex flex-col gap-3">
+                          {isHost && (
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                onClick={handleYoutubeTogglePlay}
+                                className="flex-1 bg-[#272727] hover:bg-[#3f3f3f] text-white border-0"
+                              >
+                                {youtubeIsPlaying ? (
+                                  <>
+                                    <Pause className="w-4 h-4 mr-2" />
+                                    Pause
+                                  </>
+                                ) : (
+                                  <>
+                                    <Play className="w-4 h-4 mr-2" />
+                                    Play
+                                  </>
+                                )}
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={handleYoutubeClear}
+                                variant="ghost"
+                                className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-3 bg-[#272727] rounded-lg px-3 py-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={handleYoutubeMute}
+                              className="text-gray-300 hover:text-white p-0 h-auto"
+                            >
+                              {youtubeVolume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                            </Button>
+                            <Slider
+                              value={[youtubeVolume]}
+                              onValueChange={(v) => setYoutubeVolume(v[0])}
+                              min={0}
+                              max={100}
+                              step={1}
+                              className="flex-1"
+                            />
+                            <span className="text-xs text-gray-300 min-w-[36px] text-right">{youtubeVolume}%</span>
+                          </div>
                         </div>
                       </div>
+                    )}
+
+                    {/* YouTube Search Content */}
+                    <div className="flex-1 overflow-hidden flex flex-col">
+                      <YouTubeSearchModal
+                        open={true}
+                        onClose={() => { }}
+                        onSelectVideo={handleYoutubeSelectVideo}
+                        isHost={isHost}
+                        currentVideoId={youtubeVideoId}
+                        isPlaying={youtubeIsPlaying}
+                        volume={youtubeVolume}
+                        onTogglePlay={handleYoutubeTogglePlay}
+                        onClear={handleYoutubeClear}
+                        onVolumeChange={setYoutubeVolume}
+                        onMute={handleYoutubeMute}
+                        embedded={true}
+                      />
                     </div>
-                  )}
-                  
-                  {/* YouTube Search Content */}
-                  <div className="flex-1 overflow-hidden flex flex-col">
-                    <YouTubeSearchModal
-                      open={true}
-                      onClose={() => {}}
-                      onSelectVideo={handleYoutubeSelectVideo}
-                      isHost={isHost}
-                      currentVideoId={youtubeVideoId}
-                      isPlaying={youtubeIsPlaying}
-                      volume={youtubeVolume}
-                      onTogglePlay={handleYoutubeTogglePlay}
-                      onClear={handleYoutubeClear}
-                      onVolumeChange={setYoutubeVolume}
-                      onMute={handleYoutubeMute}
-                      embedded={true}
-                    />
                   </div>
-                </div>
-              )}
+                )}
               </div>
             </>
           )}
@@ -1613,13 +1606,13 @@ export function LiveKitRoomWrapper({
         setConfirmBlockOpen={setConfirmBlockOpen}
         onConfirmBlock={confirmBlockParticipant}
         showRoomFullDialog={false}
-        setShowRoomFullDialog={() => {}}
+        setShowRoomFullDialog={() => { }}
         onlineParticipantsCount={participants.filter(p => p.is_online).length}
         maxParticipants={100}
         isPublicMeeting={isPublicMeeting}
         blockedModalOpen={false}
         blockedMessage=""
-        setBlockedModalOpen={() => {}}
+        setBlockedModalOpen={() => { }}
       />
     </div>
   );
@@ -1634,7 +1627,7 @@ function ParticipantTile({ participant, isScreenShare = false, isCompact = false
   const [hasVideo, setHasVideo] = React.useState(false);
 
   // Determine which track to use: screen share track or camera video track
-  const trackPublication = isScreenShare 
+  const trackPublication = isScreenShare
     ? participant.tracks.screen  // Use screen share track when isScreenShare=true
     : participant.tracks.video;  // Use camera video track otherwise
 
@@ -1649,7 +1642,7 @@ function ParticipantTile({ participant, isScreenShare = false, isCompact = false
     // Check if track is subscribed and has track object
     const isSubscribed = trackPublication.isSubscribed;
     const track = trackPublication.track;
-    
+
     console.log(`🎥 [ParticipantTile] ${participant.identity} - Track state:`, {
       isSubscribed,
       hasTrack: !!track,
@@ -1725,9 +1718,8 @@ function ParticipantTile({ participant, isScreenShare = false, isCompact = false
   }, [participant.tracks.audio, participant.identity]);
 
   return (
-    <Card className={`relative overflow-hidden bg-gray-800 border-gray-700 ${
-      isScreenShare ? 'h-full w-full' : isCompact ? 'aspect-video w-full' : 'aspect-video'
-    }`}>
+    <Card className={`relative overflow-hidden bg-gray-800 border-gray-700 ${isScreenShare ? 'h-full w-full' : isCompact ? 'aspect-video w-full' : 'aspect-video'
+      }`}>
       <CardContent className="p-0 h-full flex items-center justify-center relative">
         {/* Video Element */}
         <video

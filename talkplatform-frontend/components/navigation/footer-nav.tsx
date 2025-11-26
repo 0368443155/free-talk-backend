@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { 
+import {
   MessageCircle,
   Mail,
   Phone,
@@ -82,22 +82,22 @@ export default function FooterNav() {
   const currentYear = new Date().getFullYear();
 
   return (
-    <footer className="bg-white border-t border-gray-200 mt-auto">
+    <footer className="glass border-t border-white/20 mt-auto">
       {/* Main Footer Content */}
       <div className="max-w-7xl mx-auto px-4 py-12">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-8">
           {/* Brand Section */}
           <div className="lg:col-span-2 space-y-4">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 bg-gradient-to-br from-primary to-secondary rounded-lg flex items-center justify-center shadow-lg shadow-primary/20">
                 <MessageCircle className="w-5 h-5 text-white" />
               </div>
-              <span className="text-xl font-bold text-gray-900">TalkConnect</span>
+              <span className="text-xl font-bold font-heading bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">TalkConnect</span>
             </div>
-            
-            <p className="text-gray-600 text-sm leading-relaxed">
-              Connect with native speakers and expert teachers worldwide. 
-              Practice languages through live conversations, structured lessons, 
+
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              Connect with native speakers and expert teachers worldwide.
+              Practice languages through live conversations, structured lessons,
               and immersive learning experiences.
             </p>
 
@@ -105,13 +105,13 @@ export default function FooterNav() {
             <div className="space-y-2">
               {contactInfo.map((contact, index) => (
                 <div key={index} className="flex items-center gap-2">
-                  <contact.icon className="w-4 h-4 text-gray-500" />
+                  <contact.icon className="w-4 h-4 text-muted-foreground" />
                   {contact.href !== '#' ? (
-                    <Link href={contact.href} className="text-sm text-gray-600 hover:text-blue-600">
+                    <Link href={contact.href} className="text-sm text-muted-foreground hover:text-primary transition-colors">
                       {contact.text}
                     </Link>
                   ) : (
-                    <span className="text-sm text-gray-600">{contact.text}</span>
+                    <span className="text-sm text-muted-foreground">{contact.text}</span>
                   )}
                 </div>
               ))}
@@ -125,10 +125,10 @@ export default function FooterNav() {
                   href={social.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-8 h-8 bg-gray-100 hover:bg-blue-100 rounded-full flex items-center justify-center transition-colors"
+                  className="w-8 h-8 bg-primary/10 hover:bg-primary/20 rounded-full flex items-center justify-center transition-colors"
                   aria-label={social.label}
                 >
-                  <social.icon className="w-4 h-4 text-gray-600 hover:text-blue-600" />
+                  <social.icon className="w-4 h-4 text-primary" />
                 </Link>
               ))}
             </div>
@@ -136,14 +136,14 @@ export default function FooterNav() {
 
           {/* Platform Links */}
           <div>
-            <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Globe className="w-4 h-4" />
+            <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2 font-heading">
+              <Globe className="w-4 h-4 text-primary" />
               Platform
             </h3>
             <ul className="space-y-2">
               {footerLinks.platform.map((link, index) => (
                 <li key={index}>
-                  <Link href={link.href} className="text-sm text-gray-600 hover:text-blue-600 transition-colors">
+                  <Link href={link.href} className="text-sm text-muted-foreground hover:text-primary transition-colors">
                     {link.title}
                   </Link>
                 </li>
@@ -153,14 +153,14 @@ export default function FooterNav() {
 
           {/* Learning Links */}
           <div>
-            <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Users className="w-4 h-4" />
+            <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2 font-heading">
+              <Users className="w-4 h-4 text-primary" />
               Learning
             </h3>
             <ul className="space-y-2">
               {footerLinks.learning.map((link, index) => (
                 <li key={index}>
-                  <Link href={link.href} className="text-sm text-gray-600 hover:text-blue-600 transition-colors">
+                  <Link href={link.href} className="text-sm text-muted-foreground hover:text-primary transition-colors">
                     {link.title}
                   </Link>
                 </li>
@@ -170,14 +170,14 @@ export default function FooterNav() {
 
           {/* Teachers Links */}
           <div>
-            <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <GraduationCap className="w-4 h-4" />
+            <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2 font-heading">
+              <GraduationCap className="w-4 h-4 text-primary" />
               Teachers
             </h3>
             <ul className="space-y-2">
               {footerLinks.teachers.map((link, index) => (
                 <li key={index}>
-                  <Link href={link.href} className="text-sm text-gray-600 hover:text-blue-600 transition-colors">
+                  <Link href={link.href} className="text-sm text-muted-foreground hover:text-primary transition-colors">
                     {link.title}
                   </Link>
                 </li>
@@ -187,14 +187,14 @@ export default function FooterNav() {
 
           {/* Support Links */}
           <div>
-            <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <HelpCircle className="w-4 h-4" />
+            <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2 font-heading">
+              <HelpCircle className="w-4 h-4 text-primary" />
               Support
             </h3>
             <ul className="space-y-2">
               {footerLinks.support.map((link, index) => (
                 <li key={index}>
-                  <Link href={link.href} className="text-sm text-gray-600 hover:text-blue-600 transition-colors">
+                  <Link href={link.href} className="text-sm text-muted-foreground hover:text-primary transition-colors">
                     {link.title}
                   </Link>
                 </li>
@@ -204,22 +204,22 @@ export default function FooterNav() {
         </div>
 
         {/* Newsletter Signup */}
-        <div className="mt-12 pt-8 border-t border-gray-200">
+        <div className="mt-12 pt-8 border-t border-white/10">
           <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
             <div>
-              <h3 className="font-semibold text-gray-900 mb-2">Stay Updated</h3>
-              <p className="text-gray-600 text-sm">
+              <h3 className="font-semibold text-foreground mb-2 font-heading">Stay Updated</h3>
+              <p className="text-muted-foreground text-sm">
                 Get the latest language learning tips, teacher spotlights, and platform updates.
               </p>
             </div>
-            
+
             <div className="flex gap-3 w-full lg:w-auto">
               <input
                 type="email"
                 placeholder="Enter your email"
-                className="flex-1 lg:w-64 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="flex-1 lg:w-64 px-4 py-2 bg-white/50 border border-white/20 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
               />
-              <Button size="sm">
+              <Button size="sm" className="bg-primary hover:bg-primary/90">
                 Subscribe
               </Button>
             </div>
@@ -228,11 +228,11 @@ export default function FooterNav() {
       </div>
 
       {/* Bottom Footer */}
-      <div className="border-t border-gray-200 bg-gray-50">
+      <div className="border-t border-white/10 bg-white/30 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex flex-col lg:flex-row items-center justify-between gap-4">
             {/* Copyright */}
-            <div className="flex items-center gap-4 text-sm text-gray-600">
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
               <span>© {currentYear} TalkConnect. All rights reserved.</span>
               <div className="flex items-center gap-1">
                 <span>Made with</span>
@@ -244,7 +244,7 @@ export default function FooterNav() {
             {/* Legal Links */}
             <div className="flex items-center gap-6 text-sm">
               {footerLinks.legal.slice(0, 3).map((link, index) => (
-                <Link key={index} href={link.href} className="text-gray-600 hover:text-blue-600 transition-colors">
+                <Link key={index} href={link.href} className="text-muted-foreground hover:text-primary transition-colors">
                   {link.title}
                 </Link>
               ))}
@@ -252,8 +252,8 @@ export default function FooterNav() {
           </div>
 
           {/* Additional Info */}
-          <div className="mt-4 pt-4 border-t border-gray-200 text-center">
-            <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-gray-500">
+          <div className="mt-4 pt-4 border-t border-white/10 text-center">
+            <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-muted-foreground">
               <div className="flex items-center gap-1">
                 <Shield className="w-3 h-3" />
                 <span>SSL Secured</span>

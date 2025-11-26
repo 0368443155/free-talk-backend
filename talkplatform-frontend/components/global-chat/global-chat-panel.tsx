@@ -169,26 +169,26 @@ export function GlobalChatPanel({ className }: GlobalChatPanelProps) {
   return (
     <div className={`flex flex-col h-full min-h-0 ${className || ''}`}>
       {/* Header */}
-      <div className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-800 to-gray-900 border-b border-gray-700 flex-shrink-0">
+      <div className="flex items-center justify-between p-4 bg-white/50 dark:bg-black/50 backdrop-blur-sm border-b border-white/10 flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <Users className="w-6 h-6 text-blue-400" />
+            <Users className="w-6 h-6 text-primary" />
             {isConnected && (
-              <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-gray-800 animate-pulse"></span>
+              <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-background animate-pulse"></span>
             )}
           </div>
           <div>
-            <h3 className="text-base font-bold text-white">Global Chat</h3>
-            <p className="text-xs text-gray-400">
+            <h3 className="text-base font-bold font-heading">Global Chat</h3>
+            <p className="text-xs text-muted-foreground">
               {isConnected ? 'Connected' : 'Connecting...'}
             </p>
           </div>
         </div>
         {typingUsers.size > 0 && (
-          <div className="text-xs text-blue-400 flex items-center gap-1 animate-pulse">
-            <span className="inline-block w-1 h-1 bg-blue-400 rounded-full animate-bounce"></span>
-            <span className="inline-block w-1 h-1 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></span>
-            <span className="inline-block w-1 h-1 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
+          <div className="text-xs text-primary flex items-center gap-1 animate-pulse">
+            <span className="inline-block w-1 h-1 bg-primary rounded-full animate-bounce"></span>
+            <span className="inline-block w-1 h-1 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></span>
+            <span className="inline-block w-1 h-1 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
             <span className="ml-1">{Array.from(typingUsers)[0]} typing...</span>
           </div>
         )}
@@ -196,16 +196,16 @@ export function GlobalChatPanel({ className }: GlobalChatPanelProps) {
 
       {/* Chat disconnected banner */}
       {!isConnected && (
-        <div className="bg-gradient-to-r from-yellow-900/40 to-orange-900/40 px-4 py-2 text-xs text-yellow-200 text-center flex-shrink-0 border-b border-yellow-700/50 backdrop-blur-sm">
+        <div className="bg-amber-500/10 px-4 py-2 text-xs text-amber-600 dark:text-amber-400 text-center flex-shrink-0 border-b border-amber-500/20 backdrop-blur-sm">
           <span className="inline-flex items-center gap-2">
-            <span className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></span>
+            <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></span>
             Reconnecting to chat...
           </span>
         </div>
       )}
 
       {/* Messages area */}
-      <div className="flex-1 min-h-0 overflow-hidden bg-gradient-to-b from-gray-900 to-gray-950">
+      <div className="flex-1 min-h-0 overflow-hidden bg-white/30 dark:bg-black/30">
         <ScrollArea ref={scrollAreaRef} className="h-full p-4 [&>[data-radix-scroll-area-scrollbar]]:opacity-100">
           <div className="space-y-4">
             {messages.map((message, index) => {
@@ -214,11 +214,11 @@ export function GlobalChatPanel({ className }: GlobalChatPanelProps) {
                 return (
                   <div key={message.id} className="w-full">
                     <div className="flex items-center gap-3 my-4">
-                      <div className="flex-1 border-t border-gray-700"></div>
-                      <div className="text-xs text-gray-400 bg-gray-800/50 backdrop-blur-sm px-4 py-1.5 rounded-full border border-gray-700">
-                        <span className="font-semibold text-blue-400">[System]</span> {message.message}
+                      <div className="flex-1 border-t border-white/10"></div>
+                      <div className="text-xs text-muted-foreground bg-white/50 dark:bg-black/50 backdrop-blur-sm px-4 py-1.5 rounded-full border border-white/10">
+                        <span className="font-semibold text-primary">[System]</span> {message.message}
                       </div>
-                      <div className="flex-1 border-t border-gray-700"></div>
+                      <div className="flex-1 border-t border-white/10"></div>
                     </div>
                   </div>
                 );
@@ -240,11 +240,11 @@ export function GlobalChatPanel({ className }: GlobalChatPanelProps) {
                   <div className={`flex gap-2 max-w-[85%] ${isOwnMessage ? 'flex-row-reverse' : 'flex-row'}`}>
                     {/* Avatar */}
                     {showHeader && (
-                      <Avatar className="w-8 h-8 flex-shrink-0 ring-2 ring-gray-700">
+                      <Avatar className="w-8 h-8 flex-shrink-0 ring-2 ring-white/10">
                         <AvatarImage src={message.sender.avatar_url} alt={message.sender.username} />
                         <AvatarFallback className={`text-xs font-semibold ${isOwnMessage
-                          ? 'bg-gradient-to-br from-blue-500 to-purple-600 text-white'
-                          : 'bg-gradient-to-br from-gray-600 to-gray-700 text-gray-200'
+                          ? 'bg-gradient-to-br from-primary to-secondary text-white'
+                          : 'bg-muted text-muted-foreground'
                           }`}>
                           {getUserInitials(message.sender.username)}
                         </AvatarFallback>
@@ -257,11 +257,11 @@ export function GlobalChatPanel({ className }: GlobalChatPanelProps) {
                       {/* User name and time header */}
                       {showHeader && (
                         <div className={`flex items-baseline gap-2 mb-1 px-1 ${isOwnMessage ? 'flex-row-reverse' : 'flex-row'}`}>
-                          <span className={`text-sm font-semibold ${isOwnMessage ? 'text-blue-400' : 'text-gray-300'
+                          <span className={`text-sm font-semibold ${isOwnMessage ? 'text-primary' : 'text-muted-foreground'
                             }`}>
                             {isOwnMessage ? 'You' : message.sender.username}
                           </span>
-                          <span className="text-xs text-gray-500">
+                          <span className="text-xs text-muted-foreground/70">
                             {messageTime}
                           </span>
                         </div>
@@ -269,18 +269,18 @@ export function GlobalChatPanel({ className }: GlobalChatPanelProps) {
 
                       {/* Message bubble */}
                       <div className={`group relative text-sm break-words px-4 py-2.5 rounded-2xl transition-all duration-200 ${isOwnMessage
-                        ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-lg shadow-blue-900/30 hover:shadow-blue-900/50 rounded-tr-sm'
-                        : 'bg-gray-800 text-gray-100 border border-gray-700 hover:border-gray-600 rounded-tl-sm'
+                        ? 'bg-gradient-to-br from-primary to-secondary text-white shadow-lg shadow-primary/20 hover:shadow-primary/30 rounded-tr-sm'
+                        : 'bg-white/80 dark:bg-gray-800/80 text-foreground border border-white/20 hover:border-white/30 rounded-tl-sm'
                         } ${isOptimistic ? 'opacity-70' : 'opacity-100'}`}>
                         <p className="leading-relaxed">{message.message}</p>
 
                         {/* Delivery indicator for own messages */}
                         {isOwnMessage && (
-                          <div className="absolute -bottom-1 -right-1 bg-gray-900 rounded-full p-0.5">
+                          <div className="absolute -bottom-1 -right-1 bg-background rounded-full p-0.5">
                             {isOptimistic ? (
-                              <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />
+                              <Loader2 className="w-3 h-3 text-primary animate-spin" />
                             ) : (
-                              <CheckCheck className="w-3 h-3 text-blue-400" />
+                              <CheckCheck className="w-3 h-3 text-primary" />
                             )}
                           </div>
                         )}
@@ -292,10 +292,10 @@ export function GlobalChatPanel({ className }: GlobalChatPanelProps) {
             })}
 
             {messages.length === 0 && (
-              <div className="text-center text-gray-400 text-sm py-12 space-y-3">
+              <div className="text-center text-muted-foreground text-sm py-12 space-y-3">
                 <div className="text-4xl">💬</div>
                 <p className="font-medium">No messages yet</p>
-                <p className="text-xs text-gray-500">Start the conversation! Say hello to everyone 👋</p>
+                <p className="text-xs text-muted-foreground/70">Start the conversation! Say hello to everyone 👋</p>
               </div>
             )}
           </div>
@@ -303,7 +303,7 @@ export function GlobalChatPanel({ className }: GlobalChatPanelProps) {
       </div>
 
       {/* Input area - Fixed at bottom */}
-      <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-gray-800 to-gray-900 border-t border-gray-700 flex-shrink-0">
+      <div className="flex items-center gap-3 p-4 bg-white/50 dark:bg-black/50 backdrop-blur-sm border-t border-white/10 flex-shrink-0">
         <div className="flex-1 relative">
           <Input
             ref={chatInputRef}
@@ -321,7 +321,7 @@ export function GlobalChatPanel({ className }: GlobalChatPanelProps) {
             onBlur={() => sendTyping(false)}
             placeholder={isConnected ? "Type a message..." : "Connecting..."}
             disabled={!isConnected || isSending}
-            className="pl-4 pr-12 py-5 bg-gray-900 border-gray-700 text-white placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/50 rounded-xl transition-all"
+            className="pl-4 pr-12 py-5 bg-white/50 dark:bg-black/50 border-white/20 text-foreground placeholder-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/50 rounded-xl transition-all"
             maxLength={1000}
           />
 
@@ -331,20 +331,20 @@ export function GlobalChatPanel({ className }: GlobalChatPanelProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-blue-400 hover:bg-gray-800 w-9 h-9 p-0 rounded-lg transition-all"
+                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-primary hover:bg-primary/10 w-9 h-9 p-0 rounded-lg transition-all"
                 disabled={!isConnected}
               >
                 <Smile className="w-5 h-5" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent side="top" className="w-80 p-3 bg-gray-900 border-gray-700 shadow-xl">
+            <PopoverContent side="top" className="w-80 p-3 glass-card border-white/20 shadow-xl">
               <div className="grid grid-cols-8 gap-1">
                 {EMOJI_LIST.map((emoji) => (
                   <Button
                     key={emoji}
                     variant="ghost"
                     size="sm"
-                    className="w-9 h-9 p-0 text-xl hover:bg-gray-800 hover:scale-110 transition-all rounded-lg"
+                    className="w-9 h-9 p-0 text-xl hover:bg-white/10 hover:scale-110 transition-all rounded-lg"
                     onClick={() => handleEmojiClick(emoji)}
                   >
                     {emoji}
@@ -360,7 +360,7 @@ export function GlobalChatPanel({ className }: GlobalChatPanelProps) {
           onClick={handleChatInputSend}
           disabled={!newMessage.trim() || !isConnected || isSending}
           size="sm"
-          className="px-4 py-5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-700 disabled:to-gray-800 text-white rounded-xl shadow-lg shadow-blue-900/30 hover:shadow-blue-900/50 transition-all"
+          className="px-4 py-5 bg-gradient-to-r from-primary to-secondary hover:opacity-90 disabled:opacity-50 text-white rounded-xl shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-all"
         >
           {isSending ? (
             <Loader2 className="w-5 h-5 animate-spin" />

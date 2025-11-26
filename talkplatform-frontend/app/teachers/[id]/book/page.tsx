@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
-import { 
+import {
   Calendar,
   Clock,
   Star,
@@ -37,9 +37,9 @@ export default function BookTeacherPage() {
   const router = useRouter();
   const { toast } = useToast();
   const { userInfo: user } = useUser();
-  
+
   const teacherId = params.id as string;
-  
+
   const [loading, setLoading] = useState(true);
   const [bookingLoading, setBookingLoading] = useState(false);
   const [teacher, setTeacher] = useState<any>(null);
@@ -124,12 +124,12 @@ export default function BookTeacherPage() {
         slot_id: selectedSlot.id,
         student_notes: studentNotes.trim() || undefined,
       });
-      
+
       toast({
         title: "Success",
         description: "Booking created successfully!",
       });
-      
+
       router.push('/bookings');
     } catch (error: any) {
       toast({
@@ -164,9 +164,10 @@ export default function BookTeacherPage() {
   const getSlotsByDate = (date: string) => {
     return availableSlots.filter(slot => {
       // Handle both Date objects and string dates
-      const slotDate = slot.date instanceof Date 
-        ? slot.date.toISOString().split('T')[0]
-        : slot.date.split('T')[0];
+      const dateValue = slot.date as any;
+      const slotDate = dateValue instanceof Date
+        ? dateValue.toISOString().split('T')[0]
+        : dateValue.split('T')[0];
       return slotDate === date;
     });
   };
@@ -174,10 +175,11 @@ export default function BookTeacherPage() {
   const getUniqueDates = () => {
     const dates = availableSlots.map(slot => {
       // Handle both Date objects and string dates
-      if (slot.date instanceof Date) {
-        return slot.date.toISOString().split('T')[0];
+      const dateValue = slot.date as any;
+      if (dateValue instanceof Date) {
+        return dateValue.toISOString().split('T')[0];
       }
-      return slot.date.split('T')[0];
+      return dateValue.split('T')[0];
     });
     return [...new Set(dates)].sort();
   };
@@ -229,7 +231,7 @@ export default function BookTeacherPage() {
             {teacher.headline && (
               <p className="text-sm text-gray-600">{teacher.headline}</p>
             )}
-            
+
             <div className="flex items-center gap-2">
               <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
               <span className="font-semibold">{teacher.average_rating.toFixed(1)}</span>

@@ -8,7 +8,10 @@ import { usePathname } from 'next/navigation';
  */
 export function MeetingLayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isInMeeting = pathname?.startsWith('/meetings/') || (pathname?.startsWith('/classrooms/') && pathname?.includes('/meetings/'));
+  // Exclude /meetings/create and /meetings (list) from being treated as a meeting room
+  const isMeetingRoom = pathname?.startsWith('/meetings/') && pathname !== '/meetings/create' && pathname !== '/meetings';
+  const isClassroomMeeting = pathname?.startsWith('/classrooms/') && pathname?.includes('/meetings/');
+  const isInMeeting = isMeetingRoom || isClassroomMeeting;
 
   useEffect(() => {
     // Add/remove class to body to hide header and footer
