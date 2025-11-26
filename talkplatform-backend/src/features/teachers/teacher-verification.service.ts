@@ -199,11 +199,11 @@ export class TeacherVerificationService {
   async approveVerification(
     verificationId: string,
     adminId: string,
-    notes?: string,
+    approveDto?: { notes?: string },
   ): Promise<TeacherVerification> {
     const verification = await this.verificationRepository.findOne({
       where: { id: verificationId },
-      relations: ['user'],
+      relations: ['user', 'degree_certificates', 'teaching_certificates', 'references'],
     });
 
     if (!verification) {
@@ -218,21 +218,92 @@ export class TeacherVerificationService {
     verification.status = VerificationStatus.APPROVED;
     verification.verified_at = new Date();
     verification.reviewed_by = adminId;
-    if (notes) {
-      verification.admin_notes = notes;
+    if (approveDto?.notes) {
+      verification.admin_notes = approveDto.notes;
     }
 
     await this.verificationRepository.save(verification);
 
-    // Cập nhật TeacherProfile
-    const profile = await this.teacherProfileRepository.findOne({
+    // Cập nhật hoặc tạo TeacherProfile với đầy đủ thông tin từ verification
+    let profile = await this.teacherProfileRepository.findOne({
       where: { user_id: verification.user_id },
     });
 
+    // Lấy thông tin từ verification để tạo profile
+    const yearsOfExperience = verification.years_of_experience || 0;
+    const previousPlatforms = verification.previous_platforms || [];
+    
+    // Extract certifications info from verification
+    const degreeCertificates = verification.degree_certificates || [];
+    const teachingCertificates = verification.teaching_certificates || [];
+
     if (profile) {
+      // Cập nhật profile hiện có - chỉ set verified status
       profile.is_verified = true;
       profile.status = TeacherStatus.APPROVED;
+      
+      // Cập nhật từ verification data nếu chưa có trong profile
+      if (!profile.years_experience && yearsOfExperience > 0) {
+        profile.years_experience = yearsOfExperience;
+      }
+      
+      // Cập nhật certifications nếu có
+      if (degreeCertificates.length > 0 || teachingCertificates.length > 0) {
+        const certs = [
+          ...degreeCertificates.map(cert => ({
+            name: cert.name,
+            issuer: 'University',
+            year: cert.year || new Date().getFullYear(),
+            image_url: cert.file_url,
+          })),
+          ...teachingCertificates.map(cert => ({
+            name: cert.name,
+            issuer: cert.issuer || 'Institution',
+            year: cert.year || new Date().getFullYear(),
+            image_url: cert.file_url,
+          })),
+        ];
+        if (certs.length > 0) {
+          profile.certifications = certs as any;
+        }
+      }
+      
       await this.teacherProfileRepository.save(profile);
+      this.logger.log(`✅ Updated teacher profile for user ${verification.user_id}`);
+    } else {
+      // Tạo profile mới với đầy đủ thông tin từ verification
+      // Profile data đã được lưu khi user submit verification
+      profile = this.teacherProfileRepository.create({
+        user_id: verification.user_id,
+        is_verified: true,
+        status: TeacherStatus.APPROVED,
+        hourly_rate: 1,
+        hourly_rate_credits: null,
+        average_rating: 0,
+        total_hours_taught: 0,
+        total_reviews: 0,
+        is_available: true,
+        years_experience: yearsOfExperience,
+        total_students: 0,
+        avg_response_time_hours: 24,
+        // Add certifications from verification
+        certifications: (degreeCertificates.length > 0 || teachingCertificates.length > 0) ? [
+          ...degreeCertificates.map(cert => ({
+            name: cert.name,
+            issuer: 'University',
+            year: cert.year || new Date().getFullYear(),
+            image_url: cert.file_url,
+          })),
+          ...teachingCertificates.map(cert => ({
+            name: cert.name,
+            issuer: cert.issuer || 'Institution',
+            year: cert.year || new Date().getFullYear(),
+            image_url: cert.file_url,
+          })),
+        ] as any : undefined,
+      });
+      await this.teacherProfileRepository.save(profile);
+      this.logger.log(`✅ Created teacher profile for user ${verification.user_id} with data from verification`);
     }
 
     // Nâng cấp role của user (nếu cần)
@@ -243,6 +314,7 @@ export class TeacherVerificationService {
     if (user && user.role !== UserRole.TEACHER) {
       user.role = UserRole.TEACHER;
       await this.userRepository.save(user);
+      this.logger.log(`✅ Updated user role to teacher for user ${verification.user_id}`);
     }
 
     this.logger.log(`✅ Verification approved: ${verificationId} by admin ${adminId}`);

@@ -138,14 +138,14 @@ export default function TeacherProfilePage() {
                       <Users className="w-4 h-4" />
                       <span>Students</span>
                     </div>
-                    <span className="font-semibold">{teacher.total_students || 0}</span>
+                    <span className="font-semibold">{teacher.total_students ?? 0}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Clock className="w-4 h-4" />
                       <span>Hours Taught</span>
                     </div>
-                    <span className="font-semibold">{teacher.total_hours_taught || 0}</span>
+                    <span className="font-semibold">{teacher.total_hours_taught ?? 0}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -259,7 +259,7 @@ export default function TeacherProfilePage() {
           )}
 
           {/* Reviews */}
-          {teacher.total_reviews && teacher.total_reviews > 0 && (
+          {teacher.total_reviews && Number(teacher.total_reviews) > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle>Reviews</CardTitle>

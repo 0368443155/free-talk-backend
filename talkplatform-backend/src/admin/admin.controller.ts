@@ -55,6 +55,11 @@ export class AdminController {
     return this.adminService.verifyTeacher(id, body.is_verified);
   }
 
+  @Patch('teachers/:id/revoke')
+  revokeTeacherStatus(@Param('id') id: string, @Body() body: { reason?: string }) {
+    return this.adminService.revokeTeacherStatus(id, body.reason);
+  }
+
   @Get('settings/platform-fee')
   getFees() {
     return this.adminService.getPlatformFees();

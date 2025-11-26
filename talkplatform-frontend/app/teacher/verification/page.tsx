@@ -40,7 +40,7 @@ export default function TeacherVerificationPage() {
   const [statusLoading, setStatusLoading] = useState(true);
   const [verificationStatus, setVerificationStatus] = useState<VerificationStatusResponse | null>(null);
 
-  // Form state
+  // Form state - Verification documents
   const [identityCardFront, setIdentityCardFront] = useState<File | null>(null);
   const [identityCardBack, setIdentityCardBack] = useState<File | null>(null);
   const [degreeCertificates, setDegreeCertificates] = useState<File[]>([]);
@@ -49,6 +49,15 @@ export default function TeacherVerificationPage() {
   const [yearsOfExperience, setYearsOfExperience] = useState<string>('');
   const [previousPlatforms, setPreviousPlatforms] = useState<string>('');
   const [references, setReferences] = useState<Array<{ name: string; email: string; relationship: string }>>([]);
+  
+  // Form state - Teacher profile info (from modal)
+  const [headline, setHeadline] = useState('');
+  const [bio, setBio] = useState('');
+  const [introVideoUrl, setIntroVideoUrl] = useState('');
+  const [hourlyRate, setHourlyRate] = useState<string>('5');
+  const [languagesTaught, setLanguagesTaught] = useState<string>('');
+  const [specialties, setSpecialties] = useState<string>('');
+  const [country, setCountry] = useState<string>('');
 
   // Uploaded file URLs
   const [identityCardFrontUrl, setIdentityCardFrontUrl] = useState<string | null>(null);
@@ -66,6 +75,25 @@ export default function TeacherVerificationPage() {
       setStatusLoading(true);
       const status = await getVerificationStatusApi();
       setVerificationStatus(status);
+      
+      // If verification exists, try to load profile data to pre-fill form
+      if (status) {
+        try {
+          const { getMyTeacherProfileApi } = await import('@/api/teachers.rest');
+          const profile = await getMyTeacherProfileApi();
+          if (profile) {
+            setHeadline(profile.headline || '');
+            setBio(profile.bio || '');
+            setIntroVideoUrl(profile.intro_video_url || '');
+            setHourlyRate(profile.hourly_rate_credits?.toString() || profile.hourly_rate?.toString() || '5');
+            setLanguagesTaught(profile.languages_taught?.join(', ') || '');
+            setSpecialties(profile.specialties?.map((s: any) => typeof s === 'string' ? s : s.name || s).join(', ') || '');
+            setCountry(profile.country || '');
+          }
+        } catch (e) {
+          // Profile might not exist yet, ignore
+        }
+      }
     } catch (error: any) {
       if (error.response?.status !== 404) {
         toast({
@@ -175,9 +203,30 @@ export default function TeacherVerificationPage() {
       return;
     }
 
+    if (!headline.trim() || !bio.trim()) {
+      toast({
+        title: "Required Fields",
+        description: "Please fill in headline and bio",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
 
     try {
+      // First, ensure user has teacher profile
+      const { becomeTeacherApi, updateMyTeacherProfileApi } = await import('@/api/teachers.rest');
+      await becomeTeacherApi();
+      
+      // Update profile with basic info
+      await updateMyTeacherProfileApi({
+        headline: headline.trim(),
+        bio: bio.trim(),
+        introVideoUrl: introVideoUrl.trim() || undefined,
+        hourlyRate: parseFloat(hourlyRate) || 5,
+      });
+
       // Prepare submission data with URLs
       const submitData: SubmitVerificationDto = {
         identity_card_front: identityCardFrontUrl,
@@ -203,7 +252,7 @@ export default function TeacherVerificationPage() {
 
       toast({
         title: "Success",
-        description: "Verification documents submitted successfully. Please wait for admin review.",
+        description: "Verification documents and profile submitted successfully. Please wait for admin review.",
       });
 
       await loadVerificationStatus();
@@ -383,8 +432,94 @@ export default function TeacherVerificationPage() {
               )}
             </div>
 
+            {/* Teacher Profile Information */}
+            <div className="space-y-4 border-t pt-6">
+              <Label className="text-base font-semibold">Teacher Profile Information</Label>
+              
+              <div>
+                <Label>Headline *</Label>
+                <Input
+                  type="text"
+                  placeholder="e.g., IELTS 8.0 Tutor with 5 years experience"
+                  value={headline}
+                  onChange={(e) => setHeadline(e.target.value)}
+                  required
+                />
+                <p className="text-xs text-muted-foreground mt-1">A short tagline describing your expertise</p>
+              </div>
+
+              <div>
+                <Label>Biography *</Label>
+                <Textarea
+                  placeholder="Tell students about your background, teaching style, qualifications, etc."
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  rows={5}
+                  required
+                />
+                <p className="text-xs text-muted-foreground mt-1">Describe your teaching experience and approach</p>
+              </div>
+
+              <div>
+                <Label>Intro Video URL (Optional)</Label>
+                <Input
+                  type="url"
+                  placeholder="https://youtube.com/..."
+                  value={introVideoUrl}
+                  onChange={(e) => setIntroVideoUrl(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground mt-1">Link to your introduction video</p>
+              </div>
+
+              <div>
+                <Label>Hourly Rate (Credits) *</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  step="0.1"
+                  value={hourlyRate}
+                  onChange={(e) => setHourlyRate(e.target.value)}
+                  required
+                />
+                <p className="text-xs text-muted-foreground mt-1">Your hourly rate in credits</p>
+              </div>
+
+              <div>
+                <Label>Languages Taught (comma-separated)</Label>
+                <Input
+                  type="text"
+                  placeholder="e.g., English, Spanish, French"
+                  value={languagesTaught}
+                  onChange={(e) => setLanguagesTaught(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground mt-1">List languages you can teach</p>
+              </div>
+
+              <div>
+                <Label>Specialties (comma-separated)</Label>
+                <Input
+                  type="text"
+                  placeholder="e.g., conversation, business, grammar"
+                  value={specialties}
+                  onChange={(e) => setSpecialties(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground mt-1">Your teaching specialties</p>
+              </div>
+
+              <div>
+                <Label>Country</Label>
+                <Input
+                  type="text"
+                  placeholder="e.g., Vietnam"
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground mt-1">Your country of residence</p>
+              </div>
+            </div>
+
             {/* Additional Info */}
-            <div className="space-y-4">
+            <div className="space-y-4 border-t pt-6">
               <Label className="text-base font-semibold">Additional Information</Label>
 
               <div>

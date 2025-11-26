@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength, IsUrl, IsNumber, Min } from 'class-validator';
+import { IsOptional, IsString, MaxLength, IsUrl, IsNumber, Min, IsArray } from 'class-validator';
 
 export class UpdateTeacherProfileDto{
     @IsOptional()
@@ -20,10 +20,17 @@ export class UpdateTeacherProfileDto{
     @Min(1, {message: 'Hourly rate must be at least 1 credit'})
     hourlyRate?: number;
 
-    // languages, certificates, teaching style, etc.
-    // @IsOptional()
-    // @IsArray()
-    // @ArrayNotEmpty()
-    // @IsString({ each: true })
-    // languages?: string[];
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    languagesTaught?: string[];
+
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    specialties?: string[];
+
+    @IsOptional()
+    @IsString()
+    country?: string;
 }

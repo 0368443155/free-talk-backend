@@ -21,6 +21,9 @@ export interface UpdateTeacherProfilePayload {
   bio?: string;
   introVideoUrl?: string;
   hourlyRate?: number;
+  languagesTaught?: string[];
+  specialties?: string[];
+  country?: string;
 }
 
 export const updateMyTeacherProfileApi = async (payload: UpdateTeacherProfilePayload) => {

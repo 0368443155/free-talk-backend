@@ -19,6 +19,7 @@ import { Roles } from '../../auth/roles.decorator';
 import { UserRole } from '../../users/user.entity';
 import { TeacherVerificationService } from './teacher-verification.service';
 import { SubmitVerificationDto } from './dto/submit-verification.dto';
+import { ApproveVerificationDto } from './dto/approve-verification.dto';
 
 @Controller('teachers/verification')
 @UseGuards(JwtAuthGuard)
@@ -123,10 +124,10 @@ export class TeacherVerificationController {
   @Roles(UserRole.ADMIN)
   async approveVerification(
     @Param('id') id: string,
-    @Query('notes') notes: string,
+    @Body() approveDto: ApproveVerificationDto,
     @Request() req,
   ) {
-    return await this.verificationService.approveVerification(id, req.user.id, notes);
+    return await this.verificationService.approveVerification(id, req.user.id, approveDto);
   }
 
   /**

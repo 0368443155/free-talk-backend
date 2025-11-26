@@ -203,7 +203,9 @@ export class TeachersService {
         if (updateDto.bio !== undefined) profile.bio = updateDto.bio;
         if (updateDto.introVideoUrl !== undefined) profile.intro_video_url = updateDto.introVideoUrl;
         if (updateDto.hourlyRate !== undefined) profile.hourly_rate_credits = updateDto.hourlyRate;
-        // Thêm các trường khác...
+        if (updateDto.languagesTaught !== undefined) profile.languages_taught = updateDto.languagesTaught;
+        if (updateDto.specialties !== undefined) profile.specialties = updateDto.specialties as any;
+        if (updateDto.country !== undefined) profile.country = updateDto.country;
 
         try {
             await this.teacherProfilesRepository.save(profile);

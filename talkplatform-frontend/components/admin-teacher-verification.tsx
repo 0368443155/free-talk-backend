@@ -51,6 +51,8 @@ export function AdminTeacherVerification() {
   const [isRequestInfoDialogOpen, setIsRequestInfoDialogOpen] = useState(false);
   const [actionNotes, setActionNotes] = useState('');
   const [viewingDocument, setViewingDocument] = useState<{ url: string; name: string } | null>(null);
+  const [teacherProfile, setTeacherProfile] = useState<any>(null);
+  const [loadingProfile, setLoadingProfile] = useState(false);
   const { toast } = useToast();
 
   // Fetch verifications from API
@@ -155,6 +157,22 @@ export function AdminTeacherVerification() {
   const handleViewDetails = async (verification: ITeacherVerification) => {
     setSelectedVerification(verification);
     setIsDetailDialogOpen(true);
+    
+    // Load teacher profile if user_id exists
+    if (verification.user_id) {
+      try {
+        setLoadingProfile(true);
+        const { getTeacherByIdApi } = await import('@/api/teachers.rest');
+        const profile = await getTeacherByIdApi(verification.user_id);
+        setTeacherProfile(profile);
+      } catch (error: any) {
+        // Profile might not exist yet, that's okay
+        console.log('Profile not found for user:', verification.user_id);
+        setTeacherProfile(null);
+      } finally {
+        setLoadingProfile(false);
+      }
+    }
   };
 
   // Handle approve
@@ -457,7 +475,18 @@ export function AdminTeacherVerification() {
                                 className="bg-green-600 hover:bg-green-700"
                                 onClick={() => {
                                   setSelectedVerification(verification);
-                                  setActionNotes('');
+                                  // Pre-fill form with data from verification if available
+                                  const additionalInfo = verification.additional_info || {};
+                                  setApproveFormData({
+                                    notes: '',
+                                    hourly_rate: 1,
+                                    hourly_rate_credits: 0,
+                                    headline: '',
+                                    bio: '',
+                                    languages_taught: [],
+                                    specialties: [],
+                                    country: '',
+                                  });
                                   setIsApproveDialogOpen(true);
                                 }}
                               >
@@ -570,7 +599,7 @@ export function AdminTeacherVerification() {
                   Identity Documents
                 </h3>
                 <div className="space-y-2">
-                  {selectedVerification.documents?.identity_card_front && (
+                  {(selectedVerification.identity_card_front || selectedVerification.documents?.identity_card_front) ? (
                     <Button
                       variant="outline"
                       size="sm"
@@ -579,8 +608,10 @@ export function AdminTeacherVerification() {
                       <Eye className="h-3 w-3 mr-1" />
                       View Identity Card (Front)
                     </Button>
+                  ) : (
+                    <p className="text-muted-foreground text-sm">Not provided</p>
                   )}
-                  {selectedVerification.documents?.identity_card_back && (
+                  {(selectedVerification.identity_card_back || selectedVerification.documents?.identity_card_back) ? (
                     <Button
                       variant="outline"
                       size="sm"
@@ -589,6 +620,8 @@ export function AdminTeacherVerification() {
                       <Eye className="h-3 w-3 mr-1" />
                       View Identity Card (Back)
                     </Button>
+                  ) : (
+                    <p className="text-muted-foreground text-sm">Not provided</p>
                   )}
                 </div>
               </div>
@@ -618,7 +651,7 @@ export function AdminTeacherVerification() {
                       </div>
                     ))
                   ) : (
-                    <p className="text-muted-foreground">No degree certificates</p>
+                    <p className="text-muted-foreground text-sm">Not provided</p>
                   )}
                 </div>
               </div>
@@ -633,8 +666,8 @@ export function AdminTeacherVerification() {
                     selectedVerification.teaching_certificates.map((cert: any, idx: number) => (
                       <div key={cert.id || idx} className="p-3 bg-muted rounded-lg flex justify-between items-center">
                         <div>
-                          <p className="font-medium">{cert.name}</p>
-                          <p className="text-sm text-muted-foreground">{cert.issuer} - {cert.year}</p>
+                          <p className="font-medium">{cert.name || 'Unnamed Certificate'}</p>
+                          <p className="text-sm text-muted-foreground">{cert.issuer || 'N/A'} - {cert.year || 'N/A'}</p>
                         </div>
                         <Button
                           variant="outline"
@@ -647,34 +680,83 @@ export function AdminTeacherVerification() {
                       </div>
                     ))
                   ) : (
-                    <p className="text-muted-foreground">No teaching certificates</p>
+                    <p className="text-muted-foreground text-sm">Not provided</p>
                   )}
                 </div>
               </div>
 
-              {/* Additional Info */}
+              {/* Teacher Profile Information */}
+              {loadingProfile ? (
+                <div className="flex justify-center py-4">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                </div>
+              ) : teacherProfile ? (
+                <div>
+                  <h3 className="font-semibold mb-2 flex items-center gap-2">
+                    <GraduationCap className="h-4 w-4" />
+                    Teacher Profile Information
+                  </h3>
+                  <div className="p-4 bg-muted rounded-lg space-y-3">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Headline</Label>
+                      <p className="font-medium">{teacherProfile.headline || 'Not provided'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Biography</Label>
+                      <p className="text-sm whitespace-pre-wrap">{teacherProfile.bio || 'Not provided'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Intro Video URL</Label>
+                      <p className="text-sm">{teacherProfile.intro_video_url || 'Not provided'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Hourly Rate (Credits)</Label>
+                      <p className="font-medium">{teacherProfile.hourly_rate_credits || teacherProfile.hourly_rate || 'Not provided'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Languages Taught</Label>
+                      <p className="text-sm">{teacherProfile.languages_taught?.join(', ') || 'Not provided'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Specialties</Label>
+                      <p className="text-sm">{teacherProfile.specialties?.map((s: any) => typeof s === 'string' ? s : s.name || s).join(', ') || 'Not provided'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Country</Label>
+                      <p className="text-sm">{teacherProfile.country || 'Not provided'}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Additional Info from Verification */}
               <div>
                 <h3 className="font-semibold mb-2">Additional Information</h3>
                 <div className="p-4 bg-muted rounded-lg space-y-2">
                   <div>
                     <Label className="text-xs text-muted-foreground">Years of Experience</Label>
-                    <p>{selectedVerification.additional_info?.years_of_experience || 'N/A'}</p>
+                    <p>{selectedVerification.years_of_experience || selectedVerification.additional_info?.years_of_experience || 'Not provided'}</p>
                   </div>
-                  {selectedVerification.cv_url && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleViewDocument(selectedVerification.id, 'cv', 'CV')}
-                    >
-                      <Eye className="h-3 w-3 mr-1" />
-                      View CV
-                    </Button>
-                  )}
+                  <div>
+                    <Label className="text-xs text-muted-foreground">CV/Resume</Label>
+                    {selectedVerification.cv_url ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleViewDocument(selectedVerification.id, 'cv', 'CV')}
+                      >
+                        <Eye className="h-3 w-3 mr-1" />
+                        View CV
+                      </Button>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Not provided</p>
+                    )}
+                  </div>
                   <div>
                     <Label className="text-xs text-muted-foreground">Previous Platforms</Label>
-                    <p>{selectedVerification.previous_platforms?.join(', ') || 'N/A'}</p>
+                    <p>{selectedVerification.previous_platforms?.join(', ') || selectedVerification.additional_info?.previous_platforms?.join(', ') || 'Not provided'}</p>
                   </div>
-                  {selectedVerification.references && selectedVerification.references.length > 0 && (
+                  {selectedVerification.references && selectedVerification.references.length > 0 ? (
                     <div>
                       <Label className="text-xs text-muted-foreground">References</Label>
                       <div className="space-y-1">
@@ -685,6 +767,11 @@ export function AdminTeacherVerification() {
                           </div>
                         ))}
                       </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <Label className="text-xs text-muted-foreground">References</Label>
+                      <p className="text-sm text-muted-foreground">Not provided</p>
                     </div>
                   )}
                 </div>
@@ -707,8 +794,52 @@ export function AdminTeacherVerification() {
               )}
             </div>
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDetailDialogOpen(false)}>
+          <DialogFooter className="flex items-center justify-between">
+            <div className="flex gap-2">
+              {selectedVerification && (selectedVerification.status === 'pending' || selectedVerification.status === 'under_review' || selectedVerification.status === 'info_needed') && (
+                <>
+                  <Button
+                    variant="default"
+                    className="bg-green-600 hover:bg-green-700"
+                    onClick={() => {
+                      setIsDetailDialogOpen(false);
+                      setActionNotes('');
+                      setIsApproveDialogOpen(true);
+                    }}
+                  >
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                    Approve
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="border-orange-200 text-orange-700 hover:bg-orange-50"
+                    onClick={() => {
+                      setIsDetailDialogOpen(false);
+                      setActionNotes('');
+                      setIsRequestInfoDialogOpen(true);
+                    }}
+                  >
+                    <AlertCircle className="h-4 w-4 mr-2" />
+                    Request Info
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      setIsDetailDialogOpen(false);
+                      setActionNotes('');
+                      setIsRejectDialogOpen(true);
+                    }}
+                  >
+                    <XCircle className="h-4 w-4 mr-2" />
+                    Reject
+                  </Button>
+                </>
+              )}
+            </div>
+            <Button variant="outline" onClick={() => {
+              setIsDetailDialogOpen(false);
+              setTeacherProfile(null);
+            }}>
               Close
             </Button>
           </DialogFooter>
@@ -731,6 +862,7 @@ export function AdminTeacherVerification() {
                 value={actionNotes}
                 onChange={(e) => setActionNotes(e.target.value)}
                 placeholder="Add any notes for this approval..."
+                rows={3}
               />
             </div>
           </div>
@@ -823,22 +955,24 @@ export function AdminTeacherVerification() {
             <DialogTitle>{viewingDocument?.name}</DialogTitle>
           </DialogHeader>
           {viewingDocument && (
-            <div className="w-full h-[600px] bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden">
-              {viewingDocument.url.startsWith('data:') ? (
-                // Base64 image
-                <img
-                  src={viewingDocument.url}
-                  alt={viewingDocument.name}
-                  className="w-full h-full object-contain"
-                />
-              ) : (
-                // PDF file
-                <iframe
-                  src={viewingDocument.url}
-                  className="w-full h-full border-0"
-                  title={viewingDocument.name}
-                />
-              )}
+            <div className="w-full flex items-center justify-center p-4 bg-gray-100 dark:bg-gray-800 rounded-lg border-2 border-gray-300 dark:border-gray-600">
+              <div className="w-full max-w-3xl aspect-[4/3] flex items-center justify-center">
+                {viewingDocument.url.startsWith('data:') || viewingDocument.url.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
+                  // Image - ép vào tỉ lệ cố định
+                  <img
+                    src={viewingDocument.url}
+                    alt={viewingDocument.name}
+                    className="max-w-full max-h-full w-auto h-auto object-contain"
+                  />
+                ) : (
+                  // PDF file
+                  <iframe
+                    src={viewingDocument.url}
+                    className="w-full h-full border-0 rounded"
+                    title={viewingDocument.name}
+                  />
+                )}
+              </div>
             </div>
           )}
         </DialogContent>

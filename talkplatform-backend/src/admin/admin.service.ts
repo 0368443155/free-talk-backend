@@ -81,6 +81,33 @@ export class AdminService {
     return { profile, user };
   }
 
+  /**
+   * Revoke teacher status - tước quyền giáo viên
+   * Sets is_verified to false and demotes user role to student
+   */
+  async revokeTeacherStatus(userId: string, reason?: string) {
+    const profile = await this.teacherRepo.findOne({ where: { user_id: userId } });
+    if (!profile) throw new NotFoundException('Teacher profile not found');
+    
+    // Update profile status
+    profile.is_verified = false;
+    profile.status = 'suspended' as any; // Set status to suspended
+    if (reason) {
+      profile.admin_notes = reason;
+    }
+    await this.teacherRepo.save(profile);
+
+    // Demote user role to student
+    const user = await this.usersRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.role !== UserRole.ADMIN) {
+      user.role = UserRole.STUDENT;
+      await this.usersRepo.save(user);
+    }
+
+    return { profile, user };
+  }
+
   async listTeachers(options: { page?: number; limit?: number; is_verified?: boolean; search?: string }) {
     const { page = 1, limit = 20, is_verified, search } = options;
 

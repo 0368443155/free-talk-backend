@@ -60,6 +60,16 @@ export const adminVerifyTeacherApi = async (userId: string, is_verified: boolean
   return response.data;
 };
 
+export const adminRevokeTeacherStatusApi = async (userId: string, reason?: string) => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+  const response = await axiosConfig.patch(
+    `/admin/teachers/${userId}/revoke`,
+    { reason },
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  return response.data;
+};
+
 export interface AdminTeacherRow {
   user_id: string;
   username: string;
@@ -190,9 +200,8 @@ export const adminApproveVerificationApi = async (id: string, notes?: string): P
   const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
   const response = await axiosConfig.patch(
     `/teachers/verification/${id}/approve`,
-    {},
+    notes ? { notes } : {},
     {
-      params: notes ? { notes } : {},
       headers: { Authorization: `Bearer ${token}` },
     }
   );

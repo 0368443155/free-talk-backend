@@ -31,8 +31,12 @@ export default function DashboardPage() {
       try {
         const mod = await import('@/api/teachers.rest');
         const profile = await mod.getMyTeacherProfileApi();
-        setTeacherStatus(profile.is_verified ? 'verified' : 'pending');
+        console.log('[Dashboard] Teacher profile loaded:', { is_verified: profile.is_verified, status: profile.status });
+        // Check both is_verified and status for compatibility
+        const isVerified = profile.is_verified === true || profile.is_verified === 1 || profile.status === 'approved';
+        setTeacherStatus(isVerified ? 'verified' : 'pending');
       } catch (e) {
+        console.error('[Dashboard] Failed to load teacher profile:', e);
         setTeacherStatus('pending');
       }
     };

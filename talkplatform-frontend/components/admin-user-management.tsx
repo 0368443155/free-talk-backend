@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -19,6 +20,7 @@ import {
   adminDeleteUserApi,
   adminCreateUserApi,
   adminAdjustCreditsApi,
+  adminRevokeTeacherStatusApi,
   IUser,
   UserRole,
   IUserListResponse
@@ -44,6 +46,9 @@ export function AdminUserManagement() {
   const [creditAction, setCreditAction] = useState<'delta' | 'setTo'>('delta');
   const [creditValue, setCreditValue] = useState<string>('');
   const [newUser, setNewUser] = useState({ username: '', email: '', password: '', role: 'student' as UserRole });
+  const [isRevokeDialogOpen, setIsRevokeDialogOpen] = useState(false);
+  const [revokeTargetId, setRevokeTargetId] = useState<string | null>(null);
+  const [revokeReason, setRevokeReason] = useState('');
   const { toast } = useToast();
 
   // Fetch users from API
@@ -467,6 +472,20 @@ export function AdminUserManagement() {
                           >
                             <Edit className="h-3 w-3" />
                           </Button>
+                          {user.role === 'teacher' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-orange-600 border-orange-200 hover:bg-orange-50"
+                              onClick={() => {
+                                setRevokeTargetId(user.id);
+                                setRevokeReason('');
+                                setIsRevokeDialogOpen(true);
+                              }}
+                            >
+                              <UserX className="h-3 w-3" />
+                            </Button>
+                          )}
                           <Button
                             variant="destructive"
                             size="sm"
@@ -661,6 +680,38 @@ export function AdminUserManagement() {
             <AlertDialogCancel onClick={() => setDeleteTargetId(null)}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteUser} className="bg-destructive text-destructive-foreground">
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Revoke Teacher Status Dialog */}
+      <AlertDialog open={isRevokeDialogOpen} onOpenChange={setIsRevokeDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revoke Teacher Status</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will revoke the teacher status and demote the user to student role. The teacher profile will be marked as suspended.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>Reason (Optional)</Label>
+              <Textarea
+                value={revokeReason}
+                onChange={(e) => setRevokeReason(e.target.value)}
+                placeholder="Enter reason for revoking teacher status..."
+                rows={3}
+              />
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setRevokeTargetId(null);
+              setRevokeReason('');
+            }}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRevokeTeacher} className="bg-orange-600 hover:bg-orange-700">
+              Revoke Status
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
