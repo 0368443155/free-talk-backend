@@ -23,8 +23,9 @@ import {
   MessageCircle
 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import { getTeachersApi, GetTeachersQuery } from '@/api/teachers.rest';
 
-// Mock teacher data - replace with API calls
+// Mock teacher data - fallback if API fails
 const mockTeachers = [
   {
     id: '1',
@@ -87,8 +88,8 @@ export default function TeachersPage() {
   const searchParams = useSearchParams();
   const { toast } = useToast();
 
-  const [teachers, setTeachers] = useState(mockTeachers);
-  const [loading, setLoading] = useState(false);
+  const [teachers, setTeachers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState({
     language: '',
@@ -98,6 +99,69 @@ export default function TeachersPage() {
     availability: '',
     experience: ''
   });
+
+  // Map backend data to frontend format
+  const mapTeacherData = (teacher: any) => {
+    return {
+      id: teacher.id || teacher.user_id,
+      name: teacher.username || teacher.name || 'Unknown Teacher',
+      avatar: teacher.avatar_url || teacher.avatar || '/avatars/default.jpg',
+      rating: teacher.average_rating || teacher.rating || 0,
+      totalReviews: teacher.total_reviews || teacher.totalReviews || 0,
+      hourlyRate: teacher.hourly_rate_credits || teacher.hourly_rate || teacher.hourlyRate || 0,
+      languages: teacher.languages_taught || teacher.languages || [],
+      specialties: teacher.specialties || [],
+      experience: teacher.years_experience || teacher.experience || 0,
+      totalStudents: teacher.total_students || teacher.totalStudents || 0,
+      responseTime: teacher.avg_response_time_hours 
+        ? `${teacher.avg_response_time_hours} hours` 
+        : teacher.responseTime || 'N/A',
+      isVerified: teacher.is_verified || teacher.isVerified || false,
+      isOnline: teacher.is_available || teacher.isOnline || false,
+      nextAvailable: teacher.is_available ? 'Available now' : 'Check availability',
+      introduction: teacher.headline || teacher.bio || teacher.introduction || 'No introduction available',
+      country: teacher.country || 'Unknown'
+    };
+  };
+
+  // Load teachers from API
+  const loadTeachers = async () => {
+    setLoading(true);
+    try {
+      const query: GetTeachersQuery = {
+        page: 1,
+        limit: 50,
+        isVerified: 'true', // Only show verified teachers by default
+      };
+
+      if (searchQuery) {
+        query.search = searchQuery;
+      }
+
+      if (filters.minRating) {
+        query.minRating = parseFloat(filters.minRating);
+      }
+
+      if (filters.maxPrice) {
+        query.maxRate = parseFloat(filters.maxPrice);
+      }
+
+      const response = await getTeachersApi(query);
+      const mappedTeachers = response.data.map(mapTeacherData);
+      setTeachers(mappedTeachers);
+    } catch (error) {
+      console.error('Failed to load teachers:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load teachers. Showing mock data.",
+        variant: "destructive",
+      });
+      // Fallback to mock data
+      setTeachers(mockTeachers);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     // Get initial filters from URL params
@@ -109,47 +173,38 @@ export default function TeachersPage() {
       language,
       specialty
     }));
+
+    // Load teachers on mount
+    loadTeachers();
   }, [searchParams]);
 
   const handleSearch = async () => {
-    setLoading(true);
-    try {
-      // TODO: Implement API call to search teachers
-      // const response = await searchTeachers({ ...filters, query: searchQuery });
-      // setTeachers(response.data);
+    await loadTeachers();
+    
+    // Apply client-side filters for language, specialty, availability
+    // (These might not be supported by backend API yet)
+    let filtered = teachers.filter(teacher => {
+      const matchesLanguage = !filters.language || 
+        teacher.languages.some((lang: string) => 
+          lang.toLowerCase().includes(filters.language.toLowerCase())
+        );
+      const matchesSpecialty = !filters.specialty || 
+        teacher.specialties.some((s: string) => 
+          s.toLowerCase().includes(filters.specialty.toLowerCase())
+        );
+      const matchesAvailability = !filters.availability || 
+        (filters.availability === 'online' && teacher.isOnline) ||
+        (filters.availability === 'available' && teacher.nextAvailable.includes('now'));
       
-      // Mock filtering
-      let filtered = mockTeachers.filter(teacher => {
-        const matchesSearch = !searchQuery || 
-          teacher.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          teacher.introduction.toLowerCase().includes(searchQuery.toLowerCase());
-        
-        const matchesLanguage = !filters.language || teacher.languages.includes(filters.language);
-        const matchesSpecialty = !filters.specialty || teacher.specialties.some(s => s.toLowerCase().includes(filters.specialty.toLowerCase()));
-        const matchesRating = !filters.minRating || teacher.rating >= parseFloat(filters.minRating);
-        const matchesPrice = !filters.maxPrice || teacher.hourlyRate <= parseFloat(filters.maxPrice);
-        const matchesAvailability = !filters.availability || 
-          (filters.availability === 'online' && teacher.isOnline) ||
-          (filters.availability === 'available' && teacher.nextAvailable.includes('now'));
-        
-        return matchesSearch && matchesLanguage && matchesSpecialty && matchesRating && matchesPrice && matchesAvailability;
-      });
+      return matchesLanguage && matchesSpecialty && matchesAvailability;
+    });
 
-      setTeachers(filtered);
-      
-      toast({
-        title: "Search completed",
-        description: `Found ${filtered.length} teachers matching your criteria`,
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to search teachers",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
+    setTeachers(filtered);
+    
+    toast({
+      title: "Search completed",
+      description: `Found ${filtered.length} teachers matching your criteria`,
+    });
   };
 
   const bookTeacher = (teacherId: string) => {
@@ -170,7 +225,7 @@ export default function TeachersPage() {
       experience: ''
     });
     setSearchQuery('');
-    setTeachers(mockTeachers);
+    loadTeachers();
   };
 
   return (
@@ -349,7 +404,7 @@ export default function TeachersPage() {
                         <div className="relative">
                           <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center">
                             <span className="text-xl font-medium">
-                              {teacher.name.split(' ').map(n => n[0]).join('')}
+                              {teacher.name.split(' ').map((n: string) => n[0]).join('')}
                             </span>
                           </div>
                           {teacher.isOnline && (
@@ -377,7 +432,7 @@ export default function TeachersPage() {
 
                       {/* Languages */}
                       <div className="flex flex-wrap gap-1">
-                        {teacher.languages.map((lang) => (
+                        {teacher.languages.map((lang: string) => (
                           <Badge key={lang} variant="secondary" className="text-xs">
                             {lang}
                           </Badge>
@@ -386,7 +441,7 @@ export default function TeachersPage() {
 
                       {/* Specialties */}
                       <div className="flex flex-wrap gap-1">
-                        {teacher.specialties.map((specialty) => (
+                        {teacher.specialties.map((specialty: string) => (
                           <Badge key={specialty} variant="outline" className="text-xs">
                             {specialty}
                           </Badge>

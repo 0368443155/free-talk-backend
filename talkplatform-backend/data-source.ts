@@ -42,6 +42,7 @@ export const dataSourceOptions: DataSourceOptions = {
     BandwidthMetric,
     MetricsHourly,
     LiveKitMetric,
+    // Note: TeacherReview and TeacherAvailability are loaded via autoLoadEntities
   ],
   migrations: [path.join(__dirname, 'src', 'database', 'migrations', '*{.ts,.js}')], // Đường dẫn migrations chính xác
   migrationsTableName: 'migrations_typeorm', // Tên bảng migrations

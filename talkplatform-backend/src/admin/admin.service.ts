@@ -4,7 +4,7 @@ import { Repository, ILike } from 'typeorm';
 import { Redis } from 'ioredis';
 import { InjectRedis } from '@nestjs-modules/ioredis';
 import { User, UserRole } from '../users/user.entity';
-import { TeacherProfile } from '../teachers/teacher-profile.entity';
+import { TeacherProfile } from '../features/teachers/entities/teacher-profile.entity';
 import { TeacherVerification, VerificationStatus } from '../features/teachers/entities/teacher-verification.entity';
 import { SelectQueryBuilder } from 'typeorm';
 

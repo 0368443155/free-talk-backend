@@ -18,15 +18,22 @@ export class TeachersController {
     //get /teachers?page=1&limit=10&sortBy=rating
     @Get()
     async getTeachers(@Query() queryDto: GetTeachersQueryDto){
-        const {teachers, total} = await this.teachersService.getTeachers(queryDto);
-        return {
-            data: teachers,
-            pagination: {
-                currentPage: Number(queryDto.page) ||1,
-                itemsPage: Number(queryDto) || 20,
-                totalItems: total,
-                totalPages: Math.ceil(total/ (Number(queryDto.limit) || 20)),
-            }
+        try {
+            const {teachers, total} = await this.teachersService.getTeachers(queryDto);
+            const limit = Number(queryDto.limit) || 20;
+            const page = Number(queryDto.page) || 1;
+            return {
+                data: teachers,
+                pagination: {
+                    currentPage: page,
+                    itemsPage: limit,
+                    totalItems: total,
+                    totalPages: Math.ceil(total / limit),
+                }
+            };
+        } catch (error) {
+            console.error('Error in getTeachers controller:', error);
+            throw error;
         }
     }
 

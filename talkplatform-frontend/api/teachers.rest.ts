@@ -86,8 +86,13 @@ export interface TeacherListItem {
 }
 
 export interface GetTeachersResponse {
-  teachers: TeacherListItem[];
-  total: number;
+  data: TeacherListItem[];
+  pagination: {
+    currentPage: number;
+    itemsPage: number;
+    totalItems: number;
+    totalPages: number;
+  };
 }
 
 export const getTeachersApi = async (query?: GetTeachersQuery): Promise<GetTeachersResponse> => {

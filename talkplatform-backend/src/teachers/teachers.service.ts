@@ -32,55 +32,86 @@ export class TeachersService {
         const skip = (page - 1) * limit;
         const verifiedStatus = isVerified === 'true' //chuyển string sang boolean
 
-        //dùng querybuilder để join và filter
-        const query = this.usersRepository.createQueryBuilder('user')
-            .innerJoinAndSelect('user.teacherProfile', 'profile') //join với teacherProfile
-            .where('user.role = :role', { role: 'teacher' }) //chỉ lấy role teacher
-            .andWhere('profile.is_verified = :isVerified', { isVerified: verifiedStatus }); //lọc theo isVerified
-
-        //filter theo search
-        if (search) {
-            query.andWhere('(user.username LIKE :search OR profile.headline LIKE :search)', { search: `%${search}%` })
-        }
-
-        //filter theo maxRate
-        if (maxRate !== undefined) {
-            query.andWhere('profile.hourly_rate_credits <= :maxRate', { maxRate })
-        }
-
-        //sorting
-        let orderBy: string;
-        switch (sortBy) {
-            case 'rate':
-                orderBy = 'profile.hourly_rate_credits';
-                break;
-            case 'hours':
-                orderBy = 'profile.total_hours_taught'; // Giả sử có cột này
-                break;
-            case 'newest':
-                orderBy = 'user.created_at';
-                break;
-            case 'rating':
-            default:
-                orderBy = 'profile.average_rating'; // Giả sử có cột này
-                break;
-        }
-        query.orderBy(orderBy, sortOrder.toUpperCase() as 'ASC' | 'DESC');
-
-        //pagination
-        query.skip(skip).take(limit);
         try {
+            //dùng querybuilder để join và filter
+            // Note: teacher_profiles table uses user_id as PRIMARY KEY (no separate id column)
+            // Join on user_id column
+            const query = this.usersRepository.createQueryBuilder('user')
+                .leftJoinAndSelect('user.teacherProfile', 'profile') //leftJoin để không bỏ sót users
+                .where('user.role = :role', { role: 'teacher' }) //chỉ lấy role teacher
+                .andWhere('profile.user_id IS NOT NULL') // Chỉ lấy users có teacherProfile (use user_id instead of id)
+                .andWhere('profile.is_verified = :isVerified', { isVerified: verifiedStatus }); //lọc theo isVerified
+
+            //filter theo search
+            if (search) {
+                query.andWhere('(user.username LIKE :search OR profile.headline LIKE :search)', { search: `%${search}%` })
+            }
+
+            //filter theo maxRate
+            // Note: Database only has 'hourly_rate' (int)
+            if (maxRate !== undefined) {
+                query.andWhere('profile.hourly_rate <= :maxRate', { maxRate })
+            }
+
+            //sorting
+            let orderBy: string;
+            switch (sortBy) {
+                case 'rate':
+                    orderBy = 'profile.hourly_rate';
+                    break;
+                case 'hours':
+                    orderBy = 'profile.total_hours_taught';
+                    break;
+                case 'newest':
+                    orderBy = 'user.created_at';
+                    break;
+                case 'rating':
+                default:
+                    orderBy = 'profile.average_rating';
+                    break;
+            }
+            query.orderBy(orderBy, sortOrder.toUpperCase() as 'ASC' | 'DESC');
+
+            //pagination
+            query.skip(skip).take(limit);
+            
             const [teacher, total] = await query.getManyAndCount();
 
-            //loại bỏ các trường nhạy cảm như email
-            const sanitizedTeachers = teacher.map(teacher => {
-                const { password, ...userSafe } = teacher;
-                return { ...userSafe, ...userSafe.teacherProfile }; //gộp user và profile
-            });
+            //loại bỏ các trường nhạy cảm như email và map data
+            const sanitizedTeachers = teacher
+                .filter(t => t.teacherProfile) // Đảm bảo có profile
+                .map(teacher => {
+                    const { password, ...userSafe } = teacher;
+                    const profile = teacher.teacherProfile || {};
+                    return { 
+                        ...userSafe, 
+                        ...profile,
+                        // Đảm bảo các field quan trọng có giá trị
+                        id: userSafe.id,
+                        user_id: userSafe.id,
+                        username: userSafe.username,
+                        email: userSafe.email,
+                        avatar_url: userSafe.avatar_url,
+                        role: userSafe.role,
+                        created_at: userSafe.created_at,
+                        // Map các trường mới từ migration
+                        total_reviews: profile.total_reviews || 0,
+                        languages_taught: profile.languages_taught || [],
+                        specialties: profile.specialties || [],
+                        years_experience: profile.years_experience || 0,
+                        total_students: profile.total_students || 0,
+                        avg_response_time_hours: profile.avg_response_time_hours || 24,
+                        is_available: profile.is_available !== undefined ? profile.is_available : true,
+                        country: profile.country || null,
+                        status: profile.status || 'pending',
+                        hourly_rate_credits: profile.hourly_rate_credits || null,
+                    };
+                });
             return { teachers: sanitizedTeachers, total };
         } catch (error) {
             console.error("Error fetching teachers:", error);
-            throw new InternalServerErrorException("Couldnt fetch teachers list.");
+            console.error("Error stack:", error.stack);
+            throw new InternalServerErrorException(`Couldn't fetch teachers list: ${error.message || 'Unknown error'}`);
         }
     }
 
