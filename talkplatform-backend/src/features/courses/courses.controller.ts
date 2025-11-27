@@ -12,6 +12,7 @@ import {
     HttpCode,
     HttpStatus,
     ForbiddenException,
+    NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { CoursesService } from './courses.service';
@@ -23,11 +24,18 @@ import { OptionalJwtAuthGuard } from '../../core/auth/guards/optional-jwt-auth.g
 import { RolesGuard } from '../../core/auth/guards/roles.guard';
 import { Roles } from '../../auth/roles.decorator';
 import { UserRole } from '../../users/user.entity';
+import { CourseAccessGuard } from './guards/course-access.guard';
+import { MeetingsService } from '../meeting/meetings.service';
+import { EnrollmentService } from './enrollment.service';
 
 @ApiTags('Courses')
 @Controller('courses')
 export class CoursesController {
-    constructor(private readonly coursesService: CoursesService) { }
+    constructor(
+        private readonly coursesService: CoursesService,
+        private readonly meetingsService: MeetingsService,
+        private readonly enrollmentService: EnrollmentService,
+    ) { }
 
     // ==================== COURSE ENDPOINTS ====================
 
@@ -293,6 +301,83 @@ export class CoursesController {
     async deleteLesson(@Param('lessonId') lessonId: string, @Req() req: any) {
         const teacherId = req.user.id;
         await this.coursesService.deleteLesson(lessonId, teacherId);
+    }
+
+    // ==================== LESSON MEETING ENDPOINTS ====================
+
+    @Post(':id/sessions/:sessionId/lessons/:lessonId/join')
+    @UseGuards(JwtAuthGuard, CourseAccessGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Join lesson meeting (requires purchase)' })
+    @ApiResponse({ status: 200, description: 'Joined lesson meeting successfully' })
+    @ApiResponse({ status: 403, description: 'Access denied - purchase required' })
+    @ApiResponse({ status: 400, description: 'Cannot join - time validation failed' })
+    async joinLessonMeeting(
+        @Param('lessonId') lessonId: string,
+        @Req() req: any,
+    ) {
+        const userId = req.user.userId || req.user.id;
+        return this.meetingsService.joinLessonMeeting(userId, lessonId);
+    }
+
+    @Get(':id/sessions/:sessionId/lessons/:lessonId/access')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Check access to lesson' })
+    @ApiResponse({ status: 200, description: 'Access check result' })
+    async checkLessonAccess(
+        @Param('lessonId') lessonId: string,
+        @Req() req: any,
+    ) {
+        const userId = req.user.userId || req.user.id;
+        return this.enrollmentService.hasAccessToLesson(userId, lessonId);
+    }
+
+    // ==================== MATERIAL ACCESS ENDPOINTS ====================
+
+    @Get('lessons/:lessonId/materials')
+    @UseGuards(JwtAuthGuard, CourseAccessGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Get lesson materials (requires purchase)' })
+    @ApiResponse({ status: 200, description: 'Lesson materials retrieved successfully' })
+    @ApiResponse({ status: 403, description: 'Forbidden: Purchase required or no access' })
+    @ApiResponse({ status: 404, description: 'Lesson not found' })
+    async getLessonMaterials(
+        @Param('lessonId') lessonId: string,
+    ) {
+        return this.coursesService.getLessonMaterials(lessonId);
+    }
+
+    @Get('materials/:materialId/download')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Download material (requires purchase)' })
+    @ApiResponse({ status: 200, description: 'Material download initiated' })
+    @ApiResponse({ status: 403, description: 'Forbidden: Purchase required or no access' })
+    @ApiResponse({ status: 404, description: 'Material not found' })
+    async downloadMaterial(
+        @Param('materialId') materialId: string,
+        @Req() req: any,
+    ) {
+        const userId = req.user.userId || req.user.id;
+        const hasAccess = await this.coursesService.checkLessonMaterialAccess(userId, materialId);
+
+        if (!hasAccess) {
+            throw new ForbiddenException('Purchase required to download this material');
+        }
+
+        // Get material details
+        const material = await this.coursesService.getLessonMaterialById(materialId);
+        if (!material) {
+            throw new NotFoundException('Material not found');
+        }
+
+        // Return material info for download (actual file serving can be handled by storage service)
+        return {
+            material,
+            downloadUrl: material.file_url,
+            message: 'Download URL provided. Use this URL to download the file.',
+        };
     }
 
     // ==================== MEETING ENDPOINTS ====================

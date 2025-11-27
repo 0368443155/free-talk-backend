@@ -4,6 +4,9 @@ import { Repository } from 'typeorm';
 import { AccessToken } from 'livekit-server-sdk';
 import { Meeting, MeetingType, MeetingStatus, PricingType } from '../meeting/entities/meeting.entity';
 import { MeetingParticipant, ParticipantRole } from '../meeting/entities/meeting-participant.entity';
+import { MeetingSettings } from '../meeting/entities/meeting-settings.entity';
+import { MeetingTag } from '../meeting/entities/meeting-tag.entity';
+import { BlockedParticipant } from '../meeting/entities/blocked-participant.entity';
 import { User, UserRole } from '../../users/user.entity';
 import { CreateLiveKitRoomDto, JoinLiveKitRoomDto } from './dto/livekit-room.dto';
 import { PaginationDto } from '../../core/common/dto/pagination.dto';
@@ -18,6 +21,12 @@ export class LiveKitRoomsService {
     private meetingRepository: Repository<Meeting>,
     @InjectRepository(MeetingParticipant)
     private participantRepository: Repository<MeetingParticipant>,
+    @InjectRepository(MeetingSettings)
+    private meetingSettingsRepository: Repository<MeetingSettings>,
+    @InjectRepository(MeetingTag)
+    private meetingTagRepository: Repository<MeetingTag>,
+    @InjectRepository(BlockedParticipant)
+    private blockedParticipantRepository: Repository<BlockedParticipant>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
     private liveKitService: LiveKitService
@@ -38,28 +47,41 @@ export class LiveKitRoomsService {
       level: dto.level,
       topic: dto.topic,
       region: dto.region,
-      tags: dto.tags,
       pricing_type: PricingType.FREE,
       price_credits: 0,
       is_private: dto.is_private || false,
       requires_approval: dto.requires_approval || false,
       status: MeetingStatus.LIVE, // Free talk starts immediately
       started_at: new Date(),
-      settings: {
-        allow_screen_share: dto.allow_screen_share !== false,
-        allow_chat: dto.allow_chat !== false,
-        allow_reactions: true,
-        record_meeting: dto.record_session || false,
-        waiting_room: false,
-        auto_record: false,
-        mute_on_join: false
-      },
-      blocked_users: [],
       current_participants: 0,
       total_participants: 0
     });
 
     const savedMeeting = await this.meetingRepository.save(meeting);
+
+    // Create meeting settings
+    const settings = this.meetingSettingsRepository.create({
+      meeting_id: savedMeeting.id,
+      allow_screen_share: dto.allow_screen_share !== false,
+      allow_chat: dto.allow_chat !== false,
+      allow_reactions: true,
+      record_meeting: dto.record_session || false,
+      waiting_room: false,
+      auto_record: false,
+      mute_on_join: false,
+    });
+    await this.meetingSettingsRepository.save(settings);
+
+    // Create meeting tags
+    if (dto.tags && dto.tags.length > 0) {
+      const tags = dto.tags.map(tag =>
+        this.meetingTagRepository.create({
+          meeting_id: savedMeeting.id,
+          tag: tag,
+        })
+      );
+      await this.meetingTagRepository.save(tags);
+    }
 
     // Create LiveKit room (placeholder - implement in LiveKitService)
     // await this.liveKitService.createRoom(savedMeeting.id);
@@ -105,7 +127,6 @@ export class LiveKitRoomsService {
       level: dto.level,
       topic: dto.topic,
       region: dto.region,
-      tags: dto.tags,
       pricing_type: dto.pricing_type || PricingType.CREDITS,
       price_credits: dto.price_credits || 1,
       affiliate_code: dto.affiliate_code || user.affiliate_code,
@@ -114,22 +135,36 @@ export class LiveKitRoomsService {
       scheduled_at: dto.scheduled_at ? new Date(dto.scheduled_at) : null,
       status: dto.scheduled_at ? MeetingStatus.SCHEDULED : MeetingStatus.LIVE,
       started_at: dto.scheduled_at ? null : new Date(),
-      settings: {
-        allow_screen_share: dto.allow_screen_share !== false,
-        allow_chat: dto.allow_chat !== false,
-        allow_reactions: true,
-        record_meeting: dto.record_session || false,
-        waiting_room: dto.requires_approval || false,
-        auto_record: false,
-        mute_on_join: true // Students join muted
-      },
-      blocked_users: [],
       current_participants: 0,
       total_participants: 0
     };
 
     const meeting = this.meetingRepository.create(meetingData);
     const savedMeeting = await this.meetingRepository.save(meeting) as unknown as Meeting;
+
+    // Create meeting settings
+    const settings = this.meetingSettingsRepository.create({
+      meeting_id: savedMeeting.id,
+      allow_screen_share: dto.allow_screen_share !== false,
+      allow_chat: dto.allow_chat !== false,
+      allow_reactions: true,
+      record_meeting: dto.record_session || false,
+      waiting_room: dto.requires_approval || false,
+      auto_record: false,
+      mute_on_join: true, // Students join muted
+    });
+    await this.meetingSettingsRepository.save(settings);
+
+    // Create meeting tags
+    if (dto.tags && dto.tags.length > 0) {
+      const tags = dto.tags.map(tag =>
+        this.meetingTagRepository.create({
+          meeting_id: savedMeeting.id,
+          tag: tag,
+        })
+      );
+      await this.meetingTagRepository.save(tags);
+    }
 
     // Create LiveKit room (placeholder - implement in LiveKitService)
     // await this.liveKitService.createRoom(savedMeeting.id);
@@ -327,7 +362,11 @@ export class LiveKitRoomsService {
     }
 
     // Check if user is blocked
-    if (meeting.blocked_users && meeting.blocked_users.includes(user.id)) {
+    // Check if user is blocked
+    const isBlocked = await this.blockedParticipantRepository.findOne({
+      where: { meeting_id: meeting.id, user_id: user.id },
+    });
+    if (isBlocked) {
       throw new ForbiddenException('You are blocked from this room');
     }
 

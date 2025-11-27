@@ -29,7 +29,8 @@ export class EnrollmentController {
         @Body() dto: EnrollCourseDto,
         @Request() req,
     ) {
-        return await this.enrollmentService.enrollFullCourse(req.user.userId, courseId, dto);
+        const userId = req.user.userId || req.user.id;
+        return await this.enrollmentService.enrollFullCourse(userId, courseId, dto);
     }
 
     /**
@@ -41,7 +42,8 @@ export class EnrollmentController {
         @Param('sessionId') sessionId: string,
         @Request() req,
     ) {
-        return await this.enrollmentService.purchaseSession(req.user.userId, sessionId);
+        const userId = req.user.userId || req.user.id;
+        return await this.enrollmentService.purchaseSession(userId, sessionId);
     }
 
     /**
@@ -54,7 +56,8 @@ export class EnrollmentController {
         @Param('enrollmentId') enrollmentId: string,
         @Request() req,
     ) {
-        return await this.enrollmentService.cancelEnrollment(req.user.userId, enrollmentId);
+        const userId = req.user.userId || req.user.id;
+        return await this.enrollmentService.cancelEnrollment(userId, enrollmentId);
     }
 
     /**
@@ -67,7 +70,8 @@ export class EnrollmentController {
         @Param('purchaseId') purchaseId: string,
         @Request() req,
     ) {
-        return await this.enrollmentService.cancelSessionPurchase(req.user.userId, purchaseId);
+        const userId = req.user.userId || req.user.id;
+        return await this.enrollmentService.cancelSessionPurchase(userId, purchaseId);
     }
 
     /**
@@ -76,7 +80,8 @@ export class EnrollmentController {
      */
     @Get('me')
     async getMyEnrollments(@Request() req) {
-        return await this.enrollmentService.getMyEnrollments(req.user.userId);
+        const userId = req.user.userId || req.user.id;
+        return await this.enrollmentService.getMyEnrollments(userId);
     }
 
     /**
@@ -85,7 +90,8 @@ export class EnrollmentController {
      */
     @Get('me/sessions')
     async getMySessionPurchases(@Request() req) {
-        return await this.enrollmentService.getMySessionPurchases(req.user.userId);
+        const userId = req.user.userId || req.user.id;
+        return await this.enrollmentService.getMySessionPurchases(userId);
     }
 
     /**
@@ -97,10 +103,27 @@ export class EnrollmentController {
         @Param('sessionId') sessionId: string,
         @Request() req,
     ) {
+        const userId = req.user.userId || req.user.id;
         const hasAccess = await this.enrollmentService.hasAccessToSession(
-            req.user.userId,
+            userId,
             sessionId,
         );
         return { hasAccess };
+    }
+
+    /**
+     * Check access to lesson
+     * GET /api/enrollments/lessons/:lessonId/access
+     */
+    @Get('lessons/:lessonId/access')
+    async checkLessonAccess(
+        @Param('lessonId') lessonId: string,
+        @Request() req,
+    ) {
+        const userId = req.user.userId || req.user.id;
+        return await this.enrollmentService.hasAccessToLesson(
+            userId,
+            lessonId,
+        );
     }
 }

@@ -6,16 +6,20 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { Meeting, MeetingStatus, MeetingType, PricingType, MeetingLevel } from './entities/meeting.entity';
 import { MeetingParticipant, ParticipantRole } from './entities/meeting-participant.entity';
 import { MeetingChatMessage, MessageType } from './entities/meeting-chat-message.entity';
+import { MeetingSettings } from './entities/meeting-settings.entity';
+import { MeetingTag } from './entities/meeting-tag.entity';
 import { BlockedParticipant } from './entities/blocked-participant.entity';
+import { Lesson } from '../courses/entities/lesson.entity';
 import { User, UserRole } from '../../users/user.entity';
 import { CreateMeetingDto } from './dto/create-meeting.dto';
 import { UpdateMeetingDto } from './dto/update-meeting.dto';
 import { PaginationDto } from '../../core/common/dto/pagination.dto';
+import { EnrollmentService } from '../courses/enrollment.service';
 
 @Injectable()
 export class MeetingsService {
@@ -28,8 +32,17 @@ export class MeetingsService {
     private readonly participantRepository: Repository<MeetingParticipant>,
     @InjectRepository(MeetingChatMessage)
     private readonly chatMessageRepository: Repository<MeetingChatMessage>,
+    @InjectRepository(MeetingSettings)
+    private readonly meetingSettingsRepository: Repository<MeetingSettings>,
+    @InjectRepository(MeetingTag)
+    private readonly meetingTagRepository: Repository<MeetingTag>,
     @InjectRepository(BlockedParticipant)
     private readonly blockedParticipantRepository: Repository<BlockedParticipant>,
+    @InjectRepository(Lesson)
+    private readonly lessonRepository: Repository<Lesson>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
+    private readonly enrollmentService: EnrollmentService,
   ) { }
 
 
@@ -41,25 +54,39 @@ export class MeetingsService {
     const meetingDefaults = this.getMeetingTypeDefaults(meetingType);
     
     // Create meeting without classroom
+    const { settings: settingsDto, tags: tagsDto, ...meetingData } = createMeetingDto;
     const meeting = this.meetingRepository.create({
       ...meetingDefaults,
-      ...createMeetingDto,
+      ...meetingData,
       meeting_type: meetingType,
       host: user,
-      blocked_users: [],
-      settings: {
-        allow_screen_share: true,
-        allow_chat: true,
-        allow_reactions: true,
-        record_meeting: false,
-        waiting_room: false,
-        auto_record: false,
-        mute_on_join: false,
-        ...createMeetingDto.settings,
-      },
     });
 
     const savedMeeting = await this.meetingRepository.save(meeting);
+
+    // Create meeting settings
+    const settings = this.meetingSettingsRepository.create({
+      meeting_id: savedMeeting.id,
+      allow_screen_share: settingsDto?.allow_screen_share ?? true,
+      allow_chat: settingsDto?.allow_chat ?? true,
+      allow_reactions: settingsDto?.allow_reactions ?? true,
+      record_meeting: settingsDto?.record_meeting ?? false,
+      waiting_room: settingsDto?.waiting_room ?? false,
+      auto_record: settingsDto?.auto_record ?? false,
+      mute_on_join: settingsDto?.mute_on_join ?? false,
+    });
+    await this.meetingSettingsRepository.save(settings);
+
+    // Create meeting tags
+    if (tagsDto && tagsDto.length > 0) {
+      const tags = tagsDto.map(tag =>
+        this.meetingTagRepository.create({
+          meeting_id: savedMeeting.id,
+          tag: tag,
+        })
+      );
+      await this.meetingTagRepository.save(tags);
+    }
 
     // Add host as participant
     const hostParticipant = this.participantRepository.create({
@@ -272,6 +299,9 @@ export class MeetingsService {
         'host',
         'participants',
         'participants.user',
+        'settings',
+        'tags',
+        'blocked_users',
       ],
     });
 
@@ -482,6 +512,70 @@ export class MeetingsService {
     return participant;
   }
 
+  /**
+   * Join lesson meeting with time validation and access control
+   */
+  async joinLessonMeeting(userId: string, lessonId: string) {
+    const lesson = await this.lessonRepository.findOne({
+      where: { id: lessonId },
+      relations: ['meeting', 'session', 'session.course'],
+    });
+
+    if (!lesson) {
+      throw new NotFoundException('Lesson not found');
+    }
+
+    if (!lesson.meeting) {
+      throw new NotFoundException('Meeting not found for this lesson');
+    }
+
+    // Get user from userId
+    const user = await this.dataSource.getRepository(User).findOne({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Check access using EnrollmentService
+    const access = await this.enrollmentService.hasAccessToLesson(userId, lessonId);
+    if (!access.hasAccess) {
+      throw new ForbiddenException(
+        access.reason || 'You need to purchase this course to access this lesson',
+      );
+    }
+
+    // Check time validation
+    if (!lesson.can_join) {
+      if (lesson.is_past) {
+        throw new BadRequestException('This lesson has ended');
+      }
+      if (lesson.is_upcoming) {
+        const minutesUntilStart = Math.floor(
+          (lesson.scheduled_datetime.getTime() - Date.now()) / (60 * 1000)
+        );
+        throw new BadRequestException(
+          `This lesson starts in ${minutesUntilStart} minutes. You can join 15 minutes before the scheduled time.`,
+        );
+      }
+    }
+
+    // Auto-start meeting if it's time and meeting is scheduled
+    if (lesson.meeting.status === MeetingStatus.SCHEDULED) {
+      if (lesson.is_ongoing || lesson.can_join) {
+        await this.meetingRepository.update(lesson.meeting.id, {
+          status: MeetingStatus.LIVE,
+          started_at: new Date(),
+        });
+        this.logger.log(`Auto-started meeting for lesson: ${lessonId}`);
+      }
+    }
+
+    // Use existing joinMeeting logic
+    return await this.joinMeeting(lesson.meeting.id, user);
+  }
+
   async leaveMeeting(meetingId: string, user: User) {
     const participant = await this.participantRepository.findOne({
       where: {
@@ -676,11 +770,17 @@ export class MeetingsService {
     }
 
     // Add user to blocked list
-    if (!meeting.blocked_users) {
-      meeting.blocked_users = [];
-    }
-    if (!meeting.blocked_users.includes(participant.user.id)) {
-      meeting.blocked_users.push(participant.user.id);
+    const existingBlock = await this.blockedParticipantRepository.findOne({
+      where: { meeting_id: meeting.id, user_id: participant.user.id },
+    });
+    if (!existingBlock) {
+      const blockedParticipant = this.blockedParticipantRepository.create({
+        meeting_id: meeting.id,
+        user_id: participant.user.id,
+        blocked_by: user.id,
+        reason: 'Blocked by host',
+      });
+      await this.blockedParticipantRepository.save(blockedParticipant);
     }
 
     // Kick participant if online

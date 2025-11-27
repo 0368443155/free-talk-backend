@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ScheduleModule } from '@nestjs/schedule';
 // import { MeetingsController } from './meetings.controller'; // REMOVED: Duplicate with ClassroomsController
 import { PublicMeetingsController } from './public-meetings.controller';
 import { MeetingsGeneralController } from './meetings-general.controller';
@@ -8,12 +9,17 @@ import { MeetingsService } from './meetings.service';
 import { MeetingsGateway } from './meetings.gateway';
 import { EnhancedMeetingsGateway } from './enhanced-meetings.gateway';
 import { WaitingRoomService } from './services/waiting-room.service';
+import { MeetingSchedulerService } from './meeting-scheduler.service';
 import { Meeting } from './entities/meeting.entity';
 import { MeetingParticipant } from './entities/meeting-participant.entity';
 import { MeetingChatMessage } from './entities/meeting-chat-message.entity';
+import { MeetingSettings } from './entities/meeting-settings.entity';
+import { MeetingTag } from './entities/meeting-tag.entity';
 import { BlockedParticipant } from './entities/blocked-participant.entity';
+import { Lesson } from '../courses/entities/lesson.entity';
 import { User } from '../../users/user.entity';
 import { LiveKitModule } from '../../livekit/livekit.module';
+import { CoursesModule } from '../courses/courses.module';
 
 @Module({
   imports: [
@@ -21,13 +27,18 @@ import { LiveKitModule } from '../../livekit/livekit.module';
       Meeting,
       MeetingParticipant,
       MeetingChatMessage,
+      MeetingSettings,
+      MeetingTag,
       BlockedParticipant,
+      Lesson,
       User,
     ]),
+    ScheduleModule.forRoot(),
     forwardRef(() => LiveKitModule),
+    forwardRef(() => CoursesModule),
   ],
   controllers: [PublicMeetingsController, MeetingsGeneralController, WaitingRoomController],
-  providers: [MeetingsService, MeetingsGateway, EnhancedMeetingsGateway, WaitingRoomService],
+  providers: [MeetingsService, MeetingsGateway, EnhancedMeetingsGateway, WaitingRoomService, MeetingSchedulerService],
   exports: [MeetingsService, WaitingRoomService, LiveKitModule],
 })
 export class MeetingsModule {}

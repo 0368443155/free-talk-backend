@@ -8,6 +8,7 @@ import {
     Matches,
     IsArray,
     ValidateNested,
+    IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -53,6 +54,16 @@ export class CreateLessonDto {
     @ValidateNested({ each: true })
     @Type(() => CreateLessonMaterialDto)
     materials?: CreateLessonMaterialDto[];
+
+    @ApiPropertyOptional({ description: 'Is this a preview lesson?' })
+    @IsOptional()
+    @IsBoolean()
+    is_preview?: boolean;
+
+    @ApiPropertyOptional({ description: 'Is this a free lesson?' })
+    @IsOptional()
+    @IsBoolean()
+    is_free?: boolean;
 }
 
 export class UpdateLessonDto {
@@ -89,5 +100,14 @@ export class UpdateLessonDto {
     @ValidateNested({ each: true })
     @Type(() => CreateLessonMaterialDto)
     materials?: CreateLessonMaterialDto[];
-}
 
+    @ApiPropertyOptional()
+    @IsOptional()
+    @IsBoolean()
+    is_preview?: boolean;
+
+    @ApiPropertyOptional()
+    @IsOptional()
+    @IsBoolean()
+    is_free?: boolean;
+}

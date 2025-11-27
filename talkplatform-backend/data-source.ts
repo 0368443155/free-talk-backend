@@ -15,6 +15,9 @@ import {
   BandwidthMetric,
   MetricsHourly,
 } from './src/entities';
+import { MeetingSettings } from './src/features/meeting/entities/meeting-settings.entity';
+import { MeetingTag } from './src/features/meeting/entities/meeting-tag.entity';
+import { BlockedParticipant } from './src/features/meeting/entities/blocked-participant.entity';
 import { LiveKitMetric } from './src/metrics/livekit-metric.entity';
 import { Course } from './src/features/courses/entities/course.entity';
 import { CourseSession } from './src/features/courses/entities/course-session.entity';
@@ -47,6 +50,9 @@ export const dataSourceOptions: DataSourceOptions = {
     Meeting,
     MeetingParticipant,
     MeetingChatMessage,
+    MeetingSettings,
+    MeetingTag,
+    BlockedParticipant,
     Classroom,
     ClassroomMember,
     BandwidthMetric,

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { CoursesController } from './courses.controller';
@@ -16,6 +16,8 @@ import { PaymentHold } from './entities/payment-hold.entity';
 import { User } from '../../users/user.entity';
 import { QrCodeService } from '../../common/services/qr-code.service';
 import { Meeting } from '../meeting/entities/meeting.entity';
+import { MeetingsModule } from '../meeting/meetings.module';
+import { CourseAccessGuard } from './guards/course-access.guard';
 
 @Module({
     imports: [
@@ -32,9 +34,13 @@ import { Meeting } from '../meeting/entities/meeting.entity';
             Meeting,
         ]),
         ConfigModule,
+        forwardRef(() => MeetingsModule),
     ],
     controllers: [CoursesController, EnrollmentController],
-    providers: [CoursesService, EnrollmentService, QrCodeService],
+    providers: [CoursesService, EnrollmentService, QrCodeService, CourseAccessGuard],
     exports: [CoursesService, EnrollmentService],
 })
 export class CoursesModule { }
+
+// Export guard for use in other modules
+export { CourseAccessGuard } from './guards/course-access.guard';

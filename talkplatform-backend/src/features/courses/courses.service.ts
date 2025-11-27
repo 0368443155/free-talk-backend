@@ -20,6 +20,7 @@ import { CreateSessionMaterialDto } from './dto/session-material.dto';
 import { CreateLessonDto, UpdateLessonDto } from './dto/lesson.dto';
 import { QrCodeService } from '../../common/services/qr-code.service';
 import { ConfigService } from '@nestjs/config';
+import { EnrollmentService } from './enrollment.service';
 
 @Injectable()
 export class CoursesService {
@@ -44,6 +45,7 @@ export class CoursesService {
         private readonly dataSource: DataSource,
         private readonly qrCodeService: QrCodeService,
         private readonly configService: ConfigService,
+        private readonly enrollmentService: EnrollmentService,
     ) { }
 
     async createCourse(teacherId: string, dto: CreateCourseDto): Promise<Course> {
@@ -1020,5 +1022,32 @@ export class CoursesService {
 
         this.logger.log(`Found ${meetings.length} meetings for course ${courseId}`);
         return meetings;
+    }
+
+    // ==================== MATERIAL ACCESS METHODS ====================
+
+    async getLessonMaterials(lessonId: string): Promise<LessonMaterial[]> {
+        const lesson = await this.lessonRepository.findOne({
+            where: { id: lessonId },
+            relations: ['materials'],
+        });
+
+        if (!lesson) {
+            throw new NotFoundException(`Lesson with ID ${lessonId} not found`);
+        }
+
+        // Sort by display_order
+        return lesson.materials.sort((a, b) => a.display_order - b.display_order);
+    }
+
+    async checkLessonMaterialAccess(userId: string, materialId: string): Promise<boolean> {
+        return this.enrollmentService.hasAccessToMaterial(userId, materialId);
+    }
+
+    async getLessonMaterialById(materialId: string): Promise<LessonMaterial | null> {
+        return this.lessonMaterialRepository.findOne({
+            where: { id: materialId },
+            relations: ['lesson'],
+        });
     }
 }

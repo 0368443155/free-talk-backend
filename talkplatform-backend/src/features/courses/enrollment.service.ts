@@ -11,6 +11,8 @@ import { SessionPurchase, PurchaseStatus } from './entities/session-purchase.ent
 import { PaymentHold, HoldStatus } from './entities/payment-hold.entity';
 import { Course } from './entities/course.entity';
 import { CourseSession } from './entities/course-session.entity';
+import { Lesson } from './entities/lesson.entity';
+import { LessonMaterial } from './entities/lesson-material.entity';
 import { User } from '../../users/user.entity';
 import { EnrollCourseDto, PurchaseSessionDto } from './dto/enrollment.dto';
 
@@ -27,6 +29,10 @@ export class EnrollmentService {
         private courseRepository: Repository<Course>,
         @InjectRepository(CourseSession)
         private sessionRepository: Repository<CourseSession>,
+        @InjectRepository(Lesson)
+        private lessonRepository: Repository<Lesson>,
+        @InjectRepository(LessonMaterial)
+        private lessonMaterialRepository: Repository<LessonMaterial>,
         @InjectRepository(User)
         private userRepository: Repository<User>,
         private dataSource: DataSource,
@@ -343,5 +349,84 @@ export class EnrollmentService {
         });
 
         return !!purchase;
+    }
+
+    /**
+     * Check if user has access to lesson
+     */
+    async hasAccessToLesson(userId: string, lessonId: string): Promise<{
+        hasAccess: boolean;
+        reason?: string;
+        requiresPurchase?: boolean;
+    }> {
+        const lesson = await this.lessonRepository.findOne({
+            where: { id: lessonId },
+            relations: ['session', 'session.course'],
+        });
+
+        if (!lesson) {
+            return { hasAccess: false, reason: 'Lesson not found' };
+        }
+
+        // Check if lesson is free or preview
+        if (lesson.is_free || lesson.is_preview) {
+            return { hasAccess: true, reason: 'Free/Preview lesson' };
+        }
+
+        const session = lesson.session;
+        const course = session.course;
+
+        // Check if user is the teacher
+        if (course.teacher_id === userId) {
+            return { hasAccess: true, reason: 'Course owner' };
+        }
+
+        // Check if enrolled in full course
+        const enrollment = await this.enrollmentRepository.findOne({
+            where: {
+                user_id: userId,
+                course_id: course.id,
+                status: EnrollmentStatus.ACTIVE,
+            },
+        });
+
+        if (enrollment) {
+            return { hasAccess: true, reason: 'Enrolled in course' };
+        }
+
+        // Check if purchased this specific session
+        const purchase = await this.sessionPurchaseRepository.findOne({
+            where: {
+                user_id: userId,
+                session_id: session.id,
+                status: PurchaseStatus.ACTIVE,
+            },
+        });
+
+        if (purchase) {
+            return { hasAccess: true, reason: 'Purchased session' };
+        }
+
+        // No access
+        return {
+            hasAccess: false,
+            reason: 'Purchase required',
+            requiresPurchase: true,
+        };
+    }
+
+    /**
+     * Check if user has access to material
+     */
+    async hasAccessToMaterial(userId: string, materialId: string): Promise<boolean> {
+        const material = await this.lessonMaterialRepository.findOne({
+            where: { id: materialId },
+            relations: ['lesson'],
+        });
+
+        if (!material) return false;
+
+        const access = await this.hasAccessToLesson(userId, material.lesson_id);
+        return access.hasAccess;
     }
 }

@@ -4,6 +4,7 @@ import {
   Column,
   ManyToOne,
   OneToMany,
+  OneToOne,
   CreateDateColumn,
   UpdateDateColumn,
   JoinColumn,
@@ -16,6 +17,9 @@ import { Classroom } from './classroom.entity';
 import { Lesson } from '../../courses/entities/lesson.entity';
 import { Course } from '../../courses/entities/course.entity';
 import { CourseSession } from '../../courses/entities/course-session.entity';
+import { MeetingSettings } from './meeting-settings.entity';
+import { MeetingTag } from './meeting-tag.entity';
+import { BlockedParticipant } from './blocked-participant.entity';
 
 export enum MeetingStatus {
   SCHEDULED = 'scheduled',
@@ -125,16 +129,9 @@ export class Meeting {
   @Column({ type: 'boolean', default: false })
   youtube_is_playing: boolean;
 
-  @Column({ type: 'json', nullable: true })
-  settings: {
-    allow_screen_share?: boolean;
-    allow_chat?: boolean;
-    allow_reactions?: boolean;
-    record_meeting?: boolean;
-    waiting_room?: boolean;
-    auto_record?: boolean;
-    mute_on_join?: boolean;
-  };
+  // Settings moved to meeting_settings table
+  @OneToOne(() => MeetingSettings, (settings) => settings.meeting, { cascade: true })
+  settings: MeetingSettings;
 
   @Column({ type: 'varchar', length: 500, nullable: true })
   recording_url: string;
@@ -178,8 +175,9 @@ export class Meeting {
   @Column({ type: 'varchar', length: 100, nullable: true })
   region: string;
 
-  @Column({ type: 'json', nullable: true })
-  tags: string[];
+  // Tags moved to meeting_tags table
+  @OneToMany(() => MeetingTag, (tag) => tag.meeting, { cascade: true })
+  tags: MeetingTag[];
 
   @Column({ type: 'boolean', default: true })
   is_audio_first: boolean;
@@ -203,8 +201,9 @@ export class Meeting {
   @Column({ type: 'boolean', default: true })
   participants_can_unmute: boolean;
 
-  @Column({ type: 'json', nullable: true })
-  blocked_users: string[];
+  // Blocked users moved to blocked_participants table
+  @OneToMany(() => BlockedParticipant, (blocked) => blocked.meeting, { cascade: true })
+  blocked_users: BlockedParticipant[];
 
   @OneToMany(() => MeetingParticipant, (participant) => participant.meeting, {
     cascade: true,

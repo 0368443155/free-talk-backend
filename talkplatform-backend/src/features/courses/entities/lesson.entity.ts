@@ -84,6 +84,13 @@ export class Lesson {
   })
   status: LessonStatus;
 
+  // Preview & Free Access
+  @Column({ type: 'boolean', default: false })
+  is_preview: boolean; // Lesson này có phải là preview không
+
+  @Column({ type: 'boolean', default: false })
+  is_free: boolean; // Lesson này free cho tất cả users
+
   // Timestamps
   @CreateDateColumn()
   created_at: Date;
@@ -112,10 +119,6 @@ export class Lesson {
     return this.status === LessonStatus.SCHEDULED;
   }
 
-  get is_ongoing(): boolean {
-    return this.status === LessonStatus.ONGOING;
-  }
-
   get is_completed(): boolean {
     return this.status === LessonStatus.COMPLETED;
   }
@@ -131,12 +134,31 @@ export class Lesson {
     return date;
   }
 
+  get end_datetime(): Date {
+    const [hours, minutes] = this.end_time.split(':');
+    const date = new Date(this.scheduled_date);
+    date.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+    return date;
+  }
+
   get is_past(): boolean {
-    return this.scheduled_datetime < new Date();
+    return this.end_datetime < new Date();
   }
 
   get is_upcoming(): boolean {
     return this.scheduled_datetime > new Date();
+  }
+
+  get is_ongoing(): boolean {
+    const now = new Date();
+    return now >= this.scheduled_datetime && now <= this.end_datetime;
+  }
+
+  get can_join(): boolean {
+    // Allow join 15 minutes before and during lesson
+    const now = new Date();
+    const joinStartTime = new Date(this.scheduled_datetime.getTime() - 15 * 60 * 1000);
+    return now >= joinStartTime && now <= this.end_datetime;
   }
 }
 

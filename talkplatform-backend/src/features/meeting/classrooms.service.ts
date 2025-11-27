@@ -10,6 +10,8 @@ import { Classroom } from './entities/classroom.entity';
 import { ClassroomMember } from './entities/classroom-member.entity';
 import { Meeting, MeetingStatus } from './entities/meeting.entity';
 import { MeetingParticipant, ParticipantRole } from './entities/meeting-participant.entity';
+import { MeetingSettings } from './entities/meeting-settings.entity';
+import { MeetingTag } from './entities/meeting-tag.entity';
 import { User, UserRole } from '../../users/user.entity';
 import { CreateClassroomDto } from './dto/create-classroom.dto';
 import { UpdateClassroomDto } from './dto/update-classroom.dto';
@@ -27,6 +29,10 @@ export class ClassroomsService {
     private readonly meetingRepository: Repository<Meeting>,
     @InjectRepository(MeetingParticipant)
     private readonly participantRepository: Repository<MeetingParticipant>,
+    @InjectRepository(MeetingSettings)
+    private readonly meetingSettingsRepository: Repository<MeetingSettings>,
+    @InjectRepository(MeetingTag)
+    private readonly meetingTagRepository: Repository<MeetingTag>,
   ) {}
 
   async create(createClassroomDto: CreateClassroomDto, user: User) {
@@ -170,24 +176,39 @@ export class ClassroomsService {
     }
 
     // Create meeting for classroom
+    const { settings: settingsDto, tags: tagsDto, ...meetingData } = createMeetingDto;
     const meeting = this.meetingRepository.create({
-      ...createMeetingDto,
+      ...meetingData,
       classroom: { id: classroom.id } as any, // Explicitly set classroom by ID
       host: user,
       is_classroom_only: true,
-      settings: {
-        allow_screen_share: true,
-        allow_chat: true,
-        allow_reactions: true,
-        record_meeting: false,
-        waiting_room: false,
-        auto_record: false,
-        mute_on_join: false,
-        ...createMeetingDto.settings,
-      },
     });
 
     const savedMeeting = await this.meetingRepository.save(meeting);
+
+    // Create meeting settings
+    const settings = this.meetingSettingsRepository.create({
+      meeting_id: savedMeeting.id,
+      allow_screen_share: settingsDto?.allow_screen_share ?? true,
+      allow_chat: settingsDto?.allow_chat ?? true,
+      allow_reactions: settingsDto?.allow_reactions ?? true,
+      record_meeting: settingsDto?.record_meeting ?? false,
+      waiting_room: settingsDto?.waiting_room ?? false,
+      auto_record: settingsDto?.auto_record ?? false,
+      mute_on_join: settingsDto?.mute_on_join ?? false,
+    });
+    await this.meetingSettingsRepository.save(settings);
+
+    // Create meeting tags
+    if (tagsDto && tagsDto.length > 0) {
+      const tags = tagsDto.map(tag =>
+        this.meetingTagRepository.create({
+          meeting_id: savedMeeting.id,
+          tag: tag,
+        })
+      );
+      await this.meetingTagRepository.save(tags);
+    }
 
     // Add host as participant
     const hostParticipant = this.participantRepository.create({
@@ -203,7 +224,7 @@ export class ClassroomsService {
     // Reload meeting with classroom relation
     const meetingWithClassroom = await this.meetingRepository.findOne({
       where: { id: savedMeeting.id },
-      relations: ['classroom', 'host'],
+      relations: ['classroom', 'host', 'settings', 'tags'],
     });
 
     return meetingWithClassroom || savedMeeting;
@@ -243,7 +264,7 @@ export class ClassroomsService {
 
     const meeting = await this.meetingRepository.findOne({
       where: { id: meetingId, classroom: { id: classroomId } },
-      relations: ['host', 'participants', 'participants.user', 'classroom'],
+      relations: ['host', 'participants', 'participants.user', 'classroom', 'settings', 'tags'],
     });
 
     if (!meeting) {
