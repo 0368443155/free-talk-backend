@@ -7,11 +7,15 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { User } from '../../../users/user.entity';
 import { MeetingParticipant } from './meeting-participant.entity';
 import { MeetingChatMessage } from './meeting-chat-message.entity';
 import { Classroom } from './classroom.entity';
+import { Lesson } from '../../courses/entities/lesson.entity';
+import { Course } from '../../courses/entities/course.entity';
+import { CourseSession } from '../../courses/entities/course-session.entity';
 
 export enum MeetingStatus {
   SCHEDULED = 'scheduled',
@@ -48,6 +52,9 @@ export enum PricingType {
 }
 
 @Entity('meetings')
+@Index(['lesson_id'])
+@Index(['course_id'])
+@Index(['session_id'])
 export class Meeting {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -61,6 +68,21 @@ export class Meeting {
   @ManyToOne(() => Classroom, { nullable: true, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'classroom_id' })
   classroom: Classroom;
+
+  @Column({ type: 'varchar', length: 36, nullable: true })
+  lesson_id: string;
+
+  @Column({ type: 'varchar', length: 36, nullable: true })
+  course_id: string;
+
+  @Column({ type: 'varchar', length: 36, nullable: true })
+  session_id: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  teacher_name: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  subject_name: string;
 
   @ManyToOne(() => User, { eager: true })
   @JoinColumn({ name: 'host_id' })
@@ -193,6 +215,19 @@ export class Meeting {
     cascade: true,
   })
   chat_messages: MeetingChatMessage[];
+
+  // Relations to Course entities
+  @ManyToOne(() => Lesson, { nullable: true })
+  @JoinColumn({ name: 'lesson_id' })
+  lesson: Lesson;
+
+  @ManyToOne(() => Course, { nullable: true })
+  @JoinColumn({ name: 'course_id' })
+  course: Course;
+
+  @ManyToOne(() => CourseSession, { nullable: true })
+  @JoinColumn({ name: 'session_id' })
+  session: CourseSession;
 
   @CreateDateColumn({ type: 'timestamp' })
   created_at: Date;

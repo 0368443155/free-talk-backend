@@ -16,6 +16,7 @@ import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CourseLevel, PriceType } from '../entities/course.entity';
 import { CreateSessionWithMaterialsDto } from './session-material.dto';
+import { CreateLessonMaterialDto } from './lesson-material.dto';
 
 export class CreateCourseDto {
     @ApiProperty({
@@ -247,6 +248,64 @@ export class GetCoursesQueryDto {
     limit?: number;
 }
 
+// Lesson DTOs (must be defined before CreateCourseWithSessionsDto)
+export class CreateLessonDto {
+    @ApiProperty({ description: 'Lesson number within session', minimum: 1 })
+    @IsNumber()
+    @Min(1)
+    lesson_number: number;
+
+    @ApiProperty({ description: 'Lesson title' })
+    @IsString()
+    title: string;
+
+    @ApiPropertyOptional({ description: 'Lesson description' })
+    @IsOptional()
+    @IsString()
+    description?: string;
+
+    @ApiProperty({ description: 'Scheduled date (YYYY-MM-DD)' })
+    @IsString()
+    scheduled_date: string;
+
+    @ApiProperty({ description: 'Start time (HH:MM)' })
+    @IsString()
+    start_time: string;
+
+    @ApiProperty({ description: 'End time (HH:MM)' })
+    @IsString()
+    end_time: string;
+
+    @ApiPropertyOptional({ type: [CreateLessonMaterialDto], description: 'Materials for this lesson' })
+    @IsOptional()
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => CreateLessonMaterialDto)
+    materials?: CreateLessonMaterialDto[];
+}
+
+export class CreateSessionWithLessonsDto {
+    @ApiProperty({ description: 'Session number', minimum: 1 })
+    @IsNumber()
+    @Min(1)
+    session_number: number;
+
+    @ApiProperty({ description: 'Session title (e.g., "Week 1", "Module 1")' })
+    @IsString()
+    title: string;
+
+    @ApiPropertyOptional({ description: 'Session description' })
+    @IsOptional()
+    @IsString()
+    description?: string;
+
+    @ApiProperty({ type: [CreateLessonDto], description: 'Lessons in this session' })
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => CreateLessonDto)
+    lessons: CreateLessonDto[];
+}
+
 export class CreateCourseWithSessionsDto {
     // Course info
     @ApiProperty({ example: 'English Conversation Mastery', description: 'Course title' })
@@ -299,10 +358,10 @@ export class CreateCourseWithSessionsDto {
     @IsOptional()
     duration_hours?: number;
 
-    // Sessions
-    @ApiProperty({ type: [CreateSessionWithMaterialsDto], description: 'Sessions with materials' })
+    // Sessions with lessons
+    @ApiProperty({ type: [CreateSessionWithLessonsDto], description: 'Sessions with lessons' })
     @IsArray()
     @ValidateNested({ each: true })
-    @Type(() => CreateSessionWithMaterialsDto)
-    sessions: CreateSessionWithMaterialsDto[];
+    @Type(() => CreateSessionWithLessonsDto)
+    sessions: CreateSessionWithLessonsDto[];
 }

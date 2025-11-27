@@ -19,6 +19,8 @@ import { LiveKitMetric } from './src/metrics/livekit-metric.entity';
 import { Course } from './src/features/courses/entities/course.entity';
 import { CourseSession } from './src/features/courses/entities/course-session.entity';
 import { SessionMaterial } from './src/features/courses/entities/session-material.entity';
+import { Lesson } from './src/features/courses/entities/lesson.entity';
+import { LessonMaterial } from './src/features/courses/entities/lesson-material.entity';
 import { CourseEnrollment } from './src/features/courses/entities/enrollment.entity';
 import { SessionPurchase } from './src/features/courses/entities/session-purchase.entity';
 import { PaymentHold } from './src/features/courses/entities/payment-hold.entity';
@@ -53,6 +55,8 @@ export const dataSourceOptions: DataSourceOptions = {
     Course,
     CourseSession,
     SessionMaterial,
+    Lesson,
+    LessonMaterial,
     CourseEnrollment,
     SessionPurchase,
     PaymentHold,

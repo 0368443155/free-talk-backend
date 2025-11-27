@@ -274,29 +274,65 @@ export default function CourseDetailPage() {
                                                         {session.description && (
                                                             <p className="text-gray-600 mt-1">{session.description}</p>
                                                         )}
-                                                        <div className="flex items-center gap-4 mt-3 text-sm text-gray-600">
-                                                            <div className="flex items-center gap-1">
-                                                                <Calendar className="w-4 h-4" />
-                                                                {new Date(session.scheduled_date).toLocaleDateString()}
+                                                        {session.lessons && session.lessons.length > 0 && (
+                                                            <div className="mt-4 space-y-3">
+                                                                <p className="text-sm font-medium text-gray-700">
+                                                                    Lessons ({session.lessons.length}):
+                                                                </p>
+                                                                {session.lessons.map((lesson) => (
+                                                                    <div
+                                                                        key={lesson.id}
+                                                                        className="border rounded-lg p-3 bg-gray-50"
+                                                                    >
+                                                                        <div className="flex items-center justify-between">
+                                                                            <div className="flex-1">
+                                                                                <div className="flex items-center gap-2 mb-1">
+                                                                                    <Badge variant="outline">
+                                                                                        Lesson {lesson.lesson_number}
+                                                                                    </Badge>
+                                                                                    <span className="text-sm font-medium">
+                                                                                        {lesson.title}
+                                                                                    </span>
+                                                                                </div>
+                                                                                {lesson.description && (
+                                                                                    <p className="text-xs text-gray-600 mb-2">
+                                                                                        {lesson.description}
+                                                                                    </p>
+                                                                                )}
+                                                                                <div className="flex items-center gap-4 text-xs text-gray-600">
+                                                                                    <div className="flex items-center gap-1">
+                                                                                        <Calendar className="w-3 h-3" />
+                                                                                        {new Date(lesson.scheduled_date).toLocaleDateString()}
+                                                                                    </div>
+                                                                                    <div className="flex items-center gap-1">
+                                                                                        <Clock className="w-3 h-3" />
+                                                                                        {lesson.start_time} - {lesson.end_time}
+                                                                                    </div>
+                                                                                    <div className="flex items-center gap-1">
+                                                                                        <Video className="w-3 h-3" />
+                                                                                        {lesson.duration_minutes} minutes
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                            {hasAccess && lesson.meeting_link && (
+                                                                                <Button
+                                                                                    size="sm"
+                                                                                    onClick={() => window.open(lesson.meeting_link, '_blank')}
+                                                                                    className="ml-4"
+                                                                                >
+                                                                                    <Video className="w-3 h-3 mr-1" />
+                                                                                    Join
+                                                                                </Button>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
                                                             </div>
-                                                            <div className="flex items-center gap-1">
-                                                                <Clock className="w-4 h-4" />
-                                                                {session.start_time} - {session.end_time}
-                                                            </div>
-                                                            <div className="flex items-center gap-1">
-                                                                <Video className="w-4 h-4" />
-                                                                {session.duration_minutes} minutes
-                                                            </div>
-                                                        </div>
+                                                        )}
                                                     </div>
 
-                                                    <div className="ml-4">
-                                                        {hasAccess ? (
-                                                            <Button onClick={() => handleJoinSession(session.id)}>
-                                                                <Video className="w-4 h-4 mr-2" />
-                                                                Join Session
-                                                            </Button>
-                                                        ) : (
+                                                    {!hasAccess && (
+                                                        <div className="ml-4">
                                                             <Button
                                                                 variant="outline"
                                                                 onClick={() => handleBuySession(session.id)}
@@ -314,8 +350,8 @@ export default function CourseDetailPage() {
                                                                     </>
                                                                 )}
                                                             </Button>
-                                                        )}
-                                                    </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </CardContent>
                                         </Card>

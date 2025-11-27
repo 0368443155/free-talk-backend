@@ -3,16 +3,14 @@ import {
     IsString,
     IsOptional,
     IsNumber,
-    IsArray,
-    ValidateNested,
     IsEnum,
     IsBoolean,
     Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { MaterialType } from '../entities/session-material.entity';
+import { MaterialType } from '../entities/lesson-material.entity';
 
-export class CreateSessionMaterialDto {
+export class CreateLessonMaterialDto {
     @ApiProperty({ enum: MaterialType, description: 'Type of material' })
     @IsEnum(MaterialType)
     type: MaterialType;
@@ -57,40 +55,4 @@ export class CreateSessionMaterialDto {
     @IsBoolean()
     is_required?: boolean;
 }
-
-export class CreateSessionWithMaterialsDto {
-    @ApiProperty({ description: 'Session number', minimum: 1 })
-    @IsNumber()
-    @Min(1)
-    session_number: number;
-
-    @ApiProperty({ description: 'Session title' })
-    @IsString()
-    title: string;
-
-    @ApiPropertyOptional({ description: 'Session description' })
-    @IsOptional()
-    @IsString()
-    description?: string;
-
-    @ApiProperty({ description: 'Scheduled date (YYYY-MM-DD)' })
-    @IsString()
-    scheduled_date: string;
-
-    @ApiProperty({ description: 'Start time (HH:MM)' })
-    @IsString()
-    start_time: string;
-
-    @ApiProperty({ description: 'End time (HH:MM)' })
-    @IsString()
-    end_time: string;
-
-    @ApiPropertyOptional({ type: [CreateSessionMaterialDto], description: 'Materials for this session' })
-    @IsOptional()
-    @IsArray()
-    @ValidateNested({ each: true })
-    @Type(() => CreateSessionMaterialDto)
-    materials?: CreateSessionMaterialDto[];
-}
-
 

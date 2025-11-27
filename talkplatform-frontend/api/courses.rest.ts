@@ -22,6 +22,13 @@ export enum CourseStatus {
 }
 
 export enum SessionStatus {
+    DRAFT = 'draft',
+    PUBLISHED = 'published',
+    COMPLETED = 'completed',
+    ARCHIVED = 'archived',
+}
+
+export enum LessonStatus {
     SCHEDULED = 'scheduled',
     ONGOING = 'ongoing',
     COMPLETED = 'completed',
@@ -87,22 +94,49 @@ export interface CourseSession {
     session_number: number;
     title?: string;
     description?: string;
+    total_lessons: number;
+    status: SessionStatus;
+    created_at: string;
+    updated_at: string;
+    lessons?: Lesson[];
+}
+
+export interface LessonMaterial {
+    id: string;
+    lesson_id: string;
+    type: MaterialType;
+    title: string;
+    description?: string;
+    file_url?: string;
+    file_name?: string;
+    file_size?: number;
+    file_type?: string;
+    display_order: number;
+    is_required: boolean;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface Lesson {
+    id: string;
+    session_id: string;
+    lesson_number: number;
+    title: string;
+    description?: string;
     scheduled_date: string;
     start_time: string;
     end_time: string;
     duration_minutes: number;
-    status: SessionStatus;
+    meeting_id?: string;
     livekit_room_name?: string;
     meeting_link?: string;
-    meeting_id?: string;
     qr_code_url?: string;
     qr_code_data?: string;
-    actual_start_time?: string;
-    actual_end_time?: string;
-    actual_duration_minutes?: number;
+    status: LessonStatus;
     created_at: string;
     updated_at: string;
-    materials?: SessionMaterial[];
+    materials?: LessonMaterial[];
+    meeting?: any;
 }
 
 export interface CreateCourseDto {
@@ -119,6 +153,35 @@ export interface CreateCourseDto {
     max_students?: number;
 }
 
+export interface CreateLessonMaterialDto {
+    type: MaterialType;
+    title: string;
+    description?: string;
+    file_url?: string;
+    file_name?: string;
+    file_size?: number;
+    file_type?: string;
+    display_order?: number;
+    is_required?: boolean;
+}
+
+export interface CreateLessonDto {
+    lesson_number: number;
+    title: string;
+    description?: string;
+    scheduled_date: string;
+    start_time: string;
+    end_time: string;
+    materials?: CreateLessonMaterialDto[];
+}
+
+export interface CreateSessionWithLessonsDto {
+    session_number: number;
+    title: string;
+    description?: string;
+    lessons: CreateLessonDto[];
+}
+
 export interface CreateCourseWithSessionsDto {
     title: string;
     description?: string;
@@ -129,7 +192,7 @@ export interface CreateCourseWithSessionsDto {
     price_per_session?: number;
     max_students?: number;
     duration_hours?: number;
-    sessions: CreateSessionWithMaterialsDto[];
+    sessions: CreateSessionWithLessonsDto[];
 }
 
 export interface UpdateCourseDto {
@@ -343,4 +406,54 @@ export async function updateSessionApi(
  */
 export async function deleteSessionApi(courseId: string, sessionId: string): Promise<void> {
     await apiClient.delete(`/courses/${courseId}/sessions/${sessionId}`);
+}
+
+// ==================== LESSON API FUNCTIONS ====================
+
+/**
+ * Get all lessons for a session
+ */
+export async function getSessionLessonsApi(courseId: string, sessionId: string): Promise<Lesson[]> {
+    const response = await apiClient.get(`/courses/${courseId}/sessions/${sessionId}/lessons`);
+    return response.data;
+}
+
+/**
+ * Get lesson by ID
+ */
+export async function getLessonByIdApi(courseId: string, sessionId: string, lessonId: string): Promise<Lesson> {
+    const response = await apiClient.get(`/courses/${courseId}/sessions/${sessionId}/lessons/${lessonId}`);
+    return response.data;
+}
+
+/**
+ * Add lesson to session (Teacher only)
+ */
+export async function addLessonApi(
+    courseId: string,
+    sessionId: string,
+    data: CreateLessonDto
+): Promise<Lesson> {
+    const response = await apiClient.post(`/courses/${courseId}/sessions/${sessionId}/lessons`, data);
+    return response.data;
+}
+
+/**
+ * Update lesson (Teacher only)
+ */
+export async function updateLessonApi(
+    courseId: string,
+    sessionId: string,
+    lessonId: string,
+    data: Partial<CreateLessonDto>
+): Promise<Lesson> {
+    const response = await apiClient.patch(`/courses/${courseId}/sessions/${sessionId}/lessons/${lessonId}`, data);
+    return response.data;
+}
+
+/**
+ * Delete lesson (Teacher only)
+ */
+export async function deleteLessonApi(courseId: string, sessionId: string, lessonId: string): Promise<void> {
+    await apiClient.delete(`/courses/${courseId}/sessions/${sessionId}/lessons/${lessonId}`);
 }

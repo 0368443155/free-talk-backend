@@ -17,6 +17,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { CoursesService } from './courses.service';
 import { CreateCourseDto, UpdateCourseDto, GetCoursesQueryDto, CreateCourseWithSessionsDto } from './dto/course.dto';
 import { CreateSessionDto, UpdateSessionDto } from './dto/session.dto';
+import { CreateLessonDto, UpdateLessonDto } from './dto/lesson.dto';
 import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../../core/auth/guards/optional-jwt-auth.guard';
 import { RolesGuard } from '../../core/auth/guards/roles.guard';
@@ -226,5 +227,71 @@ export class CoursesController {
     async deleteSession(@Param('sessionId') sessionId: string, @Req() req: any) {
         const teacherId = req.user.id;
         await this.coursesService.deleteSession(sessionId, teacherId);
+    }
+
+    // ==================== LESSON ENDPOINTS ====================
+
+    @Get(':id/sessions/:sessionId/lessons')
+    @ApiOperation({ summary: 'Get all lessons for a session' })
+    @ApiResponse({ status: 200, description: 'Lessons retrieved successfully' })
+    @ApiResponse({ status: 404, description: 'Session not found' })
+    async getSessionLessons(@Param('sessionId') sessionId: string) {
+        return this.coursesService.getSessionLessons(sessionId);
+    }
+
+    @Get(':id/sessions/:sessionId/lessons/:lessonId')
+    @ApiOperation({ summary: 'Get lesson by ID' })
+    @ApiResponse({ status: 200, description: 'Lesson retrieved successfully' })
+    @ApiResponse({ status: 404, description: 'Lesson not found' })
+    async getLessonById(@Param('lessonId') lessonId: string) {
+        return this.coursesService.getLessonById(lessonId);
+    }
+
+    @Post(':id/sessions/:sessionId/lessons')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.TEACHER, UserRole.ADMIN)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Add lesson to session (Teacher or Admin)' })
+    @ApiResponse({ status: 201, description: 'Lesson added successfully' })
+    @ApiResponse({ status: 400, description: 'Bad request' })
+    @ApiResponse({ status: 403, description: 'You can only add lessons to your own course sessions' })
+    async addLesson(
+        @Param('sessionId') sessionId: string,
+        @Req() req: any,
+        @Body() dto: CreateLessonDto,
+    ) {
+        const teacherId = req.user.id;
+        return this.coursesService.addLesson(sessionId, teacherId, dto);
+    }
+
+    @Patch(':id/sessions/:sessionId/lessons/:lessonId')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.TEACHER, UserRole.ADMIN)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Update lesson (Teacher or Admin)' })
+    @ApiResponse({ status: 200, description: 'Lesson updated successfully' })
+    @ApiResponse({ status: 403, description: 'You can only update lessons of your own courses' })
+    @ApiResponse({ status: 404, description: 'Lesson not found' })
+    async updateLesson(
+        @Param('lessonId') lessonId: string,
+        @Req() req: any,
+        @Body() dto: UpdateLessonDto,
+    ) {
+        const teacherId = req.user.id;
+        return this.coursesService.updateLesson(lessonId, teacherId, dto);
+    }
+
+    @Delete(':id/sessions/:sessionId/lessons/:lessonId')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.TEACHER, UserRole.ADMIN)
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.NO_CONTENT)
+    @ApiOperation({ summary: 'Delete lesson (Teacher or Admin)' })
+    @ApiResponse({ status: 204, description: 'Lesson deleted successfully' })
+    @ApiResponse({ status: 403, description: 'You can only delete lessons of your own courses' })
+    @ApiResponse({ status: 404, description: 'Lesson not found' })
+    async deleteLesson(@Param('lessonId') lessonId: string, @Req() req: any) {
+        const teacherId = req.user.id;
+        await this.coursesService.deleteLesson(lessonId, teacherId);
     }
 }

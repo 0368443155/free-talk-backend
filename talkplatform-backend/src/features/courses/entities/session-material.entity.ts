@@ -62,8 +62,9 @@ export class SessionMaterial {
     @UpdateDateColumn()
     updated_at: Date;
 
-    @ManyToOne(() => CourseSession, (session) => session.materials, { onDelete: 'CASCADE' })
+    @ManyToOne(() => CourseSession, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'session_id' })
     session: CourseSession;
 }
+
 

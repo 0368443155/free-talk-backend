@@ -10,10 +10,14 @@ import { Repository, FindOptionsWhere, DataSource } from 'typeorm';
 import { Course, CourseStatus, PriceType } from './entities/course.entity';
 import { CourseSession, SessionStatus } from './entities/course-session.entity';
 import { SessionMaterial, MaterialType } from './entities/session-material.entity';
+import { Lesson, LessonStatus } from './entities/lesson.entity';
+import { LessonMaterial } from './entities/lesson-material.entity';
+import { Meeting, MeetingStatus, MeetingType } from '../meeting/entities/meeting.entity';
 import { User, UserRole } from '../../users/user.entity';
 import { CreateCourseDto, UpdateCourseDto, GetCoursesQueryDto, CreateCourseWithSessionsDto } from './dto/course.dto';
 import { CreateSessionDto, UpdateSessionDto } from './dto/session.dto';
 import { CreateSessionMaterialDto } from './dto/session-material.dto';
+import { CreateLessonDto, UpdateLessonDto } from './dto/lesson.dto';
 import { QrCodeService } from '../../common/services/qr-code.service';
 import { ConfigService } from '@nestjs/config';
 
@@ -28,6 +32,12 @@ export class CoursesService {
         private readonly sessionRepository: Repository<CourseSession>,
         @InjectRepository(SessionMaterial)
         private readonly materialRepository: Repository<SessionMaterial>,
+        @InjectRepository(Lesson)
+        private readonly lessonRepository: Repository<Lesson>,
+        @InjectRepository(LessonMaterial)
+        private readonly lessonMaterialRepository: Repository<LessonMaterial>,
+        @InjectRepository(Meeting)
+        private readonly meetingRepository: Repository<Meeting>,
         @InjectRepository(User)
         private readonly userRepository: Repository<User>,
         @InjectDataSource()
@@ -189,7 +199,13 @@ export class CoursesService {
         
         const course = await this.courseRepository.findOne({
             where: { id: courseId },
-            relations: ['teacher', 'sessions'],
+            relations: [
+                'teacher',
+                'sessions',
+                'sessions.lessons',
+                'sessions.lessons.materials',
+                'sessions.lessons.meeting',
+            ],
         });
 
         if (!course) {
@@ -289,48 +305,14 @@ export class CoursesService {
             throw new BadRequestException('Session date must be in the future');
         }
 
-        // Validate time format and logic
-        if (dto.end_time <= dto.start_time) {
-            throw new BadRequestException('End time must be after start time');
-        }
-
-        // Auto-calculate duration_minutes from start_time and end_time
-        const durationMinutes = this.calculateDurationMinutes(dto.start_time, dto.end_time);
-
-        const livekitRoomName = `course_${courseId}_session_${dto.session_number}`;
-
-        // Generate QR code data
-        const frontendUrl = this.configService.get('FRONTEND_URL') || 'http://localhost:3001';
-        const qrData = {
-            course_id: courseId,
-            session_number: dto.session_number,
-            title: dto.title || `Session ${dto.session_number}`,
-            date: dto.scheduled_date,
-            time: dto.start_time,
-            room: livekitRoomName,
-        };
-
-        let qrCodeUrl: string | null = null;
-        try {
-            const sessionLink = `${frontendUrl}/courses/${courseId}/sessions/${dto.session_number}`;
-            qrCodeUrl = await this.qrCodeService.generateDataUrl(sessionLink);
-        } catch (error) {
-            this.logger.error(`Failed to generate QR code for session: ${error.message}`);
-        }
-
+        // Create session (group of lessons) - no longer has scheduled_date, start_time, end_time
         const session = this.sessionRepository.create({
             course_id: courseId,
             session_number: dto.session_number,
             title: dto.title,
             description: dto.description,
-            scheduled_date: dto.scheduled_date,
-            start_time: dto.start_time,
-            end_time: dto.end_time,
-            duration_minutes: durationMinutes,
-            livekit_room_name: livekitRoomName,
-            qr_code_url: qrCodeUrl || undefined,
-            qr_code_data: JSON.stringify(qrData),
-            status: SessionStatus.SCHEDULED,
+            total_lessons: 0, // Will be updated when lessons are added
+            status: SessionStatus.DRAFT,
         });
 
         const savedSession = await this.sessionRepository.save(session);
@@ -393,24 +375,8 @@ export class CoursesService {
 
         // If times are updated, recalculate duration
         const updateData: any = { ...dto };
-        if (dto.start_time && dto.end_time) {
-            if (dto.end_time <= dto.start_time) {
-                throw new BadRequestException('End time must be after start time');
-            }
-            updateData.duration_minutes = this.calculateDurationMinutes(dto.start_time, dto.end_time);
-        } else if (dto.start_time && !dto.end_time) {
-            // Only start_time updated, use existing end_time
-            if (session.end_time <= dto.start_time) {
-                throw new BadRequestException('End time must be after start time');
-            }
-            updateData.duration_minutes = this.calculateDurationMinutes(dto.start_time, session.end_time);
-        } else if (dto.end_time && !dto.start_time) {
-            // Only end_time updated, use existing start_time
-            if (dto.end_time <= session.start_time) {
-                throw new BadRequestException('End time must be after start time');
-            }
-            updateData.duration_minutes = this.calculateDurationMinutes(session.start_time, dto.end_time);
-        }
+        // Session no longer has start_time, end_time, scheduled_date
+        // These are now properties of Lesson, not Session
 
         await this.sessionRepository.update(sessionId, updateData);
 
@@ -612,80 +578,137 @@ export class CoursesService {
                 this.logger.error(`Failed to generate QR code for course ${savedCourse.id}: ${error.message}`);
             }
 
-            // 2. Create sessions with materials
+            // 2. Create sessions with lessons
             for (const sessionDto of dto.sessions) {
-                // Calculate duration
-                const durationMinutes = this.calculateDurationMinutes(
-                    sessionDto.start_time,
-                    sessionDto.end_time,
-                );
-
-                // Generate LiveKit room name
-                const livekitRoomName = `course_${savedCourse.id}_session_${sessionDto.session_number}`;
-
-                // Generate QR code data
-                const qrData = {
-                    course_id: savedCourse.id,
-                    session_number: sessionDto.session_number,
-                    title: sessionDto.title || `Session ${sessionDto.session_number}`,
-                    date: sessionDto.scheduled_date,
-                    time: sessionDto.start_time,
-                    room: livekitRoomName,
-                };
-
-                let qrCodeUrl: string | null = null;
-                try {
-                    const sessionLink = `${frontendUrl}/courses/${savedCourse.id}/sessions/${sessionDto.session_number}`;
-                    qrCodeUrl = await this.qrCodeService.generateDataUrl(sessionLink);
-                } catch (error) {
-                    this.logger.error(`Failed to generate QR code for session: ${error.message}`);
-                }
-
-                // Create session
+                // Create session (group of lessons)
                 const session = manager.create(CourseSession, {
                     course_id: savedCourse.id,
                     session_number: sessionDto.session_number,
                     title: sessionDto.title,
                     description: sessionDto.description,
-                    scheduled_date: sessionDto.scheduled_date,
-                    start_time: sessionDto.start_time,
-                    end_time: sessionDto.end_time,
-                    duration_minutes: durationMinutes,
-                    livekit_room_name: livekitRoomName,
-                    qr_code_url: qrCodeUrl || undefined,
-                    qr_code_data: JSON.stringify(qrData),
-                    status: SessionStatus.SCHEDULED,
+                    total_lessons: sessionDto.lessons.length,
+                    status: SessionStatus.DRAFT,
                 });
 
                 const savedSession = await manager.save(CourseSession, session);
 
-                // 3. Create materials for this session
-                if (sessionDto.materials && sessionDto.materials.length > 0) {
-                    for (const materialDto of sessionDto.materials) {
-                        const material = manager.create(SessionMaterial, {
-                            session_id: savedSession.id,
-                            type: materialDto.type,
-                            title: materialDto.title,
-                            description: materialDto.description,
-                            file_url: materialDto.file_url,
-                            file_name: materialDto.file_name,
-                            file_size: materialDto.file_size,
-                            file_type: materialDto.file_type,
-                            display_order: materialDto.display_order || 0,
-                            is_required: materialDto.is_required || false,
-                        });
+                // 3. Create lessons for this session
+                for (const lessonDto of sessionDto.lessons) {
+                    // Calculate duration
+                    const duration = this.calculateDurationMinutes(
+                        lessonDto.start_time,
+                        lessonDto.end_time,
+                    );
 
-                        await manager.save(SessionMaterial, material);
+                    // Generate LiveKit room name
+                    const livekitRoomName = `course_${savedCourse.id}_session_${sessionDto.session_number}_lesson_${lessonDto.lesson_number}`;
+
+                    // Generate meeting title
+                    const meetingTitle = `${savedCourse.title} - ${sessionDto.title} - ${lessonDto.title}`;
+
+                    // 4. Create Meeting first
+                    const scheduledDateTime = new Date(`${lessonDto.scheduled_date} ${lessonDto.start_time}`);
+                    const meeting = manager.create(Meeting, {
+                        title: meetingTitle,
+                        description: lessonDto.description,
+                        host: teacher,
+                        lesson_id: undefined, // Will be set after lesson is created
+                        course_id: savedCourse.id,
+                        session_id: savedSession.id,
+                        teacher_name: teacher.username,
+                        subject_name: savedCourse.title,
+                        scheduled_at: scheduledDateTime,
+                        max_participants: savedCourse.max_students,
+                        meeting_type: MeetingType.TEACHER_CLASS,
+                        status: MeetingStatus.SCHEDULED,
+                        settings: {
+                            allow_screen_share: true,
+                            allow_chat: true,
+                            allow_reactions: true,
+                            record_meeting: true,
+                        },
+                    });
+
+                    const savedMeeting = await manager.save(Meeting, meeting);
+
+                    // 5. Create Lesson
+                    const qrData = {
+                        course_id: savedCourse.id,
+                        session_id: savedSession.id,
+                        lesson_id: null, // Will be set after save
+                        lesson_number: lessonDto.lesson_number,
+                        title: lessonDto.title,
+                        date: lessonDto.scheduled_date,
+                        time: lessonDto.start_time,
+                        room: livekitRoomName,
+                        meeting_id: savedMeeting.id,
+                    };
+
+                    let qrCodeUrl: string | null = null;
+                    try {
+                        const lessonLink = `${frontendUrl}/courses/${savedCourse.id}/sessions/${sessionDto.session_number}/lessons/${lessonDto.lesson_number}`;
+                        qrCodeUrl = await this.qrCodeService.generateDataUrl(lessonLink);
+                    } catch (error) {
+                        this.logger.error(`Failed to generate QR code for lesson: ${error.message}`);
+                    }
+
+                    const lesson = manager.create(Lesson, {
+                        session_id: savedSession.id,
+                        lesson_number: lessonDto.lesson_number,
+                        title: lessonDto.title,
+                        description: lessonDto.description,
+                        scheduled_date: lessonDto.scheduled_date,
+                        start_time: lessonDto.start_time,
+                        end_time: lessonDto.end_time,
+                        duration_minutes: duration,
+                        meeting_id: savedMeeting.id,
+                        livekit_room_name: livekitRoomName,
+                        meeting_link: `${frontendUrl}/meeting/${savedMeeting.id}`,
+                        qr_code_url: qrCodeUrl || undefined,
+                        qr_code_data: JSON.stringify(qrData),
+                        status: LessonStatus.SCHEDULED,
+                    });
+
+                    const savedLesson = await manager.save(Lesson, lesson);
+
+                    // 6. Update Meeting with lesson_id
+                    await manager.update(Meeting, savedMeeting.id, {
+                        lesson_id: savedLesson.id,
+                    });
+
+                    // 7. Create materials for this lesson
+                    if (lessonDto.materials && lessonDto.materials.length > 0) {
+                        for (const materialDto of lessonDto.materials) {
+                            const material = manager.create(LessonMaterial, {
+                                lesson_id: savedLesson.id,
+                                type: materialDto.type,
+                                title: materialDto.title,
+                                description: materialDto.description,
+                                file_url: materialDto.file_url,
+                                file_name: materialDto.file_name,
+                                file_size: materialDto.file_size,
+                                file_type: materialDto.file_type,
+                                display_order: materialDto.display_order || 0,
+                                is_required: materialDto.is_required || false,
+                            });
+
+                            await manager.save(LessonMaterial, material);
+                        }
                     }
                 }
             }
 
-            // Return course with sessions and materials
+            // Return course with sessions, lessons, and materials
             const finalCourse = await manager
                 .getRepository(Course)
                 .findOne({
                     where: { id: savedCourse.id },
-                    relations: ['sessions', 'sessions.materials'],
+                    relations: [
+                        'sessions',
+                        'sessions.lessons',
+                        'sessions.lessons.materials',
+                        'sessions.lessons.meeting',
+                    ],
                 });
 
             if (!finalCourse) {
@@ -695,5 +718,247 @@ export class CoursesService {
             this.logger.log(`✅ Course created with ${dto.sessions.length} sessions: ${savedCourse.id}`);
             return finalCourse;
         });
+    }
+
+    // ==================== LESSON METHODS ====================
+
+    async getLessonById(lessonId: string): Promise<Lesson> {
+        const lesson = await this.lessonRepository.findOne({
+            where: { id: lessonId },
+            relations: ['session', 'session.course', 'materials', 'meeting'],
+        });
+
+        if (!lesson) {
+            throw new NotFoundException(`Lesson with ID ${lessonId} not found`);
+        }
+
+        return lesson;
+    }
+
+    async getSessionLessons(sessionId: string): Promise<Lesson[]> {
+        const session = await this.sessionRepository.findOne({
+            where: { id: sessionId },
+        });
+
+        if (!session) {
+            throw new NotFoundException(`Session with ID ${sessionId} not found`);
+        }
+
+        return this.lessonRepository.find({
+            where: { session_id: sessionId },
+            relations: ['materials', 'meeting'],
+            order: { lesson_number: 'ASC' },
+        });
+    }
+
+    async addLesson(sessionId: string, teacherId: string, dto: CreateLessonDto): Promise<Lesson> {
+        const session = await this.sessionRepository.findOne({
+            where: { id: sessionId },
+            relations: ['course'],
+        });
+
+        if (!session) {
+            throw new NotFoundException(`Session with ID ${sessionId} not found`);
+        }
+
+        if (session.course.teacher_id !== teacherId) {
+            throw new ForbiddenException('You can only add lessons to your own course sessions');
+        }
+
+        // Validate time format and logic
+        if (dto.end_time <= dto.start_time) {
+            throw new BadRequestException('End time must be after start time');
+        }
+
+        // Calculate duration
+        const duration = this.calculateDurationMinutes(dto.start_time, dto.end_time);
+
+        // Generate LiveKit room name
+        const livekitRoomName = `course_${session.course_id}_session_${session.session_number}_lesson_${dto.lesson_number}`;
+
+        // Generate meeting title
+        const meetingTitle = `${session.course.title} - ${session.title} - ${dto.title}`;
+
+        // Get teacher
+        const teacher = await this.userRepository.findOne({
+            where: { id: teacherId },
+        });
+
+        if (!teacher) {
+            throw new NotFoundException('Teacher not found');
+        }
+
+        return await this.dataSource.transaction(async (manager) => {
+            // Create Meeting first
+            const scheduledDateTime = new Date(`${dto.scheduled_date} ${dto.start_time}`);
+            const meeting = manager.create(Meeting, {
+                title: meetingTitle,
+                description: dto.description,
+                host: teacher,
+                lesson_id: undefined,
+                course_id: session.course_id,
+                session_id: sessionId,
+                teacher_name: teacher.username,
+                subject_name: session.course.title,
+                scheduled_at: scheduledDateTime,
+                max_participants: session.course.max_students,
+                meeting_type: MeetingType.TEACHER_CLASS,
+                status: MeetingStatus.SCHEDULED,
+                settings: {
+                    allow_screen_share: true,
+                    allow_chat: true,
+                    allow_reactions: true,
+                    record_meeting: true,
+                },
+            });
+
+            const savedMeeting = await manager.save(Meeting, meeting);
+
+            // Generate QR code
+            const frontendUrl = this.configService.get('FRONTEND_URL') || 'http://localhost:3001';
+            const qrData = {
+                course_id: session.course_id,
+                session_id: sessionId,
+                lesson_id: null,
+                lesson_number: dto.lesson_number,
+                title: dto.title,
+                date: dto.scheduled_date,
+                time: dto.start_time,
+                room: livekitRoomName,
+                meeting_id: savedMeeting.id,
+            };
+
+            let qrCodeUrl: string | null = null;
+            try {
+                const lessonLink = `${frontendUrl}/courses/${session.course_id}/sessions/${session.session_number}/lessons/${dto.lesson_number}`;
+                qrCodeUrl = await this.qrCodeService.generateDataUrl(lessonLink);
+            } catch (error) {
+                this.logger.error(`Failed to generate QR code for lesson: ${error.message}`);
+            }
+
+            // Create Lesson
+            const lesson = manager.create(Lesson, {
+                session_id: sessionId,
+                lesson_number: dto.lesson_number,
+                title: dto.title,
+                description: dto.description,
+                scheduled_date: dto.scheduled_date,
+                start_time: dto.start_time,
+                end_time: dto.end_time,
+                duration_minutes: duration,
+                meeting_id: savedMeeting.id,
+                livekit_room_name: livekitRoomName,
+                meeting_link: `${frontendUrl}/meeting/${savedMeeting.id}`,
+                qr_code_url: qrCodeUrl || undefined,
+                qr_code_data: JSON.stringify(qrData),
+                status: LessonStatus.SCHEDULED,
+            });
+
+            const savedLesson = await manager.save(Lesson, lesson);
+
+            // Update Meeting with lesson_id
+            await manager.update(Meeting, savedMeeting.id, {
+                lesson_id: savedLesson.id,
+            });
+
+            // Create materials
+            if (dto.materials && dto.materials.length > 0) {
+                for (const materialDto of dto.materials) {
+                    const material = manager.create(LessonMaterial, {
+                        lesson_id: savedLesson.id,
+                        type: materialDto.type,
+                        title: materialDto.title,
+                        description: materialDto.description,
+                        file_url: materialDto.file_url,
+                        file_name: materialDto.file_name,
+                        file_size: materialDto.file_size,
+                        file_type: materialDto.file_type,
+                        display_order: materialDto.display_order || 0,
+                        is_required: materialDto.is_required || false,
+                    });
+
+                    await manager.save(LessonMaterial, material);
+                }
+            }
+
+            // Update session total_lessons
+            await manager.update(CourseSession, sessionId, {
+                total_lessons: () => 'total_lessons + 1',
+            });
+
+            const finalLesson = await manager.findOne(Lesson, {
+                where: { id: savedLesson.id },
+                relations: ['materials', 'meeting'],
+            });
+
+            if (!finalLesson) {
+                throw new NotFoundException('Lesson not found after creation');
+            }
+
+            return finalLesson;
+        });
+    }
+
+    async updateLesson(lessonId: string, teacherId: string, dto: UpdateLessonDto): Promise<Lesson> {
+        const lesson = await this.getLessonById(lessonId);
+
+        if (lesson.session.course.teacher_id !== teacherId) {
+            throw new ForbiddenException('You can only update lessons of your own courses');
+        }
+
+        const updateData: any = {};
+
+        if (dto.title !== undefined) updateData.title = dto.title;
+        if (dto.description !== undefined) updateData.description = dto.description;
+        if (dto.scheduled_date !== undefined) updateData.scheduled_date = dto.scheduled_date;
+        if (dto.start_time !== undefined) updateData.start_time = dto.start_time;
+        if (dto.end_time !== undefined) updateData.end_time = dto.end_time;
+
+        // Recalculate duration if times are updated
+        if (dto.start_time && dto.end_time) {
+            if (dto.end_time <= dto.start_time) {
+                throw new BadRequestException('End time must be after start time');
+            }
+            updateData.duration_minutes = this.calculateDurationMinutes(dto.start_time, dto.end_time);
+        } else if (dto.start_time && !dto.end_time) {
+            if (lesson.end_time <= dto.start_time) {
+                throw new BadRequestException('End time must be after start time');
+            }
+            updateData.duration_minutes = this.calculateDurationMinutes(dto.start_time, lesson.end_time);
+        } else if (dto.end_time && !dto.start_time) {
+            if (dto.end_time <= lesson.start_time) {
+                throw new BadRequestException('End time must be after start time');
+            }
+            updateData.duration_minutes = this.calculateDurationMinutes(lesson.start_time, dto.end_time);
+        }
+
+        await this.lessonRepository.update(lessonId, updateData);
+
+        this.logger.log(`✏️ Lesson updated: ${lessonId}`);
+
+        return this.getLessonById(lessonId);
+    }
+
+    async deleteLesson(lessonId: string, teacherId: string): Promise<void> {
+        const lesson = await this.getLessonById(lessonId);
+
+        if (lesson.session.course.teacher_id !== teacherId) {
+            throw new ForbiddenException('You can only delete lessons of your own courses');
+        }
+
+        const sessionId = lesson.session_id;
+
+        await this.lessonRepository.delete(lessonId);
+
+        // Update session total_lessons
+        const session = await this.sessionRepository.findOne({ where: { id: sessionId } });
+        if (session) {
+            const newTotalLessons = Math.max(0, session.total_lessons - 1);
+            await this.sessionRepository.update(sessionId, {
+                total_lessons: newTotalLessons,
+            });
+        }
+
+        this.logger.log(`🗑️ Lesson deleted: ${lessonId}`);
     }
 }
