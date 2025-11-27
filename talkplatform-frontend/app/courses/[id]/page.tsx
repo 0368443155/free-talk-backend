@@ -22,12 +22,15 @@ import {
 } from 'lucide-react';
 import { getCourseByIdApi, Course } from '@/api/courses.rest';
 import { enrollInCourseApi, purchaseSessionApi, checkSessionAccessApi } from '@/api/enrollments.rest';
+import { useUser } from '@/store/user-store';
+import { Edit } from 'lucide-react';
 
 export default function CourseDetailPage() {
     const router = useRouter();
     const params = useParams();
     const courseId = params.id as string;
     const { toast } = useToast();
+    const { userInfo: user } = useUser();
 
     const [course, setCourse] = useState<Course | null>(null);
     const [loading, setLoading] = useState(true);
@@ -159,7 +162,18 @@ export default function CourseDetailPage() {
 
                     <div className="flex justify-between items-start">
                         <div className="flex-1">
-                            <h1 className="text-3xl font-bold text-gray-900">{course.title}</h1>
+                            <div className="flex items-center justify-between mb-2">
+                                <h1 className="text-3xl font-bold text-gray-900">{course.title}</h1>
+                                {(user?.id === course.teacher_id || user?.role === 'admin') && (
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => router.push(`/courses/${courseId}/edit`)}
+                                    >
+                                        <Edit className="w-4 h-4 mr-2" />
+                                        Edit Course
+                                    </Button>
+                                )}
+                            </div>
                             <p className="text-gray-600 mt-2">{course.description}</p>
 
                             <div className="flex items-center gap-4 mt-4">

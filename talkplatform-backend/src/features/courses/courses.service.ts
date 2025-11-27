@@ -672,7 +672,7 @@ export class CoursesService {
                             duration_minutes: duration,
                             meeting_id: savedMeeting.id,
                             livekit_room_name: livekitRoomName,
-                            meeting_link: `${frontendUrl}/meeting/${savedMeeting.id}`,
+                            meeting_link: `${frontendUrl}/meetings/${savedMeeting.id}`,
                             qr_code_url: undefined, // Don't store data URL - it's too long for VARCHAR(500)
                             qr_code_data: JSON.stringify(qrData), // Store link and data in JSON instead
                             status: LessonStatus.SCHEDULED,
@@ -862,7 +862,7 @@ export class CoursesService {
                 duration_minutes: duration,
                 meeting_id: savedMeeting.id,
                 livekit_room_name: livekitRoomName,
-                meeting_link: `${frontendUrl}/meeting/${savedMeeting.id}`,
+                meeting_link: `${frontendUrl}/meetings/${savedMeeting.id}`,
                 qr_code_url: undefined, // Don't store data URL - it's too long for VARCHAR(500)
                 qr_code_data: JSON.stringify(qrData), // Store link and data in JSON instead
                 status: LessonStatus.SCHEDULED,
@@ -947,6 +947,31 @@ export class CoursesService {
         }
 
         await this.lessonRepository.update(lessonId, updateData);
+
+        // Update materials if provided
+        if (dto.materials !== undefined) {
+            // Delete existing materials
+            await this.lessonMaterialRepository.delete({ lesson_id: lessonId });
+
+            // Create new materials
+            if (dto.materials.length > 0) {
+                const materials = dto.materials.map((materialDto, index) =>
+                    this.lessonMaterialRepository.create({
+                        lesson_id: lessonId,
+                        type: materialDto.type,
+                        title: materialDto.title,
+                        description: materialDto.description,
+                        file_url: materialDto.file_url,
+                        file_name: materialDto.file_name,
+                        file_size: materialDto.file_size,
+                        file_type: materialDto.file_type,
+                        display_order: materialDto.display_order ?? index,
+                        is_required: materialDto.is_required ?? false,
+                    })
+                );
+                await this.lessonMaterialRepository.save(materials);
+            }
+        }
 
         this.logger.log(`✏️ Lesson updated: ${lessonId}`);
 

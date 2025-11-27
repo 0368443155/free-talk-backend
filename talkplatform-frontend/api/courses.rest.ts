@@ -15,6 +15,22 @@ export enum CourseLevel {
     ADVANCED = 'advanced',
 }
 
+export enum CourseCategory {
+    ENGLISH = 'English',
+    MARKETING = 'Marketing',
+    BUSINESS = 'Business',
+    TECHNOLOGY = 'Technology',
+    DESIGN = 'Design',
+    HEALTH = 'Health',
+    FITNESS = 'Fitness',
+    MUSIC = 'Music',
+    ARTS = 'Arts',
+    SCIENCE = 'Science',
+    MATHEMATICS = 'Mathematics',
+    LANGUAGES = 'Languages',
+    OTHER = 'Other',
+}
+
 export enum CourseStatus {
     DRAFT = 'draft',
     PUBLISHED = 'published',
@@ -53,7 +69,8 @@ export interface Course {
     price_full_course?: number;
     language?: string;
     level?: CourseLevel;
-    category?: string;
+    category?: CourseCategory;
+    tags?: string[];
     status: CourseStatus;
     is_published: boolean;
     max_students: number;
@@ -205,7 +222,8 @@ export interface UpdateCourseDto {
     price_full_course?: number;
     language?: string;
     level?: CourseLevel;
-    category?: string;
+    category?: CourseCategory;
+    tags?: string[];
     max_students?: number;
 }
 

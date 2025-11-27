@@ -31,7 +31,7 @@ import {
     Video,
     Link as LinkIcon,
 } from 'lucide-react';
-import { createCourseWithSessionsApi, MaterialType, CourseLevel, PriceType } from '@/api/courses.rest';
+import { createCourseWithSessionsApi, MaterialType, CourseLevel, PriceType, CourseCategory } from '@/api/courses.rest';
 import apiClient from '@/api/axiosConfig';
 import { Badge } from '@/components/ui/badge';
 
@@ -78,7 +78,9 @@ export default function CreateCoursePage() {
     // Course basic info
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
-    const [category, setCategory] = useState('');
+    const [category, setCategory] = useState<CourseCategory | ''>('');
+    const [tags, setTags] = useState<string[]>([]);
+    const [tagInput, setTagInput] = useState('');
     const [level, setLevel] = useState<CourseLevel | ''>('');
     const [language, setLanguage] = useState('English');
     const [priceType, setPriceType] = useState<PriceType>(PriceType.PER_SESSION);
@@ -87,9 +89,47 @@ export default function CreateCoursePage() {
     const [maxStudents, setMaxStudents] = useState<number>(30);
     const [durationHours, setDurationHours] = useState<number>(10);
 
+    // Tags by category
+    const tagsByCategory: Record<CourseCategory, string[]> = {
+        [CourseCategory.ENGLISH]: ['conversation', 'grammar', 'business-english', 'ielts', 'toefl', 'pronunciation', 'writing', 'reading'],
+        [CourseCategory.MARKETING]: ['digital-marketing', 'social-media', 'seo', 'content-marketing', 'email-marketing', 'analytics', 'branding', 'advertising'],
+        [CourseCategory.BUSINESS]: ['management', 'leadership', 'entrepreneurship', 'finance', 'strategy', 'negotiation', 'sales', 'consulting'],
+        [CourseCategory.TECHNOLOGY]: ['programming', 'web-development', 'mobile-app', 'data-science', 'ai', 'cybersecurity', 'cloud-computing', 'blockchain'],
+        [CourseCategory.DESIGN]: ['ui-ux', 'graphic-design', 'web-design', 'illustration', 'photography', 'video-editing', '3d-modeling', 'animation'],
+        [CourseCategory.HEALTH]: ['nutrition', 'mental-health', 'wellness', 'yoga', 'meditation', 'first-aid', 'public-health', 'alternative-medicine'],
+        [CourseCategory.FITNESS]: ['weight-training', 'cardio', 'yoga', 'pilates', 'crossfit', 'running', 'swimming', 'dance'],
+        [CourseCategory.MUSIC]: ['guitar', 'piano', 'violin', 'singing', 'music-theory', 'composition', 'production', 'dj'],
+        [CourseCategory.ARTS]: ['painting', 'drawing', 'sculpture', 'ceramics', 'printmaking', 'art-history', 'art-therapy', 'calligraphy'],
+        [CourseCategory.SCIENCE]: ['biology', 'chemistry', 'physics', 'astronomy', 'environmental-science', 'research-methods', 'lab-skills', 'scientific-writing'],
+        [CourseCategory.MATHEMATICS]: ['algebra', 'calculus', 'statistics', 'geometry', 'probability', 'linear-algebra', 'discrete-math', 'applied-math'],
+        [CourseCategory.LANGUAGES]: ['spanish', 'french', 'german', 'chinese', 'japanese', 'korean', 'italian', 'portuguese'],
+        [CourseCategory.OTHER]: ['personal-development', 'cooking', 'photography', 'travel', 'writing', 'communication', 'time-management', 'creativity'],
+    };
+
+    const availableTags = category ? tagsByCategory[category] || [] : [];
+
     // Sessions
     const [sessions, setSessions] = useState<SessionData[]>([]);
     const [nextSessionNumber, setNextSessionNumber] = useState(1);
+
+    const handleAddTag = (tag: string) => {
+        const trimmedTag = tag.trim().toLowerCase();
+        if (trimmedTag && trimmedTag.length <= 20 && !tags.includes(trimmedTag)) {
+            setTags([...tags, trimmedTag]);
+            setTagInput('');
+        }
+    };
+
+    const handleTagInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter' && tagInput.trim()) {
+            e.preventDefault();
+            handleAddTag(tagInput);
+        }
+    };
+
+    const handleRemoveTag = (tagToRemove: string) => {
+        setTags(tags.filter(tag => tag !== tagToRemove));
+    };
 
     const addSession = () => {
         const newSession: SessionData = {
@@ -307,6 +347,7 @@ export default function CreateCoursePage() {
                 title,
                 description: description || undefined,
                 category: category || undefined,
+                tags: tags.length > 0 ? tags : undefined,
                 level: level || undefined,
                 language: language || undefined,
                 price_per_session: priceType === PriceType.PER_SESSION ? pricePerSession : undefined,
@@ -411,6 +452,72 @@ export default function CreateCoursePage() {
                             />
                         </div>
 
+                        {/* Tags */}
+                        {category && (
+                            <div>
+                                <Label htmlFor="tags">Tags</Label>
+                                <div className="mt-1 space-y-2">
+                                    <div className="flex flex-wrap gap-2 mb-2">
+                                        {tags.map((tag) => (
+                                            <Badge key={tag} variant="secondary" className="flex items-center gap-1">
+                                                {tag}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveTag(tag)}
+                                                    className="ml-1 hover:text-red-500"
+                                                >
+                                                    <X className="w-3 h-3" />
+                                                </button>
+                                            </Badge>
+                                        ))}
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <Input
+                                            id="tags"
+                                            placeholder="Type a tag and press Enter (max 20 chars)"
+                                            value={tagInput}
+                                            onChange={(e) => {
+                                                const value = e.target.value;
+                                                if (value.length <= 20) {
+                                                    setTagInput(value);
+                                                }
+                                            }}
+                                            onKeyDown={handleTagInputKeyDown}
+                                            maxLength={20}
+                                        />
+                                        {availableTags.length > 0 && (
+                                            <Select
+                                                value=""
+                                                onValueChange={(value) => {
+                                                    if (value && !tags.includes(value)) {
+                                                        handleAddTag(value);
+                                                    }
+                                                }}
+                                            >
+                                                <SelectTrigger className="w-[200px]">
+                                                    <SelectValue placeholder="Select from list" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {availableTags
+                                                        .filter(tag => !tags.includes(tag))
+                                                        .map((tag) => (
+                                                            <SelectItem key={tag} value={tag}>
+                                                                {tag}
+                                                            </SelectItem>
+                                                        ))}
+                                                </SelectContent>
+                                            </Select>
+                                        )}
+                                    </div>
+                                    {tagInput.length > 0 && (
+                                        <p className="text-xs text-gray-500">
+                                            {tagInput.length}/20 characters
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
                                 <Label htmlFor="language">Language</Label>
@@ -438,13 +545,24 @@ export default function CreateCoursePage() {
 
                             <div>
                                 <Label htmlFor="category">Category</Label>
-                                <Input
-                                    id="category"
-                                    placeholder="e.g., Language Learning"
-                                    value={category}
-                                    onChange={(e) => setCategory(e.target.value)}
-                                    className="mt-1"
-                                />
+                                <Select 
+                                    value={category} 
+                                    onValueChange={(value) => {
+                                        setCategory(value as CourseCategory);
+                                        setTags([]); // Clear tags when category changes
+                                    }}
+                                >
+                                    <SelectTrigger className="mt-1">
+                                        <SelectValue placeholder="Select category" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {Object.values(CourseCategory).map((cat) => (
+                                            <SelectItem key={cat} value={cat}>
+                                                {cat}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </div>
                         </div>
 
