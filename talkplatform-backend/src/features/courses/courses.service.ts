@@ -637,6 +637,7 @@ export class CoursesService {
                             max_participants: savedCourse.max_students,
                             meeting_type: MeetingType.TEACHER_CLASS,
                             status: MeetingStatus.SCHEDULED,
+                            affiliate_code: savedCourse.affiliate_code, // Copy affiliate code from course
                             settings: {
                                 allow_screen_share: true,
                                 allow_chat: true,
@@ -826,6 +827,7 @@ export class CoursesService {
                 max_participants: session.course.max_students,
                 meeting_type: MeetingType.TEACHER_CLASS,
                 status: MeetingStatus.SCHEDULED,
+                affiliate_code: session.course.affiliate_code, // Copy affiliate code from course
                 settings: {
                     allow_screen_share: true,
                     allow_chat: true,
@@ -872,7 +874,7 @@ export class CoursesService {
 
             const savedLesson = await manager.save(Lesson, lesson);
 
-            // Update Meeting with lesson_id
+            // Update Meeting with lesson_id (affiliate_code already set when creating meeting)
             await manager.update(Meeting, savedMeeting.id, {
                 lesson_id: savedLesson.id,
             });

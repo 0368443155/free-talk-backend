@@ -239,6 +239,36 @@ export default function CourseDetailPage() {
                         <div className="w-80 space-y-4">
                             <CreditBalance />
                             
+                            {/* Affiliate Code - Show for teacher and enrolled students */}
+                            {(isTeacherOrAdmin || isEnrolled) && course.affiliate_code && (
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle className="text-lg">Affiliate Code</CardTitle>
+                                        <CardDescription>Share this code to earn rewards</CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="flex items-center gap-2">
+                                            <code className="flex-1 px-3 py-2 bg-gray-100 rounded-md text-center font-mono text-lg font-semibold">
+                                                {course.affiliate_code}
+                                            </code>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText(course.affiliate_code || '');
+                                                    toast({
+                                                        title: "Copied!",
+                                                        description: "Affiliate code copied to clipboard",
+                                                    });
+                                                }}
+                                            >
+                                                Copy
+                                            </Button>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            )}
+                            
                             {/* Only show pricing card if not enrolled (or if teacher/admin for tracking) */}
                             {(isTeacherOrAdmin || !isEnrolled) && (
                                 <Card>

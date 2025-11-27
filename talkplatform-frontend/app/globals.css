@@ -4,7 +4,8 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    /* Light Mode - Clean & Crisp */
+    --background: 210 40% 98%; /* Soft cool white */
     --foreground: 222.2 84% 4.9%;
 
     --card: 0 0% 100%;
@@ -13,7 +14,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
 
-    --primary: 262.1 83.3% 57.8%; /* Violet 600 */
+    --primary: 262.1 83.3% 57.8%; /* Vibrant Violet */
     --primary-foreground: 210 40% 98%;
 
     --secondary: 310 60% 70%; /* Soft Pink */
@@ -36,25 +37,26 @@
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
+    /* Dark Mode - Deep & Premium */
+    --background: 224 71% 4%; /* Deep Blue-Black */
     --foreground: 210 40% 98%;
 
-    --card: 222.2 84% 4.9%;
+    --card: 224 71% 6%; /* Slightly lighter than bg */
     --card-foreground: 210 40% 98%;
 
-    --popover: 222.2 84% 4.9%;
+    --popover: 224 71% 6%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 263.4 70% 50.4%;
+    --primary: 263.4 70% 50.4%; /* Deep Violet */
     --primary-foreground: 210 40% 98%;
 
-    --secondary: 217.2 32.6% 17.5%;
+    --secondary: 310 50% 60%; /* Muted Pink */
     --secondary-foreground: 210 40% 98%;
 
     --muted: 217.2 32.6% 17.5%;
     --muted-foreground: 215 20.2% 65.1%;
 
-    --accent: 217.2 32.6% 17.5%;
+    --accent: 190 80% 40%; /* Deep Cyan */
     --accent-foreground: 210 40% 98%;
 
     --destructive: 0 62.8% 30.6%;
@@ -71,34 +73,44 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased selection:bg-primary/30 selection:text-primary-foreground;
+    /* Premium Dark Mode Gradient */
     background-image: 
-      radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
-      radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
-      radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
+      radial-gradient(circle at 15% 50%, hsla(250, 40%, 15%, 0.5) 0%, transparent 40%),
+      radial-gradient(circle at 85% 30%, hsla(310, 40%, 15%, 0.3) 0%, transparent 40%),
+      radial-gradient(circle at 50% 0%, hsla(220, 50%, 10%, 1) 0%, transparent 60%);
     background-attachment: fixed;
   }
   
   /* Light mode gradient */
   :root body {
      background-image: 
-      radial-gradient(at 0% 0%, hsla(252,100%,96%,1) 0, transparent 50%), 
-      radial-gradient(at 50% 0%, hsla(220,100%,96%,1) 0, transparent 50%), 
-      radial-gradient(at 100% 0%, hsla(340,100%,96%,1) 0, transparent 50%);
+      radial-gradient(circle at 15% 50%, hsla(250, 60%, 96%, 0.8) 0%, transparent 40%),
+      radial-gradient(circle at 85% 30%, hsla(310, 60%, 96%, 0.6) 0%, transparent 40%),
+      radial-gradient(circle at 50% 0%, hsla(220, 60%, 98%, 1) 0%, transparent 60%);
   }
 }
 
 /* Glassmorphism Utilities */
 .glass {
-  @apply bg-white/70 backdrop-blur-lg border border-white/20 shadow-xl;
-}
-
-.glass-dark {
-  @apply bg-black/30 backdrop-blur-lg border border-white/10 shadow-xl;
+  @apply bg-white/70 dark:bg-black/40 backdrop-blur-xl border border-white/20 dark:border-white/10 shadow-xl;
 }
 
 .glass-card {
-  @apply bg-white/80 backdrop-blur-md border border-white/40 shadow-sm hover:shadow-md transition-all duration-300;
+  @apply bg-white/80 dark:bg-gray-900/60 backdrop-blur-md border border-white/40 dark:border-white/10 shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1;
+}
+
+.glass-panel {
+  @apply bg-white/50 dark:bg-black/20 backdrop-blur-lg border border-white/30 dark:border-white/5;
+}
+
+/* Text Gradients */
+.text-gradient {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-primary via-secondary to-accent;
+}
+
+.text-gradient-gold {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-amber-400 via-orange-300 to-yellow-500;
 }
 
 /* Animations */
@@ -119,6 +131,20 @@
 
 .animation-delay-4000 {
   animation-delay: 4s;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-muted-foreground/20 rounded-full hover:bg-muted-foreground/40 transition-colors;
 }
 
 /* Hide header and footer when in meeting room */
