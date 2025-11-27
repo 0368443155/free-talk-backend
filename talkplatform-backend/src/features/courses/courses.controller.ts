@@ -294,4 +294,14 @@ export class CoursesController {
         const teacherId = req.user.id;
         await this.coursesService.deleteLesson(lessonId, teacherId);
     }
+
+    // ==================== MEETING ENDPOINTS ====================
+
+    @Get(':id/meetings')
+    @ApiOperation({ summary: 'Get all meetings for a course' })
+    @ApiResponse({ status: 200, description: 'Meetings retrieved successfully' })
+    @ApiResponse({ status: 404, description: 'Course not found' })
+    async getCourseMeetings(@Param('id') courseId: string) {
+        return this.coursesService.getCourseMeetings(courseId);
+    }
 }

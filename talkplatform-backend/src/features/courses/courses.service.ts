@@ -974,4 +974,25 @@ export class CoursesService {
 
         this.logger.log(`🗑️ Lesson deleted: ${lessonId}`);
     }
+
+    async getCourseMeetings(courseId: string): Promise<Meeting[]> {
+        // Verify course exists
+        const course = await this.courseRepository.findOne({
+            where: { id: courseId },
+        });
+
+        if (!course) {
+            throw new NotFoundException('Course not found');
+        }
+
+        // Get all meetings for this course
+        const meetings = await this.meetingRepository.find({
+            where: { course_id: courseId },
+            relations: ['host', 'lesson', 'session'],
+            order: { scheduled_at: 'ASC' },
+        });
+
+        this.logger.log(`Found ${meetings.length} meetings for course ${courseId}`);
+        return meetings;
+    }
 }

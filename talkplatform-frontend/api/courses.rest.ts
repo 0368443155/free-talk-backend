@@ -457,3 +457,11 @@ export async function updateLessonApi(
 export async function deleteLessonApi(courseId: string, sessionId: string, lessonId: string): Promise<void> {
     await apiClient.delete(`/courses/${courseId}/sessions/${sessionId}/lessons/${lessonId}`);
 }
+
+/**
+ * Get all meetings for a course
+ */
+export async function getCourseMeetingsApi(courseId: string): Promise<any[]> {
+    const response = await apiClient.get(`/courses/${courseId}/meetings`);
+    return response.data;
+}

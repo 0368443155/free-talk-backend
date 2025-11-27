@@ -314,16 +314,27 @@ export default function CourseDetailPage() {
                                                                                     </div>
                                                                                 </div>
                                                                             </div>
-                                                                            {hasAccess && lesson.meeting_link && (
-                                                                                <Button
-                                                                                    size="sm"
-                                                                                    onClick={() => window.open(lesson.meeting_link, '_blank')}
-                                                                                    className="ml-4"
-                                                                                >
-                                                                                    <Video className="w-3 h-3 mr-1" />
-                                                                                    Join
-                                                                                </Button>
-                                                                            )}
+                                                                            <div className="ml-4 flex gap-2">
+                                                                                {lesson.meeting_link && (
+                                                                                    <Button
+                                                                                        size="sm"
+                                                                                        onClick={() => window.open(lesson.meeting_link, '_blank')}
+                                                                                    >
+                                                                                        <Video className="w-3 h-3 mr-1" />
+                                                                                        {hasAccess ? 'Join Meeting' : 'View Meeting'}
+                                                                                    </Button>
+                                                                                )}
+                                                                                {lesson.meeting_id && (
+                                                                                    <Button
+                                                                                        size="sm"
+                                                                                        variant="outline"
+                                                                                        onClick={() => router.push(`/meetings/${lesson.meeting_id}`)}
+                                                                                    >
+                                                                                        <Video className="w-3 h-3 mr-1" />
+                                                                                        Meeting Details
+                                                                                    </Button>
+                                                                                )}
+                                                                            </div>
                                                                         </div>
                                                                     </div>
                                                                 ))}
