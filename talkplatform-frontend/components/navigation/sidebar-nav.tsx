@@ -84,6 +84,12 @@ const studentNavItems = [
         description: 'Your class bookings'
       },
       {
+        title: 'My Learning',
+        href: '/student/my-learning',
+        icon: GraduationCap,
+        description: 'My courses and enrollments'
+      },
+      {
         title: 'My Purchases',
         href: '/marketplace/my-purchases',
         icon: BookOpen,

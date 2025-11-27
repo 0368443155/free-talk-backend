@@ -24,6 +24,8 @@ import { getCourseByIdApi, Course } from '@/api/courses.rest';
 import { enrollInCourseApi, purchaseSessionApi, checkSessionAccessApi } from '@/api/enrollments.rest';
 import { useUser } from '@/store/user-store';
 import { Edit } from 'lucide-react';
+import { CreditBalance } from '@/components/courses/credit-balance';
+import { LessonCard } from '@/components/courses/lesson-card';
 
 export default function CourseDetailPage() {
     const router = useRouter();
@@ -198,56 +200,66 @@ export default function CourseDetailPage() {
                             </div>
                         </div>
 
-                        {/* Price Card */}
-                        <Card className="w-80">
-                            <CardHeader>
-                                <CardTitle className="text-2xl">
-                                    ${course.price_full_course}
-                                </CardTitle>
-                                <CardDescription>Full Course Price</CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                <Button
-                                    className="w-full"
-                                    size="lg"
-                                    onClick={handleBuyFullCourse}
-                                    disabled={purchasing}
-                                >
-                                    {purchasing ? (
-                                        <>
-                                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                            Processing...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <DollarSign className="w-4 h-4 mr-2" />
-                                            Buy Full Course
-                                        </>
+                        {/* Price Card & Credit Balance */}
+                        <div className="w-80 space-y-4">
+                            <CreditBalance />
+                            
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle className="text-2xl">
+                                        ${course.price_full_course || 0}
+                                    </CardTitle>
+                                    <CardDescription>Full Course Price</CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <Button
+                                        className="w-full"
+                                        size="lg"
+                                        onClick={handleBuyFullCourse}
+                                        disabled={purchasing || (user?.credit_balance || 0) < (course.price_full_course || 0)}
+                                    >
+                                        {purchasing ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                Processing...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <DollarSign className="w-4 h-4 mr-2" />
+                                                Buy Full Course
+                                            </>
+                                        )}
+                                    </Button>
+
+                                    {(user?.credit_balance || 0) < (course.price_full_course || 0) && (
+                                        <p className="text-xs text-red-600 text-center">
+                                            Insufficient credits. Add more credits to purchase.
+                                        </p>
                                     )}
-                                </Button>
 
-                                {course.price_per_session && (
-                                    <div className="text-center text-sm text-gray-600">
-                                        or ${course.price_per_session} per session
-                                    </div>
-                                )}
+                                    {course.price_per_session && (
+                                        <div className="text-center text-sm text-gray-600">
+                                            or ${course.price_per_session} per session
+                                        </div>
+                                    )}
 
-                                <div className="pt-4 border-t space-y-2 text-sm">
-                                    <div className="flex items-center gap-2">
-                                        <CheckCircle className="w-4 h-4 text-green-600" />
-                                        <span>Access to all {course.total_sessions} sessions</span>
+                                    <div className="pt-4 border-t space-y-2 text-sm">
+                                        <div className="flex items-center gap-2">
+                                            <CheckCircle className="w-4 h-4 text-green-600" />
+                                            <span>Access to all {course.total_sessions} sessions</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <CheckCircle className="w-4 h-4 text-green-600" />
+                                            <span>Lifetime access</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <CheckCircle className="w-4 h-4 text-green-600" />
+                                            <span>Certificate of completion</span>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <CheckCircle className="w-4 h-4 text-green-600" />
-                                        <span>Lifetime access</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <CheckCircle className="w-4 h-4 text-green-600" />
-                                        <span>Certificate of completion</span>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
+                                </CardContent>
+                            </Card>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -294,63 +306,14 @@ export default function CourseDetailPage() {
                                                                     Lessons ({session.lessons.length}):
                                                                 </p>
                                                                 {session.lessons.map((lesson) => (
-                                                                    <div
+                                                                    <LessonCard
                                                                         key={lesson.id}
-                                                                        className="border rounded-lg p-3 bg-gray-50"
-                                                                    >
-                                                                        <div className="flex items-center justify-between">
-                                                                            <div className="flex-1">
-                                                                                <div className="flex items-center gap-2 mb-1">
-                                                                                    <Badge variant="outline">
-                                                                                        Lesson {lesson.lesson_number}
-                                                                                    </Badge>
-                                                                                    <span className="text-sm font-medium">
-                                                                                        {lesson.title}
-                                                                                    </span>
-                                                                                </div>
-                                                                                {lesson.description && (
-                                                                                    <p className="text-xs text-gray-600 mb-2">
-                                                                                        {lesson.description}
-                                                                                    </p>
-                                                                                )}
-                                                                                <div className="flex items-center gap-4 text-xs text-gray-600">
-                                                                                    <div className="flex items-center gap-1">
-                                                                                        <Calendar className="w-3 h-3" />
-                                                                                        {new Date(lesson.scheduled_date).toLocaleDateString()}
-                                                                                    </div>
-                                                                                    <div className="flex items-center gap-1">
-                                                                                        <Clock className="w-3 h-3" />
-                                                                                        {lesson.start_time} - {lesson.end_time}
-                                                                                    </div>
-                                                                                    <div className="flex items-center gap-1">
-                                                                                        <Video className="w-3 h-3" />
-                                                                                        {lesson.duration_minutes} minutes
-                                                                                    </div>
-                                                                                </div>
-                                                                            </div>
-                                                                            <div className="ml-4 flex gap-2">
-                                                                                {lesson.meeting_link && (
-                                                                                    <Button
-                                                                                        size="sm"
-                                                                                        onClick={() => window.open(lesson.meeting_link, '_blank')}
-                                                                                    >
-                                                                                        <Video className="w-3 h-3 mr-1" />
-                                                                                        {hasAccess ? 'Join Meeting' : 'View Meeting'}
-                                                                                    </Button>
-                                                                                )}
-                                                                                {lesson.meeting_id && (
-                                                                                    <Button
-                                                                                        size="sm"
-                                                                                        variant="outline"
-                                                                                        onClick={() => router.push(`/meetings/${lesson.meeting_id}`)}
-                                                                                    >
-                                                                                        <Video className="w-3 h-3 mr-1" />
-                                                                                        Meeting Details
-                                                                                    </Button>
-                                                                                )}
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
+                                                                        lesson={lesson}
+                                                                        courseId={courseId}
+                                                                        sessionId={session.id}
+                                                                        hasSessionAccess={hasAccess}
+                                                                        onAccessChange={loadCourse}
+                                                                    />
                                                                 ))}
                                                             </div>
                                                         )}

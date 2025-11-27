@@ -367,6 +367,13 @@ export default function MainNav() {
                                 </DropdownMenuItem>
 
                                 <DropdownMenuItem asChild>
+                                    <Link href="/student/my-learning" className="cursor-pointer">
+                                        <GraduationCap className="w-4 h-4 mr-2" />
+                                        My Learning
+                                    </Link>
+                                </DropdownMenuItem>
+
+                                <DropdownMenuItem asChild>
                                     <Link href="/marketplace/my-purchases" className="cursor-pointer">
                                         <ShoppingBag className="w-4 h-4 mr-2" />
                                         My Purchases

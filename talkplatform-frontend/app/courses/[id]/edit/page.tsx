@@ -147,7 +147,7 @@ export default function EditCoursePage() {
     const [language, setLanguage] = useState('English');
     const [priceType, setPriceType] = useState<PriceType>(PriceType.PER_SESSION);
     const [pricePerSession, setPricePerSession] = useState<number>(10);
-    const [priceFullCourse, setPriceFullCourse] = useState<number>();
+    const [priceFullCourse, setPriceFullCourse] = useState<number>(0);
     const [maxStudents, setMaxStudents] = useState<number>(30);
     const [durationHours, setDurationHours] = useState<number>(10);
 
@@ -184,8 +184,8 @@ export default function EditCoursePage() {
             setLevel(course.level || '');
             setLanguage(course.language || 'English');
             setPriceType(course.price_type || PriceType.PER_SESSION);
-            setPricePerSession(course.price_per_session);
-            setPriceFullCourse(course.price_full_course);
+            setPricePerSession(course.price_per_session || 0);
+            setPriceFullCourse(course.price_full_course || 0);
             setMaxStudents(course.max_students || 30);
             setDurationHours(course.duration_hours || 10);
 
@@ -719,7 +719,10 @@ export default function EditCoursePage() {
                                             id="pricePerSession"
                                             type="number"
                                             value={pricePerSession}
-                                            onChange={(e) => setPricePerSession(Number(e.target.value))}
+                                            onChange={(e) => {
+                                                const value = Number(e.target.value);
+                                                setPricePerSession(isNaN(value) ? 0 : value);
+                                            }}
                                             min={1}
                                             step="0.01"
                                         />
@@ -731,7 +734,10 @@ export default function EditCoursePage() {
                                             id="priceFullCourse"
                                             type="number"
                                             value={priceFullCourse}
-                                            onChange={(e) => setPriceFullCourse(Number(e.target.value))}
+                                            onChange={(e) => {
+                                                const value = Number(e.target.value);
+                                                setPriceFullCourse(isNaN(value) ? 0 : value);
+                                            }}
                                             min={1}
                                             step="0.01"
                                         />

@@ -150,6 +150,8 @@ export interface Lesson {
     qr_code_url?: string;
     qr_code_data?: string;
     status: LessonStatus;
+    is_preview?: boolean;
+    is_free?: boolean;
     created_at: string;
     updated_at: string;
     materials?: LessonMaterial[];
@@ -189,6 +191,8 @@ export interface CreateLessonDto {
     scheduled_date: string;
     start_time: string;
     end_time: string;
+    is_preview?: boolean;
+    is_free?: boolean;
     materials?: CreateLessonMaterialDto[];
 }
 
@@ -481,5 +485,42 @@ export async function deleteLessonApi(courseId: string, sessionId: string, lesso
  */
 export async function getCourseMeetingsApi(courseId: string): Promise<any[]> {
     const response = await apiClient.get(`/courses/${courseId}/meetings`);
+    return response.data;
+}
+
+/**
+ * Get lesson materials (requires access)
+ */
+export async function getLessonMaterialsApi(lessonId: string): Promise<LessonMaterial[]> {
+    const response = await apiClient.get(`/courses/lessons/${lessonId}/materials`);
+    return response.data;
+}
+
+/**
+ * Download material (requires access)
+ */
+export async function downloadMaterialApi(materialId: string): Promise<{ material: LessonMaterial; downloadUrl: string; message: string }> {
+    const response = await apiClient.get(`/courses/materials/${materialId}/download`);
+    return response.data;
+}
+
+/**
+ * Join lesson meeting (requires access)
+ */
+export async function joinLessonMeetingApi(
+    courseId: string,
+    sessionId: string,
+    lessonId: string,
+    deviceSettings?: { audioEnabled?: boolean; videoEnabled?: boolean }
+): Promise<any> {
+    const response = await apiClient.post(`/courses/${courseId}/sessions/${sessionId}/lessons/${lessonId}/join`, deviceSettings);
+    return response.data;
+}
+
+/**
+ * Check lesson access
+ */
+export async function checkLessonAccessApi(courseId: string, sessionId: string, lessonId: string): Promise<{ hasAccess: boolean; reason?: string; requiresPurchase?: boolean }> {
+    const response = await apiClient.get(`/courses/${courseId}/sessions/${sessionId}/lessons/${lessonId}/access`);
     return response.data;
 }

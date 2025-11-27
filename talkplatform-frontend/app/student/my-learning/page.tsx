@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -10,22 +10,17 @@ import { useToast } from '@/components/ui/use-toast';
 import {
     BookOpen,
     Calendar,
-    Clock,
     DollarSign,
-    Video,
+    Loader2,
+    ArrowRight,
     CheckCircle,
     XCircle,
-    Loader2,
-    AlertCircle,
+    Clock,
+    Users,
+    GraduationCap,
 } from 'lucide-react';
-import {
-    getMyEnrollmentsApi,
-    getMySessionPurchasesApi,
-    cancelEnrollmentApi,
-    cancelSessionPurchaseApi,
-    CourseEnrollment,
-    SessionPurchase,
-} from '@/api/enrollments.rest';
+import { getMyEnrollmentsApi, getMySessionPurchasesApi, cancelEnrollmentApi, cancelSessionPurchaseApi, CourseEnrollment, SessionPurchase } from '@/api/enrollments.rest';
+import { useUser } from '@/store/user-store';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -36,25 +31,23 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { formatDistanceToNow } from 'date-fns';
 
-export default function MyEnrollmentsPage() {
+export default function MyLearningPage() {
     const router = useRouter();
     const { toast } = useToast();
-
+    const { userInfo } = useUser();
     const [enrollments, setEnrollments] = useState<CourseEnrollment[]>([]);
-    const [purchases, setPurchases] = useState<SessionPurchase[]>([]);
+    const [sessionPurchases, setSessionPurchases] = useState<SessionPurchase[]>([]);
     const [loading, setLoading] = useState(true);
     const [cancelling, setCancelling] = useState<string | null>(null);
-    const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
-    const [itemToCancel, setItemToCancel] = useState<{
-        type: 'enrollment' | 'purchase';
-        id: string;
-        title: string;
-    } | null>(null);
+    const [cancelDialog, setCancelDialog] = useState<{ type: 'enrollment' | 'purchase'; id: string; title: string } | null>(null);
 
     useEffect(() => {
-        loadData();
-    }, []);
+        if (userInfo) {
+            loadData();
+        }
+    }, [userInfo]);
 
     const loadData = async () => {
         try {
@@ -64,11 +57,11 @@ export default function MyEnrollmentsPage() {
                 getMySessionPurchasesApi(),
             ]);
             setEnrollments(enrollmentsData);
-            setPurchases(purchasesData);
+            setSessionPurchases(purchasesData);
         } catch (error: any) {
             toast({
                 title: "Error",
-                description: "Failed to load your enrollments",
+                description: error.response?.data?.message || "Failed to load your learning data",
                 variant: "destructive",
             });
         } finally {
@@ -76,43 +69,49 @@ export default function MyEnrollmentsPage() {
         }
     };
 
-    const handleCancelClick = (type: 'enrollment' | 'purchase', id: string, title: string) => {
-        setItemToCancel({ type, id, title });
-        setCancelDialogOpen(true);
-    };
-
-    const handleConfirmCancel = async () => {
-        if (!itemToCancel) return;
+    const handleCancelEnrollment = async () => {
+        if (!cancelDialog) return;
 
         try {
-            setCancelling(itemToCancel.id);
-
-            if (itemToCancel.type === 'enrollment') {
-                await cancelEnrollmentApi(itemToCancel.id);
-                toast({
-                    title: "Enrollment Cancelled",
-                    description: "Your enrollment has been cancelled and refunded",
-                });
-            } else {
-                await cancelSessionPurchaseApi(itemToCancel.id);
-                toast({
-                    title: "Session Cancelled",
-                    description: "Your session purchase has been cancelled and refunded",
-                });
-            }
-
-            // Reload data
+            setCancelling(cancelDialog.id);
+            await cancelEnrollmentApi(cancelDialog.id);
+            toast({
+                title: "Success",
+                description: "Enrollment cancelled and refunded",
+            });
+            setCancelDialog(null);
             await loadData();
         } catch (error: any) {
             toast({
-                title: "Cancellation Failed",
-                description: error.response?.data?.message || "Failed to cancel",
+                title: "Error",
+                description: error.response?.data?.message || "Failed to cancel enrollment",
                 variant: "destructive",
             });
         } finally {
             setCancelling(null);
-            setCancelDialogOpen(false);
-            setItemToCancel(null);
+        }
+    };
+
+    const handleCancelPurchase = async () => {
+        if (!cancelDialog) return;
+
+        try {
+            setCancelling(cancelDialog.id);
+            await cancelSessionPurchaseApi(cancelDialog.id);
+            toast({
+                title: "Success",
+                description: "Purchase cancelled and refunded",
+            });
+            setCancelDialog(null);
+            await loadData();
+        } catch (error: any) {
+            toast({
+                title: "Error",
+                description: error.response?.data?.message || "Failed to cancel purchase",
+                variant: "destructive",
+            });
+        } finally {
+            setCancelling(null);
         }
     };
 
@@ -126,175 +125,177 @@ export default function MyEnrollmentsPage() {
 
     return (
         <div className="min-h-screen bg-gray-50">
-            {/* Header */}
-            <div className="bg-white shadow-sm border-b">
-                <div className="max-w-7xl mx-auto px-4 py-6">
-                    <h1 className="text-3xl font-bold text-gray-900">My Learning</h1>
-                    <p className="text-gray-600 mt-1">Manage your courses and sessions</p>
-                </div>
-            </div>
-
             <div className="max-w-7xl mx-auto px-4 py-8">
+                <div className="mb-6">
+                    <h1 className="text-3xl font-bold text-gray-900 mb-2">My Learning</h1>
+                    <p className="text-gray-600">Manage your course enrollments and session purchases</p>
+                </div>
+
                 <Tabs defaultValue="enrollments" className="space-y-6">
                     <TabsList>
                         <TabsTrigger value="enrollments">
-                            My Courses ({enrollments.length})
+                            <BookOpen className="w-4 h-4 mr-2" />
+                            Enrollments ({enrollments.length})
                         </TabsTrigger>
-                        <TabsTrigger value="sessions">
-                            My Sessions ({purchases.length})
+                        <TabsTrigger value="purchases">
+                            <Calendar className="w-4 h-4 mr-2" />
+                            Session Purchases ({sessionPurchases.length})
                         </TabsTrigger>
                     </TabsList>
 
-                    {/* Course Enrollments */}
                     <TabsContent value="enrollments" className="space-y-4">
-                        {enrollments.length > 0 ? (
-                            enrollments.map((enrollment) => (
-                                <Card key={enrollment.id}>
-                                    <CardContent className="p-6">
-                                        <div className="flex justify-between items-start">
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-2 mb-2">
-                                                    <Badge
-                                                        variant={
-                                                            enrollment.status === 'active'
-                                                                ? 'default'
-                                                                : enrollment.status === 'completed'
-                                                                    ? 'secondary'
-                                                                    : 'destructive'
-                                                        }
-                                                    >
-                                                        {enrollment.status}
-                                                    </Badge>
-                                                    {enrollment.payment_status === 'refunded' && (
-                                                        <Badge variant="outline">Refunded</Badge>
-                                                    )}
-                                                </div>
-
-                                                <h3 className="text-xl font-semibold">
-                                                    {enrollment.course?.title || 'Course'}
-                                                </h3>
-
-                                                <div className="flex items-center gap-4 mt-3 text-sm text-gray-600">
-                                                    <div className="flex items-center gap-1">
-                                                        <DollarSign className="w-4 h-4" />
-                                                        Paid: ${enrollment.total_price_paid}
-                                                    </div>
-                                                    <div className="flex items-center gap-1">
-                                                        <Calendar className="w-4 h-4" />
-                                                        Enrolled: {new Date(enrollment.enrolled_at).toLocaleDateString()}
-                                                    </div>
-                                                    <div className="flex items-center gap-1">
-                                                        <CheckCircle className="w-4 h-4" />
-                                                        {enrollment.completion_percentage}% Complete
-                                                    </div>
-                                                </div>
-
-                                                {enrollment.refund_amount > 0 && (
-                                                    <div className="mt-2 text-sm text-green-600">
-                                                        Refunded: ${enrollment.refund_amount}
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            <div className="ml-4 flex gap-2">
-                                                {enrollment.status === 'active' && (
-                                                    <>
-                                                        <Button
-                                                            onClick={() => router.push(`/courses/${enrollment.course_id}`)}
-                                                        >
-                                                            <BookOpen className="w-4 h-4 mr-2" />
-                                                            Continue Learning
-                                                        </Button>
-                                                        <Button
-                                                            variant="outline"
-                                                            onClick={() =>
-                                                                handleCancelClick(
-                                                                    'enrollment',
-                                                                    enrollment.id,
-                                                                    enrollment.course?.title || 'Course'
-                                                                )
-                                                            }
-                                                            disabled={cancelling === enrollment.id}
-                                                        >
-                                                            {cancelling === enrollment.id ? (
-                                                                <Loader2 className="w-4 h-4 animate-spin" />
-                                                            ) : (
-                                                                'Cancel & Refund'
-                                                            )}
-                                                        </Button>
-                                                    </>
-                                                )}
-                                                {enrollment.status === 'completed' && (
-                                                    <Button variant="outline">
-                                                        <CheckCircle className="w-4 h-4 mr-2" />
-                                                        View Certificate
-                                                    </Button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            ))
-                        ) : (
+                        {enrollments.length === 0 ? (
                             <Card>
-                                <CardContent className="p-12 text-center">
-                                    <BookOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                                    <h3 className="text-lg font-medium text-gray-900 mb-2">
-                                        No enrollments yet
-                                    </h3>
-                                    <p className="text-gray-600 mb-4">
-                                        Start learning by enrolling in a course
-                                    </p>
+                                <CardContent className="py-12 text-center">
+                                    <GraduationCap className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                                    <h3 className="text-lg font-semibold text-gray-900 mb-2">No enrollments yet</h3>
+                                    <p className="text-gray-600 mb-4">Start learning by enrolling in a course</p>
                                     <Button onClick={() => router.push('/courses')}>
                                         Browse Courses
                                     </Button>
                                 </CardContent>
                             </Card>
-                        )}
-                    </TabsContent>
-
-                    {/* Session Purchases */}
-                    <TabsContent value="sessions" className="space-y-4">
-                        {purchases.length > 0 ? (
-                            purchases.map((purchase) => (
-                                <Card key={purchase.id}>
-                                    <CardContent className="p-6">
-                                        <div className="flex justify-between items-start">
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-2 mb-2">
-                                                    <Badge
-                                                        variant={
-                                                            purchase.status === 'attended'
-                                                                ? 'default'
-                                                                : purchase.status === 'active'
-                                                                    ? 'secondary'
-                                                                    : 'destructive'
-                                                        }
-                                                    >
-                                                        {purchase.status}
-                                                    </Badge>
-                                                    {purchase.attended && (
-                                                        <Badge variant="outline" className="bg-green-50">
-                                                            <CheckCircle className="w-3 h-3 mr-1" />
-                                                            Attended
+                        ) : (
+                            <div className="grid gap-4">
+                                {enrollments.map((enrollment) => (
+                                    <Card key={enrollment.id}>
+                                        <CardContent className="p-6">
+                                            <div className="flex items-start justify-between">
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <h3 className="text-lg font-semibold">
+                                                            {enrollment.course?.title || 'Course'}
+                                                        </h3>
+                                                        <Badge
+                                                            variant={
+                                                                enrollment.status === 'active' ? 'default' :
+                                                                enrollment.status === 'completed' ? 'secondary' :
+                                                                'destructive'
+                                                            }
+                                                        >
+                                                            {enrollment.status}
                                                         </Badge>
+                                                        {enrollment.payment_status === 'paid' && (
+                                                            <Badge variant="outline" className="bg-green-50 text-green-700">
+                                                                <CheckCircle className="w-3 h-3 mr-1" />
+                                                                Paid
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+
+                                                    {enrollment.course?.teacher && (
+                                                        <p className="text-sm text-gray-600 mb-3">
+                                                            Teacher: {enrollment.course.teacher.username}
+                                                        </p>
+                                                    )}
+
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
+                                                        <div>
+                                                            <p className="text-gray-500">Price Paid</p>
+                                                            <p className="font-semibold">${enrollment.total_price_paid}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-gray-500">Progress</p>
+                                                            <p className="font-semibold">{enrollment.completion_percentage}%</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-gray-500">Enrolled</p>
+                                                            <p className="font-semibold">
+                                                                {formatDistanceToNow(new Date(enrollment.enrolled_at), { addSuffix: true })}
+                                                            </p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-gray-500">Sessions</p>
+                                                            <p className="font-semibold">{enrollment.course?.total_sessions || 0}</p>
+                                                        </div>
+                                                    </div>
+
+                                                    {enrollment.status === 'active' && (
+                                                        <Button
+                                                            variant="outline"
+                                                            onClick={() => router.push(`/courses/${enrollment.course_id}`)}
+                                                        >
+                                                            Continue Learning
+                                                            <ArrowRight className="w-4 h-4 ml-2" />
+                                                        </Button>
                                                     )}
                                                 </div>
 
-                                                <h3 className="text-lg font-semibold">
-                                                    {purchase.session?.title || 'Session'}
-                                                </h3>
-                                                <p className="text-sm text-gray-600">
-                                                    {purchase.course?.title || 'Course'}
-                                                </p>
+                                                {enrollment.status === 'active' && (
+                                                    <Button
+                                                        variant="destructive"
+                                                        size="sm"
+                                                        onClick={() => setCancelDialog({
+                                                            type: 'enrollment',
+                                                            id: enrollment.id,
+                                                            title: enrollment.course?.title || 'Course'
+                                                        })}
+                                                        disabled={cancelling === enrollment.id}
+                                                    >
+                                                        {cancelling === enrollment.id ? (
+                                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                                        ) : (
+                                                            'Cancel'
+                                                        )}
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
+                        )}
+                    </TabsContent>
 
-                                                <div className="flex items-center gap-4 mt-3 text-sm text-gray-600">
-                                                    <div className="flex items-center gap-1">
-                                                        <DollarSign className="w-4 h-4" />
-                                                        ${purchase.price_paid}
+                    <TabsContent value="purchases" className="space-y-4">
+                        {sessionPurchases.length === 0 ? (
+                            <Card>
+                                <CardContent className="py-12 text-center">
+                                    <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                                    <h3 className="text-lg font-semibold text-gray-900 mb-2">No session purchases yet</h3>
+                                    <p className="text-gray-600 mb-4">Purchase individual sessions from courses</p>
+                                    <Button onClick={() => router.push('/courses')}>
+                                        Browse Courses
+                                    </Button>
+                                </CardContent>
+                            </Card>
+                        ) : (
+                            <div className="grid gap-4">
+                                {sessionPurchases.map((purchase) => (
+                                    <Card key={purchase.id}>
+                                        <CardContent className="p-6">
+                                            <div className="flex items-start justify-between">
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <h3 className="text-lg font-semibold">
+                                                            {purchase.session?.title || `Session ${purchase.session?.session_number || ''}`}
+                                                        </h3>
+                                                        <Badge
+                                                            variant={
+                                                                purchase.status === 'active' ? 'default' :
+                                                                purchase.status === 'attended' ? 'secondary' :
+                                                                purchase.status === 'cancelled' ? 'destructive' :
+                                                                'outline'
+                                                            }
+                                                        >
+                                                            {purchase.status}
+                                                        </Badge>
+                                                        {purchase.attended && (
+                                                            <Badge variant="outline" className="bg-green-50 text-green-700">
+                                                                <CheckCircle className="w-3 h-3 mr-1" />
+                                                                Attended
+                                                            </Badge>
+                                                        )}
                                                     </div>
+
+                                                    {purchase.course && (
+                                                        <p className="text-sm text-gray-600 mb-1">
+                                                            Course: {purchase.course.title}
+                                                        </p>
+                                                    )}
+
                                                     {purchase.session && (
-                                                        <>
+                                                        <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
                                                             <div className="flex items-center gap-1">
                                                                 <Calendar className="w-4 h-4" />
                                                                 {new Date(purchase.session.scheduled_date).toLocaleDateString()}
@@ -303,92 +304,85 @@ export default function MyEnrollmentsPage() {
                                                                 <Clock className="w-4 h-4" />
                                                                 {purchase.session.start_time} - {purchase.session.end_time}
                                                             </div>
-                                                        </>
-                                                    )}
-                                                    {purchase.attended && (
-                                                        <div className="flex items-center gap-1">
-                                                            <Video className="w-4 h-4" />
-                                                            {purchase.attendance_duration_minutes} min attended
                                                         </div>
+                                                    )}
+
+                                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-4">
+                                                        <div>
+                                                            <p className="text-gray-500">Price Paid</p>
+                                                            <p className="font-semibold">${purchase.price_paid}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-gray-500">Purchased</p>
+                                                            <p className="font-semibold">
+                                                                {formatDistanceToNow(new Date(purchase.purchased_at), { addSuffix: true })}
+                                                            </p>
+                                                        </div>
+                                                        {purchase.attended && (
+                                                            <div>
+                                                                <p className="text-gray-500">Duration</p>
+                                                                <p className="font-semibold">{purchase.attendance_duration_minutes} min</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {purchase.status === 'active' && purchase.session && (
+                                                        <Button
+                                                            variant="outline"
+                                                            onClick={() => router.push(`/courses/${purchase.course_id}`)}
+                                                        >
+                                                            View Session
+                                                            <ArrowRight className="w-4 h-4 ml-2" />
+                                                        </Button>
                                                     )}
                                                 </div>
 
-                                                {purchase.refund_amount > 0 && (
-                                                    <div className="mt-2 text-sm text-green-600">
-                                                        Refunded: ${purchase.refund_amount}
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            <div className="ml-4">
                                                 {purchase.status === 'active' && !purchase.attended && (
-                                                    <div className="flex gap-2">
-                                                        <Button
-                                                            onClick={() =>
-                                                                router.push(`/sessions/${purchase.session_id}/join`)
-                                                            }
-                                                        >
-                                                            <Video className="w-4 h-4 mr-2" />
-                                                            Join Session
-                                                        </Button>
-                                                        <Button
-                                                            variant="outline"
-                                                            onClick={() =>
-                                                                handleCancelClick(
-                                                                    'purchase',
-                                                                    purchase.id,
-                                                                    purchase.session?.title || 'Session'
-                                                                )
-                                                            }
-                                                            disabled={cancelling === purchase.id}
-                                                        >
-                                                            {cancelling === purchase.id ? (
-                                                                <Loader2 className="w-4 h-4 animate-spin" />
-                                                            ) : (
-                                                                'Cancel & Refund'
-                                                            )}
-                                                        </Button>
-                                                    </div>
+                                                    <Button
+                                                        variant="destructive"
+                                                        size="sm"
+                                                        onClick={() => setCancelDialog({
+                                                            type: 'purchase',
+                                                            id: purchase.id,
+                                                            title: purchase.session?.title || 'Session'
+                                                        })}
+                                                        disabled={cancelling === purchase.id}
+                                                    >
+                                                        {cancelling === purchase.id ? (
+                                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                                        ) : (
+                                                            'Cancel'
+                                                        )}
+                                                    </Button>
                                                 )}
                                             </div>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            ))
-                        ) : (
-                            <Card>
-                                <CardContent className="p-12 text-center">
-                                    <Video className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                                    <h3 className="text-lg font-medium text-gray-900 mb-2">
-                                        No session purchases yet
-                                    </h3>
-                                    <p className="text-gray-600 mb-4">
-                                        Purchase individual sessions to get started
-                                    </p>
-                                    <Button onClick={() => router.push('/courses')}>
-                                        Browse Courses
-                                    </Button>
-                                </CardContent>
-                            </Card>
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
                         )}
                     </TabsContent>
                 </Tabs>
             </div>
 
-            {/* Cancel Confirmation Dialog */}
-            <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+            <AlertDialog open={!!cancelDialog} onOpenChange={(open) => !open && setCancelDialog(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Cancel and Refund?</AlertDialogTitle>
+                        <AlertDialogTitle>Cancel {cancelDialog?.type === 'enrollment' ? 'Enrollment' : 'Purchase'}?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Are you sure you want to cancel "{itemToCancel?.title}"? You will receive a full
-                            refund to your account balance.
+                            Are you sure you want to cancel "{cancelDialog?.title}"? 
+                            {cancelDialog?.type === 'enrollment' 
+                                ? ' You will receive a full refund to your credit balance.'
+                                : ' You will receive a refund to your credit balance if the session has not started.'}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Keep It</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleConfirmCancel}>
-                            Yes, Cancel & Refund
+                        <AlertDialogCancel>Keep {cancelDialog?.type === 'enrollment' ? 'Enrollment' : 'Purchase'}</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={cancelDialog?.type === 'enrollment' ? handleCancelEnrollment : handleCancelPurchase}
+                            className="bg-red-600 hover:bg-red-700"
+                        >
+                            Cancel {cancelDialog?.type === 'enrollment' ? 'Enrollment' : 'Purchase'}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

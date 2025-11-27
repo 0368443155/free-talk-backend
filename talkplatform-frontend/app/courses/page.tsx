@@ -35,7 +35,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { getCoursesApi, getMyCoursesApi, deleteCourseApi, publishCourseApi, unpublishCourseApi, Course, CourseStatus } from '@/api/courses.rest';
+import { getCoursesApi, getMyCoursesApi, deleteCourseApi, publishCourseApi, unpublishCourseApi, Course, CourseStatus, CourseCategory } from '@/api/courses.rest';
 import { useUser } from '@/store/user-store';
 
 export default function CoursesPage() {
@@ -154,7 +154,7 @@ export default function CoursesPage() {
         return matchesSearch && matchesCategory;
     });
 
-    const categories = ['all', ...Array.from(new Set(courses.map(c => c.category).filter((cat): cat is string => Boolean(cat))))];
+    const categories: string[] = ['all', ...Array.from(new Set(courses.map(c => c.category).filter((cat): cat is CourseCategory => cat !== undefined && cat !== null).map(cat => String(cat))))];
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -200,7 +200,7 @@ export default function CoursesPage() {
                                     key={category}
                                     variant={selectedCategory === category ? 'default' : 'outline'}
                                     size="sm"
-                                    onClick={() => setSelectedCategory(category)}
+                                    onClick={() => setSelectedCategory(category === 'all' ? 'all' : String(category))}
                                     className="whitespace-nowrap"
                                 >
                                     {category === 'all' ? 'All Categories' : category}

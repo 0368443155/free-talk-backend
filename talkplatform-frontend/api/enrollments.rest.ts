@@ -172,3 +172,13 @@ export const getSessionPurchaseByIdApi = async (
     const res = await axiosConfig.get(`/enrollments/sessions/${purchaseId}`);
     return res.data;
 };
+
+/**
+ * Check if user has access to lesson
+ */
+export const checkLessonAccessApi = async (
+    lessonId: string
+): Promise<{ hasAccess: boolean; reason?: string; requiresPurchase?: boolean }> => {
+    const res = await axiosConfig.get(`/enrollments/lessons/${lessonId}/access`);
+    return res.data;
+};

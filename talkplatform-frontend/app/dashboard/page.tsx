@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { useUser } from "@/store/user-store";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, Video, GraduationCap, ArrowRight, ShieldCheck, Clock, Sparkles } from "lucide-react";
+import { Users, Video, GraduationCap, ArrowRight, ShieldCheck, Clock, Sparkles, BookOpen, Wallet, Calendar, ShoppingBag } from "lucide-react";
 import BecomeTeacherButton from "@/components/become-teacher-button";
 import { GlobalChatPanel } from "@/components/global-chat/global-chat-panel";
+import { Phase2Navigation } from "@/components/courses/phase2-navigation";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -127,6 +128,48 @@ export default function DashboardPage() {
 
           {/* Main Actions */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* My Learning - Phase 2 */}
+            {!isTeacher && (
+              <Card className="glass-card border-white/20 hover:scale-[1.02] transition-transform cursor-pointer group" onClick={() => router.push('/student/my-learning')}>
+                <CardHeader>
+                  <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center mb-4 group-hover:bg-blue-500/20 transition-colors">
+                    <BookOpen className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <CardTitle className="font-heading text-xl">My Learning</CardTitle>
+                  <CardDescription>
+                    View your enrolled courses, session purchases, and learning progress
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button className="w-full bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border-0" variant="outline">
+                    View My Learning
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Browse Courses - Phase 2 */}
+            <Card className="glass-card border-white/20 hover:scale-[1.02] transition-transform cursor-pointer group" onClick={() => router.push('/courses')}>
+              <CardHeader>
+                <div className="w-12 h-12 rounded-xl bg-purple-500/10 flex items-center justify-center mb-4 group-hover:bg-purple-500/20 transition-colors">
+                  <GraduationCap className="h-6 w-6 text-purple-600" />
+                </div>
+                <CardTitle className="font-heading text-xl">Courses</CardTitle>
+                <CardDescription>
+                  {isTeacher
+                    ? 'Create and manage your courses, enroll students'
+                    : 'Browse and enroll in courses, purchase sessions'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button className="w-full bg-purple-500/10 text-purple-600 hover:bg-purple-500/20 border-0" variant="outline">
+                  {isTeacher ? 'My Courses' : 'Browse Courses'}
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </CardContent>
+            </Card>
+
             {/* Classrooms */}
             <Card className="glass-card border-white/20 hover:scale-[1.02] transition-transform cursor-pointer group" onClick={() => router.push('/classrooms')}>
               <CardHeader>
@@ -167,6 +210,31 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
 
+            {/* Add Credits - Phase 2 */}
+            {!isTeacher && (
+              <Card className="glass-card border-white/20 hover:scale-[1.02] transition-transform cursor-pointer group" onClick={() => router.push('/credits')}>
+                <CardHeader>
+                  <div className="w-12 h-12 rounded-xl bg-green-500/10 flex items-center justify-center mb-4 group-hover:bg-green-500/20 transition-colors">
+                    <Wallet className="h-6 w-6 text-green-600" />
+                  </div>
+                  <CardTitle className="font-heading text-xl">Add Credits</CardTitle>
+                  <CardDescription>
+                    Purchase credits to enroll in courses and purchase sessions
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="mb-3">
+                    <p className="text-sm text-muted-foreground">Current Balance</p>
+                    <p className="text-2xl font-bold text-green-600">${user?.credit_balance || 0}</p>
+                  </div>
+                  <Button className="w-full bg-green-500/10 text-green-600 hover:bg-green-500/20 border-0" variant="outline">
+                    Add Credits
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Admin */}
             {user.role === 'admin' && (
               <Card className="glass-card border-white/20 hover:scale-[1.02] transition-transform cursor-pointer group md:col-span-2" onClick={() => router.push('/admin')}>
@@ -187,6 +255,12 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
             )}
+          </div>
+
+          {/* Phase 2 Quick Navigation */}
+          <div className="mt-6">
+            <h2 className="text-2xl font-bold mb-4 font-heading">Course Management</h2>
+            <Phase2Navigation />
           </div>
 
           {/* Info Cards */}
