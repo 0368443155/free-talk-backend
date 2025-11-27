@@ -30,6 +30,22 @@ export enum PriceType {
     FULL_COURSE = 'full_course',
 }
 
+export enum CourseCategory {
+    ENGLISH = 'English',
+    MARKETING = 'Marketing',
+    BUSINESS = 'Business',
+    TECHNOLOGY = 'Technology',
+    DESIGN = 'Design',
+    HEALTH = 'Health',
+    FITNESS = 'Fitness',
+    MUSIC = 'Music',
+    ARTS = 'Arts',
+    SCIENCE = 'Science',
+    MATHEMATICS = 'Mathematics',
+    LANGUAGES = 'Languages',
+    OTHER = 'Other',
+}
+
 @Entity('courses')
 @Index(['teacher_id'])
 @Index(['category'])
@@ -81,8 +97,15 @@ export class Course {
     @Column({ type: 'varchar', length: 50, nullable: true })
     level: CourseLevel;
 
-    @Column({ type: 'varchar', length: 100, nullable: true })
-    category: string;
+    @Column({
+        type: 'enum',
+        enum: CourseCategory,
+        nullable: true,
+    })
+    category: CourseCategory;
+
+    @Column({ type: 'json', nullable: true })
+    tags: string[];
 
     @Column({
         type: 'varchar',

@@ -11,10 +11,11 @@ import {
     IsPositive,
     IsArray,
     ValidateNested,
+    MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { CourseLevel, PriceType } from '../entities/course.entity';
+import { CourseLevel, PriceType, CourseCategory } from '../entities/course.entity';
 import { CreateSessionWithMaterialsDto } from './session-material.dto';
 import { CreateLessonMaterialDto } from './lesson-material.dto';
 
@@ -100,12 +101,24 @@ export class CreateCourseDto {
     level?: CourseLevel;
 
     @ApiPropertyOptional({
-        example: 'Language Learning',
+        enum: CourseCategory,
+        example: CourseCategory.ENGLISH,
         description: 'Course category'
     })
-    @IsString()
+    @IsEnum(CourseCategory)
     @IsOptional()
-    category?: string;
+    category?: CourseCategory;
+
+    @ApiPropertyOptional({
+        example: ['conversation', 'grammar', 'business-english'],
+        description: 'Course tags (max 20 characters each)',
+        type: [String],
+    })
+    @IsArray()
+    @IsOptional()
+    @IsString({ each: true })
+    @MaxLength(20, { each: true, message: 'Each tag must be at most 20 characters' })
+    tags?: string[];
 
     @ApiPropertyOptional({
         example: 20,
@@ -165,15 +178,30 @@ export class UpdateCourseDto {
     @IsOptional()
     language?: string;
 
+    @ApiPropertyOptional({
+        enum: CourseCategory,
+        example: CourseCategory.ENGLISH,
+        description: 'Course category'
+    })
+    @IsEnum(CourseCategory)
+    @IsOptional()
+    category?: CourseCategory;
+
+    @ApiPropertyOptional({
+        example: ['conversation', 'grammar', 'business-english'],
+        description: 'Course tags (max 20 characters each)',
+        type: [String],
+    })
+    @IsArray()
+    @IsOptional()
+    @IsString({ each: true })
+    @MaxLength(20, { each: true, message: 'Each tag must be at most 20 characters' })
+    tags?: string[];
+
     @ApiPropertyOptional({ enum: CourseLevel })
     @IsEnum(CourseLevel)
     @IsOptional()
     level?: CourseLevel;
-
-    @ApiPropertyOptional({ example: 'Language Learning' })
-    @IsString()
-    @IsOptional()
-    category?: string;
 
     @ApiPropertyOptional({ example: 20, minimum: 1, maximum: 100 })
     @IsInt()
@@ -318,10 +346,25 @@ export class CreateCourseWithSessionsDto {
     @IsOptional()
     description?: string;
 
-    @ApiPropertyOptional({ example: 'Language Learning', description: 'Course category' })
-    @IsString()
+    @ApiPropertyOptional({
+        enum: CourseCategory,
+        example: CourseCategory.ENGLISH,
+        description: 'Course category'
+    })
+    @IsEnum(CourseCategory)
     @IsOptional()
-    category?: string;
+    category?: CourseCategory;
+
+    @ApiPropertyOptional({
+        example: ['conversation', 'grammar', 'business-english'],
+        description: 'Course tags (max 20 characters each)',
+        type: [String],
+    })
+    @IsArray()
+    @IsOptional()
+    @IsString({ each: true })
+    @MaxLength(20, { each: true, message: 'Each tag must be at most 20 characters' })
+    tags?: string[];
 
     @ApiPropertyOptional({ enum: CourseLevel, description: 'Course level' })
     @IsEnum(CourseLevel)

@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, FindOptionsWhere, DataSource } from 'typeorm';
-import { Course, CourseStatus, PriceType } from './entities/course.entity';
+import { Course, CourseStatus, PriceType, CourseCategory } from './entities/course.entity';
 import { CourseSession, SessionStatus } from './entities/course-session.entity';
 import { SessionMaterial, MaterialType } from './entities/session-material.entity';
 import { Lesson, LessonStatus } from './entities/lesson.entity';
@@ -549,7 +549,8 @@ export class CoursesService {
                 teacher_id: teacherId,
                 title: dto.title,
                 description: dto.description,
-                category: dto.category,
+                category: dto.category as CourseCategory | undefined,
+                tags: dto.tags,
                 level: dto.level,
                 language: dto.language,
                 price_type: priceType,
