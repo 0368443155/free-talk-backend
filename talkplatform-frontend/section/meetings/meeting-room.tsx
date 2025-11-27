@@ -843,8 +843,9 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     return null;
   };
 
-  // Show join options screen if meeting type not selected yet
-  if (!meetingTypeSelected && (!currentParticipant || !currentParticipant.is_online)) {
+  // Always show join options if meeting type not selected yet
+  // This ensures users from lessons also see the join options before entering meeting
+  if (!meetingTypeSelected) {
     // Show loading while fetching participants
     if (!participantsFetched) {
       return (
@@ -859,7 +860,8 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
       );
     }
 
-    // Show join options
+    // Show join options - user must choose meeting type first
+    // Even if participant already exists (from lesson join), still show options
     return (
       <>
         <MeetingJoinOptions

@@ -7,7 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, IsNull } from 'typeorm';
 import { Meeting, MeetingStatus, MeetingType, PricingType, MeetingLevel } from './entities/meeting.entity';
 import { MeetingParticipant, ParticipantRole } from './entities/meeting-participant.entity';
 import { MeetingChatMessage, MessageType } from './entities/meeting-chat-message.entity';
@@ -178,6 +178,7 @@ export class MeetingsService {
     const whereClause: any = {
       is_classroom_only: false,
       is_private: false,
+      lesson_id: IsNull(), // Exclude course lesson meetings
     };
 
     // Apply filters
@@ -513,7 +514,8 @@ export class MeetingsService {
   }
 
   /**
-   * Join lesson meeting with time validation and access control
+   * Validate lesson meeting access and time - does NOT create participant
+   * Participant will be created when user actually joins via frontend
    */
   async joinLessonMeeting(userId: string, lessonId: string) {
     const lesson = await this.lessonRepository.findOne({
@@ -572,8 +574,22 @@ export class MeetingsService {
       }
     }
 
-    // Use existing joinMeeting logic
-    return await this.joinMeeting(lesson.meeting.id, user);
+    // Return meeting info without creating participant
+    // Frontend will handle actual join after user selects meeting type
+    return {
+      meeting: lesson.meeting,
+      lesson: {
+        id: lesson.id,
+        title: lesson.title,
+        scheduled_date: lesson.scheduled_date,
+        start_time: lesson.start_time,
+        end_time: lesson.end_time,
+      },
+      access: {
+        hasAccess: true,
+        reason: access.reason,
+      },
+    };
   }
 
   async leaveMeeting(meetingId: string, user: User) {

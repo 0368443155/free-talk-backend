@@ -21,11 +21,12 @@ import {
     Award,
 } from 'lucide-react';
 import { getCourseByIdApi, Course } from '@/api/courses.rest';
-import { enrollInCourseApi, purchaseSessionApi, checkSessionAccessApi } from '@/api/enrollments.rest';
+import { enrollInCourseApi, purchaseSessionApi, checkSessionAccessApi, getMyEnrollmentsApi } from '@/api/enrollments.rest';
 import { useUser } from '@/store/user-store';
 import { Edit } from 'lucide-react';
 import { CreditBalance } from '@/components/courses/credit-balance';
 import { LessonCard } from '@/components/courses/lesson-card';
+import { PaymentConfirmationModal } from '@/components/courses/payment-confirmation-modal';
 
 export default function CourseDetailPage() {
     const router = useRouter();
@@ -39,10 +40,16 @@ export default function CourseDetailPage() {
     const [purchasing, setPurchasing] = useState(false);
     const [purchasingSession, setPurchasingSession] = useState<string | null>(null);
     const [sessionAccess, setSessionAccess] = useState<Record<string, boolean>>({});
+    const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const [paymentType, setPaymentType] = useState<'course' | 'session' | null>(null);
+    const [paymentAmount, setPaymentAmount] = useState(0);
+    const [paymentSessionId, setPaymentSessionId] = useState<string | null>(null);
+    const [isEnrolled, setIsEnrolled] = useState(false);
 
     useEffect(() => {
         loadCourse();
-    }, [courseId]);
+        checkEnrollment();
+    }, [courseId, user?.id]);
 
     const loadCourse = async () => {
         try {
@@ -80,48 +87,74 @@ export default function CourseDetailPage() {
         }
     };
 
-    const handleBuyFullCourse = async () => {
+    const checkEnrollment = async () => {
+        if (!user?.id) {
+            setIsEnrolled(false);
+            return;
+        }
+
+        try {
+            const enrollments = await getMyEnrollmentsApi();
+            const enrollment = enrollments.find(
+                (e) => e.course_id === courseId && e.status === 'active' && e.enrollment_type === 'full_course'
+            );
+            setIsEnrolled(!!enrollment);
+        } catch (error) {
+            // If error, assume not enrolled
+            setIsEnrolled(false);
+        }
+    };
+
+    const handleBuyFullCourse = () => {
+        if (!course?.price_full_course) return;
+        setPaymentType('course');
+        setPaymentAmount(course.price_full_course);
+        setShowPaymentModal(true);
+    };
+
+    const handleBuySession = (sessionId: string) => {
+        if (!course?.price_per_session) return;
+        setPaymentType('session');
+        setPaymentAmount(course.price_per_session);
+        setPaymentSessionId(sessionId);
+        setShowPaymentModal(true);
+    };
+
+    const handleConfirmPayment = async () => {
         try {
             setPurchasing(true);
-            await enrollInCourseApi(courseId, { enrollment_type: 'full_course' });
+            
+            if (paymentType === 'course') {
+                await enrollInCourseApi(courseId, { enrollment_type: 'full_course' });
+                toast({
+                    title: "Success!",
+                    description: "You have successfully enrolled in this course",
+                });
+            } else if (paymentType === 'session' && paymentSessionId) {
+                setPurchasingSession(paymentSessionId);
+                await purchaseSessionApi(paymentSessionId);
+                toast({
+                    title: "Success!",
+                    description: "Session purchased successfully",
+                });
+            }
 
-            toast({
-                title: "Success!",
-                description: "You have successfully enrolled in this course",
-            });
+            setShowPaymentModal(false);
+            setPaymentType(null);
+            setPaymentAmount(0);
+            setPaymentSessionId(null);
 
-            // Reload course to update access
+            // Reload course to update access and check enrollment
+            await checkEnrollment();
             await loadCourse();
         } catch (error: any) {
             toast({
                 title: "Purchase Failed",
-                description: error.response?.data?.message || "Failed to enroll in course",
+                description: error.response?.data?.message || "Failed to complete purchase",
                 variant: "destructive",
             });
         } finally {
             setPurchasing(false);
-        }
-    };
-
-    const handleBuySession = async (sessionId: string) => {
-        try {
-            setPurchasingSession(sessionId);
-            await purchaseSessionApi(sessionId);
-
-            toast({
-                title: "Success!",
-                description: "Session purchased successfully",
-            });
-
-            // Reload course to update access
-            await loadCourse();
-        } catch (error: any) {
-            toast({
-                title: "Purchase Failed",
-                description: error.response?.data?.message || "Failed to purchase session",
-                variant: "destructive",
-            });
-        } finally {
             setPurchasingSession(null);
         }
     };
@@ -138,19 +171,21 @@ export default function CourseDetailPage() {
         );
     }
 
-    if (!course) {
-        return (
-            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-                <div className="text-center">
-                    <h2 className="text-2xl font-bold text-gray-900 mb-2">Course not found</h2>
-                    <Button onClick={() => router.push('/courses')}>
-                        <ArrowLeft className="w-4 h-4 mr-2" />
-                        Back to Courses
-                    </Button>
+        if (!course) {
+            return (
+                <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                    <div className="text-center">
+                        <h2 className="text-2xl font-bold text-gray-900 mb-2">Course not found</h2>
+                        <Button onClick={() => router.push('/courses')}>
+                            <ArrowLeft className="w-4 h-4 mr-2" />
+                            Back to Courses
+                        </Button>
+                    </div>
                 </div>
-            </div>
-        );
-    }
+            );
+        }
+
+        const isTeacherOrAdmin = user?.id === course.teacher_id || user?.role === 'admin';
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -204,61 +239,80 @@ export default function CourseDetailPage() {
                         <div className="w-80 space-y-4">
                             <CreditBalance />
                             
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-2xl">
-                                        ${course.price_full_course || 0}
-                                    </CardTitle>
-                                    <CardDescription>Full Course Price</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <Button
-                                        className="w-full"
-                                        size="lg"
-                                        onClick={handleBuyFullCourse}
-                                        disabled={purchasing || (user?.credit_balance || 0) < (course.price_full_course || 0)}
-                                    >
-                                        {purchasing ? (
+                            {/* Only show pricing card if not enrolled (or if teacher/admin for tracking) */}
+                            {(isTeacherOrAdmin || !isEnrolled) && (
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle className="text-2xl">
+                                            ${course.price_full_course || 0}
+                                        </CardTitle>
+                                        <CardDescription>Full Course Price</CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="space-y-4">
+                                        {!isEnrolled && (
                                             <>
-                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                                Processing...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <DollarSign className="w-4 h-4 mr-2" />
-                                                Buy Full Course
+                                                <Button
+                                                    className="w-full"
+                                                    size="lg"
+                                                    onClick={handleBuyFullCourse}
+                                                    disabled={purchasing || (user?.credit_balance || 0) < (course.price_full_course || 0)}
+                                                >
+                                                    {purchasing ? (
+                                                        <>
+                                                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                            Processing...
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <DollarSign className="w-4 h-4 mr-2" />
+                                                            Buy Full Course
+                                                        </>
+                                                    )}
+                                                </Button>
+
+                                                {(user?.credit_balance || 0) < (course.price_full_course || 0) && (
+                                                    <p className="text-xs text-red-600 text-center">
+                                                        Insufficient credits. Add more credits to purchase.
+                                                    </p>
+                                                )}
+
+                                                {course.price_per_session && (
+                                                    <div className="text-center text-sm text-gray-600">
+                                                        or ${course.price_per_session} per session
+                                                    </div>
+                                                )}
                                             </>
                                         )}
-                                    </Button>
 
-                                    {(user?.credit_balance || 0) < (course.price_full_course || 0) && (
-                                        <p className="text-xs text-red-600 text-center">
-                                            Insufficient credits. Add more credits to purchase.
-                                        </p>
-                                    )}
+                                        {isEnrolled && !isTeacherOrAdmin && (
+                                            <div className="text-center py-4">
+                                                <Badge variant="default" className="bg-green-600 text-white px-4 py-2 text-base">
+                                                    <CheckCircle className="w-4 h-4 mr-2" />
+                                                    Enrolled
+                                                </Badge>
+                                                <p className="text-sm text-gray-600 mt-2">
+                                                    You have full access to this course
+                                                </p>
+                                            </div>
+                                        )}
 
-                                    {course.price_per_session && (
-                                        <div className="text-center text-sm text-gray-600">
-                                            or ${course.price_per_session} per session
+                                        <div className="pt-4 border-t space-y-2 text-sm">
+                                            <div className="flex items-center gap-2">
+                                                <CheckCircle className="w-4 h-4 text-green-600" />
+                                                <span>Access to all {course.total_sessions} sessions</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <CheckCircle className="w-4 h-4 text-green-600" />
+                                                <span>Lifetime access</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <CheckCircle className="w-4 h-4 text-green-600" />
+                                                <span>Certificate of completion</span>
+                                            </div>
                                         </div>
-                                    )}
-
-                                    <div className="pt-4 border-t space-y-2 text-sm">
-                                        <div className="flex items-center gap-2">
-                                            <CheckCircle className="w-4 h-4 text-green-600" />
-                                            <span>Access to all {course.total_sessions} sessions</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <CheckCircle className="w-4 h-4 text-green-600" />
-                                            <span>Lifetime access</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <CheckCircle className="w-4 h-4 text-green-600" />
-                                            <span>Certificate of completion</span>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
+                                    </CardContent>
+                                </Card>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -404,6 +458,22 @@ export default function CourseDetailPage() {
                     </TabsContent>
                 </Tabs>
             </div>
+
+            {/* Payment Confirmation Modal */}
+            <PaymentConfirmationModal
+                open={showPaymentModal}
+                onOpenChange={setShowPaymentModal}
+                onConfirm={handleConfirmPayment}
+                title={paymentType === 'course' ? 'Confirm Course Enrollment' : 'Confirm Session Purchase'}
+                description={
+                    paymentType === 'course'
+                        ? `Are you sure you want to enroll in "${course?.title}"? This will grant you access to all sessions in this course.`
+                        : `Are you sure you want to purchase this session?`
+                }
+                amount={paymentAmount}
+                currentBalance={user?.credit_balance || 0}
+                isProcessing={purchasing}
+            />
         </div>
     );
 }

@@ -11,6 +11,7 @@ import { User, UserRole } from '../../users/user.entity';
 import { CreateLiveKitRoomDto, JoinLiveKitRoomDto } from './dto/livekit-room.dto';
 import { PaginationDto } from '../../core/common/dto/pagination.dto';
 import { LiveKitService } from '../../livekit/livekit.service';
+import { IsNull } from 'typeorm';
 
 @Injectable()
 export class LiveKitRoomsService {
@@ -206,6 +207,8 @@ export class LiveKitRoomsService {
       .where('meeting.meeting_type = :type', { type: MeetingType.FREE_TALK })
       .andWhere('meeting.status = :status', { status: MeetingStatus.LIVE })
       .andWhere('meeting.is_private = :isPrivate', { isPrivate: false })
+      .andWhere('meeting.is_classroom_only = :isClassroomOnly', { isClassroomOnly: false })
+      .andWhere('meeting.lesson_id IS NULL') // Exclude course lesson meetings
       .andWhere('meeting.current_participants < meeting.max_participants') // Only rooms with space
       .orderBy('meeting.created_at', 'DESC');
 
@@ -252,7 +255,9 @@ export class LiveKitRoomsService {
     const queryBuilder = this.meetingRepository.createQueryBuilder('meeting')
       .leftJoinAndSelect('meeting.host', 'host')
       .where('meeting.meeting_type = :type', { type: MeetingType.TEACHER_CLASS })
-      .andWhere('meeting.is_private = :isPrivate', { isPrivate: false });
+      .andWhere('meeting.is_private = :isPrivate', { isPrivate: false })
+      .andWhere('meeting.is_classroom_only = :isClassroomOnly', { isClassroomOnly: false })
+      .andWhere('meeting.lesson_id IS NULL'); // Exclude course lesson meetings
 
     if (filters.scheduled_only) {
       queryBuilder.andWhere('meeting.status = :status', { status: MeetingStatus.SCHEDULED });
@@ -322,7 +327,9 @@ export class LiveKitRoomsService {
       where: {
         region,
         status: MeetingStatus.LIVE,
-        is_private: false
+        is_private: false,
+        is_classroom_only: false,
+        lesson_id: IsNull(), // Exclude course lesson meetings
       },
       relations: ['host', 'participants'],
       order: { created_at: 'DESC' },

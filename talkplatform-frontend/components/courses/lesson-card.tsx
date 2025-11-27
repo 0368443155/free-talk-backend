@@ -96,12 +96,11 @@ export function LessonCard({ lesson, courseId, sessionId, hasSessionAccess, onAc
 
         try {
             setJoining(true);
-            const result = await joinLessonMeetingApi(courseId, sessionId, lesson.id);
+            // Validate access and time - this does NOT create participant
+            await joinLessonMeetingApi(courseId, sessionId, lesson.id);
             
-            // Navigate to meeting room
-            if (result.token && result.url) {
-                router.push(`/meetings/${lesson.meeting_id}`);
-            } else if (lesson.meeting_id) {
+            // Navigate to meeting room - frontend will show join options
+            if (lesson.meeting_id) {
                 router.push(`/meetings/${lesson.meeting_id}`);
             } else {
                 toast({
