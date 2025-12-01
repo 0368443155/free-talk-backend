@@ -15,7 +15,9 @@ import { CourseEnrollment } from './entities/enrollment.entity';
 import { SessionPurchase } from './entities/session-purchase.entity';
 import { PaymentHold } from './entities/payment-hold.entity';
 import { AttendanceRecord } from './entities/attendance-record.entity';
+import { Review } from './entities/review.entity';
 import { AttendanceService } from './attendance.service';
+import { ReviewService } from './services/review.service';
 import { CourseAttendanceWebhookController } from './course-attendance-webhook.controller';
 import { User } from '../../users/user.entity';
 import { QrCodeService } from '../../common/services/qr-code.service';
@@ -65,6 +67,7 @@ import { GetCourseMeetingsHandler } from './application/handlers/get-course-meet
             SessionPurchase,
             PaymentHold,
             AttendanceRecord,
+            Review,
             User,
             Meeting,
         ]),
@@ -78,6 +81,7 @@ import { GetCourseMeetingsHandler } from './application/handlers/get-course-meet
         CoursesService,
         EnrollmentService,
         AttendanceService,
+        ReviewService,
         QrCodeService,
         CourseAccessGuard,
         CourseRepository,

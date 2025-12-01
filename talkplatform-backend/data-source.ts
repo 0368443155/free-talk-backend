@@ -34,6 +34,8 @@ import { TeacherReview } from './src/features/teachers/entities/teacher-review.e
 import { TeacherAvailability } from './src/features/teachers/entities/teacher-availability.entity';
 import { FeatureFlag } from './src/core/feature-flags/entities/feature-flag.entity';
 
+import { Review } from './src/features/courses/entities/review.entity';
+
 dotenv.config(); // Nạp .env
 
 export const dataSourceOptions: DataSourceOptions = {
@@ -76,10 +78,10 @@ export const dataSourceOptions: DataSourceOptions = {
     TeacherReview,
     TeacherAvailability,
     FeatureFlag,
+    Review,
   ],
-  migrations: [path.join(__dirname, 'src', 'database', 'migrations', '*{.ts,.js}')], // Đường dẫn migrations chính xác
-  migrationsTableName: 'migrations_typeorm', // Tên bảng migrations
-
+  migrations: [path.join(__dirname, 'src', 'migrations', '**', '*{.ts,.js}')], // Tìm Migrations
+  subscribers: [],
 };
 
 const dataSource = new DataSource(dataSourceOptions);

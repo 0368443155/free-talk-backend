@@ -12,6 +12,7 @@ import {
 } from 'typeorm';
 import { User } from '../../../users/user.entity';
 import { CourseSession } from './course-session.entity';
+import { Review } from './review.entity';
 
 export enum CourseStatus {
     DRAFT = 'draft',
@@ -131,6 +132,18 @@ export class Course {
 
     @Column({ type: 'text', nullable: true })
     share_link: string;
+
+    @Column({ type: 'text', nullable: true })
+    thumbnail_url: string;
+
+    @Column({ type: 'decimal', precision: 3, scale: 2, default: 0 })
+    average_rating: number;
+
+    @Column({ type: 'integer', default: 0 })
+    total_reviews: number;
+
+    @OneToMany(() => Review, review => review.course)
+    reviews: Review[];
 
     @CreateDateColumn({ type: 'timestamp' })
     created_at: Date;

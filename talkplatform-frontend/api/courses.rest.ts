@@ -57,6 +57,39 @@ export enum MaterialType {
     LINK = 'link',
 }
 
+export interface Review {
+    id: string;
+    course_id: string;
+    user_id: string;
+    rating: number;
+    comment?: string;
+    created_at: string;
+    updated_at: string;
+    user?: {
+        id: string;
+        username: string;
+        email: string;
+        avatar_url?: string;
+    };
+}
+
+export interface ReviewStats {
+    average: number;
+    total: number;
+    distribution: {
+        1: number;
+        2: number;
+        3: number;
+        4: number;
+        5: number;
+    };
+}
+
+export interface CreateReviewDto {
+    rating: number;
+    comment?: string;
+}
+
 export interface Course {
     id: string;
     teacher_id: string;
@@ -75,6 +108,9 @@ export interface Course {
     is_published: boolean;
     max_students: number;
     current_students: number;
+    thumbnail_url?: string;
+    average_rating: number;
+    total_reviews: number;
     affiliate_code?: string;
     qr_code_url?: string;
     share_link?: string;
@@ -523,4 +559,45 @@ export async function joinLessonMeetingApi(
 export async function checkLessonAccessApi(courseId: string, sessionId: string, lessonId: string): Promise<{ hasAccess: boolean; reason?: string; requiresPurchase?: boolean }> {
     const response = await apiClient.get(`/courses/${courseId}/sessions/${sessionId}/lessons/${lessonId}/access`);
     return response.data;
+}
+
+// ==================== REVIEW API FUNCTIONS ====================
+
+/**
+ * Create or update review for a course
+ */
+export async function createReviewApi(courseId: string, data: CreateReviewDto): Promise<Review> {
+    const response = await apiClient.post(`/courses/${courseId}/reviews`, data);
+    return response.data;
+}
+
+/**
+ * Get all reviews for a course
+ */
+export async function getCourseReviewsApi(courseId: string): Promise<Review[]> {
+    const response = await apiClient.get(`/courses/${courseId}/reviews`);
+    return response.data;
+}
+
+/**
+ * Get review statistics for a course
+ */
+export async function getReviewStatsApi(courseId: string): Promise<ReviewStats> {
+    const response = await apiClient.get(`/courses/${courseId}/reviews/stats`);
+    return response.data;
+}
+
+/**
+ * Get my review for a course
+ */
+export async function getMyReviewApi(courseId: string): Promise<Review | null> {
+    const response = await apiClient.get(`/courses/${courseId}/reviews/my-review`);
+    return response.data;
+}
+
+/**
+ * Delete my review for a course
+ */
+export async function deleteReviewApi(courseId: string): Promise<void> {
+    await apiClient.delete(`/courses/${courseId}/reviews`);
 }

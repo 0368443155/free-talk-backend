@@ -27,6 +27,8 @@ import { UserRole } from '../../users/user.entity';
 import { CourseAccessGuard } from './guards/course-access.guard';
 import { MeetingsService } from '../meeting/meetings.service';
 import { EnrollmentService } from './enrollment.service';
+import { ReviewService } from './services/review.service';
+import { CreateReviewDto } from './dto/create-review.dto';
 
 // Commands
 import { CreateCourseCommand } from './application/commands/create-course.command';
@@ -65,6 +67,7 @@ export class CoursesController {
         private readonly queryBus: QueryBus,
         private readonly meetingsService: MeetingsService,
         private readonly enrollmentService: EnrollmentService,
+        private readonly reviewService: ReviewService,
     ) { }
 
     // ==================== COURSE ENDPOINTS ====================
@@ -477,5 +480,65 @@ export class CoursesController {
     async getCourseMeetings(@Param('id') courseId: string) {
         const query = new GetCourseMeetingsQuery(courseId);
         return this.queryBus.execute(query);
+    }
+
+    // ==================== REVIEW ENDPOINTS ====================
+
+    @Post(':id/reviews')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Create or update review for a course (requires enrollment)' })
+    @ApiResponse({ status: 201, description: 'Review created/updated successfully' })
+    @ApiResponse({ status: 403, description: 'Must be enrolled to review' })
+    @ApiResponse({ status: 404, description: 'Course not found' })
+    async createReview(
+        @Param('id') courseId: string,
+        @Req() req: any,
+        @Body() dto: CreateReviewDto,
+    ) {
+        const userId = req.user?.id;
+        return this.reviewService.createOrUpdateReview(courseId, userId, dto);
+    }
+
+    @Get(':id/reviews')
+    @ApiOperation({ summary: 'Get all reviews for a course' })
+    @ApiResponse({ status: 200, description: 'Reviews retrieved successfully' })
+    async getCourseReviews(@Param('id') courseId: string) {
+        return this.reviewService.getCourseReviews(courseId);
+    }
+
+    @Get(':id/reviews/stats')
+    @ApiOperation({ summary: 'Get review statistics for a course' })
+    @ApiResponse({ status: 200, description: 'Review stats retrieved successfully' })
+    async getReviewStats(@Param('id') courseId: string) {
+        return this.reviewService.getReviewStats(courseId);
+    }
+
+    @Get(':id/reviews/my-review')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Get my review for a course' })
+    @ApiResponse({ status: 200, description: 'Review retrieved successfully' })
+    async getMyReview(
+        @Param('id') courseId: string,
+        @Req() req: any,
+    ) {
+        const userId = req.user?.id;
+        return this.reviewService.getUserReview(courseId, userId);
+    }
+
+    @Delete(':id/reviews')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.NO_CONTENT)
+    @ApiOperation({ summary: 'Delete my review for a course' })
+    @ApiResponse({ status: 204, description: 'Review deleted successfully' })
+    @ApiResponse({ status: 404, description: 'Review not found' })
+    async deleteReview(
+        @Param('id') courseId: string,
+        @Req() req: any,
+    ) {
+        const userId = req.user?.id;
+        await this.reviewService.deleteReview(courseId, userId);
     }
 }

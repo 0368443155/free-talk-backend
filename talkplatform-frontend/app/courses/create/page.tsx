@@ -88,6 +88,8 @@ export default function CreateCoursePage() {
     const [priceFullCourse, setPriceFullCourse] = useState<number>();
     const [maxStudents, setMaxStudents] = useState<number>(30);
     const [durationHours, setDurationHours] = useState<number>(10);
+    const [thumbnailUrl, setThumbnailUrl] = useState('');
+    const [isFree, setIsFree] = useState(false);
 
     // Tags by category
     const tagsByCategory: Record<CourseCategory, string[]> = {
@@ -350,6 +352,7 @@ export default function CreateCoursePage() {
                 tags: tags.length > 0 ? tags : undefined,
                 level: level || undefined,
                 language: language || undefined,
+                thumbnail_url: thumbnailUrl || undefined,
                 price_per_session: priceType === PriceType.PER_SESSION ? pricePerSession : undefined,
                 price_full_course: priceType === PriceType.FULL_COURSE ? priceFullCourse : undefined,
                 max_students: maxStudents,
@@ -452,6 +455,33 @@ export default function CreateCoursePage() {
                             />
                         </div>
 
+                        <div>
+                            <Label htmlFor="thumbnail">Course Thumbnail (URL)</Label>
+                            <Input
+                                id="thumbnail"
+                                type="url"
+                                placeholder="https://example.com/image.jpg"
+                                value={thumbnailUrl}
+                                onChange={(e) => setThumbnailUrl(e.target.value)}
+                                className="mt-1"
+                            />
+                            {thumbnailUrl && (
+                                <div className="mt-2">
+                                    <img
+                                        src={thumbnailUrl}
+                                        alt="Thumbnail preview"
+                                        className="w-32 h-32 object-cover rounded border"
+                                        onError={(e) => {
+                                            e.currentTarget.style.display = 'none';
+                                        }}
+                                    />
+                                </div>
+                            )}
+                            <p className="text-sm text-gray-500 mt-1">
+                                Provide a URL to an image for your course thumbnail
+                            </p>
+                        </div>
+
                         {/* Tags */}
                         {category && (
                             <div>
@@ -545,8 +575,8 @@ export default function CreateCoursePage() {
 
                             <div>
                                 <Label htmlFor="category">Category</Label>
-                                <Select 
-                                    value={category} 
+                                <Select
+                                    value={category}
                                     onValueChange={(value) => {
                                         setCategory(value as CourseCategory);
                                         setTags([]); // Clear tags when category changes
@@ -607,60 +637,86 @@ export default function CreateCoursePage() {
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        <div>
-                            <Label>Pricing Model *</Label>
-                            <RadioGroup
-                                value={priceType}
-                                onValueChange={(v) => setPriceType(v as PriceType)}
-                                className="mt-2"
-                            >
-                                <div className="flex items-center space-x-2">
-                                    <RadioGroupItem value={PriceType.PER_SESSION} id="per-session" />
-                                    <Label htmlFor="per-session" className="font-normal cursor-pointer">
-                                        Per Session - Students can buy individual sessions
-                                    </Label>
-                                </div>
-                                <div className="flex items-center space-x-2">
-                                    <RadioGroupItem value={PriceType.FULL_COURSE} id="full-course" />
-                                    <Label htmlFor="full-course" className="font-normal cursor-pointer">
-                                        Full Course - Students must buy the entire course
-                                    </Label>
-                                </div>
-                            </RadioGroup>
+                        {/* Free Course Toggle */}
+                        <div className="flex items-center space-x-2 p-4 bg-green-50 rounded-lg border border-green-200">
+                            <input
+                                type="checkbox"
+                                id="is-free"
+                                checked={isFree}
+                                onChange={(e) => {
+                                    setIsFree(e.target.checked);
+                                    if (e.target.checked) {
+                                        setPricePerSession(0);
+                                        setPriceFullCourse(0);
+                                    } else {
+                                        setPricePerSession(10);
+                                    }
+                                }}
+                                className="w-4 h-4 text-green-600"
+                            />
+                            <Label htmlFor="is-free" className="font-medium cursor-pointer">
+                                This is a FREE course
+                            </Label>
                         </div>
 
-                        {priceType === PriceType.PER_SESSION ? (
-                            <div>
-                                <Label htmlFor="pricePerSession">Price per Session (USD) *</Label>
-                                <Input
-                                    id="pricePerSession"
-                                    type="number"
-                                    min="1"
-                                    step="0.01"
-                                    value={pricePerSession}
-                                    onChange={(e) => setPricePerSession(parseFloat(e.target.value) || 10)}
-                                    className="mt-1"
-                                />
-                                <p className="text-sm text-gray-500 mt-1">
-                                    Minimum price is $1.00 per session
-                                </p>
-                            </div>
-                        ) : (
-                            <div>
-                                <Label htmlFor="priceFullCourse">Full Course Price (USD) *</Label>
-                                <Input
-                                    id="priceFullCourse"
-                                    type="number"
-                                    min="1"
-                                    step="0.01"
-                                    value={priceFullCourse || ''}
-                                    onChange={(e) => setPriceFullCourse(parseFloat(e.target.value) || undefined)}
-                                    className="mt-1"
-                                />
-                                <p className="text-sm text-gray-500 mt-1">
-                                    Minimum price is $1.00 for the full course
-                                </p>
-                            </div>
+                        {!isFree && (
+                            <>
+                                <div>
+                                    <Label>Pricing Model *</Label>
+                                    <RadioGroup
+                                        value={priceType}
+                                        onValueChange={(v) => setPriceType(v as PriceType)}
+                                        className="mt-2"
+                                    >
+                                        <div className="flex items-center space-x-2">
+                                            <RadioGroupItem value={PriceType.PER_SESSION} id="per-session" />
+                                            <Label htmlFor="per-session" className="font-normal cursor-pointer">
+                                                Per Session - Students can buy individual sessions
+                                            </Label>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <RadioGroupItem value={PriceType.FULL_COURSE} id="full-course" />
+                                            <Label htmlFor="full-course" className="font-normal cursor-pointer">
+                                                Full Course - Students must buy the entire course
+                                            </Label>
+                                        </div>
+                                    </RadioGroup>
+                                </div>
+
+                                {priceType === PriceType.PER_SESSION ? (
+                                    <div>
+                                        <Label htmlFor="pricePerSession">Price per Session (USD) *</Label>
+                                        <Input
+                                            id="pricePerSession"
+                                            type="number"
+                                            min="1"
+                                            step="0.01"
+                                            value={pricePerSession}
+                                            onChange={(e) => setPricePerSession(parseFloat(e.target.value) || 10)}
+                                            className="mt-1"
+                                        />
+                                        <p className="text-sm text-gray-500 mt-1">
+                                            Minimum price is $1.00 per session
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <Label htmlFor="priceFullCourse">Full Course Price (USD) *</Label>
+                                        <Input
+                                            id="priceFullCourse"
+                                            type="number"
+                                            min="1"
+                                            step="0.01"
+                                            value={priceFullCourse || ''}
+                                            onChange={(e) => setPriceFullCourse(parseFloat(e.target.value) || undefined)}
+                                            className="mt-1"
+                                        />
+                                        <p className="text-sm text-gray-500 mt-1">
+                                            Minimum price is $1.00 for the full course
+                                        </p>
+                                    </div>
+                                )}
+                            </>
                         )}
                     </CardContent>
                 </Card>
