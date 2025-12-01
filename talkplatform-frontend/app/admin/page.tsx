@@ -1,9 +1,7 @@
 import AdminDashboardEnhanced from '@/components/admin-dashboard-enhanced';
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { DollarSign, Users, ShieldCheck } from 'lucide-react';
-// import { AdminLiveKitDashboard } from '@/components/admin-livekit-dashboard';
 
 // Hàm này chạy trên server
 async function getHistoricalData() {
@@ -38,34 +36,29 @@ export default async function AdminPage() {
             </CardHeader>
           </Card>
         </Link>
-        <Link href="/admin">
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="w-5 h-5" />
-                User Management
-              </CardTitle>
-              <CardDescription>Manage users and teachers</CardDescription>
-            </CardHeader>
-          </Card>
-        </Link>
-        <Link href="/admin">
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5" />
-                Teacher Verification
-              </CardTitle>
-              <CardDescription>Approve teacher verifications</CardDescription>
-            </CardHeader>
-          </Card>
-        </Link>
+
+        <Card className="hover:shadow-lg transition-shadow opacity-50 cursor-not-allowed">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              User Management
+            </CardTitle>
+            <CardDescription>Coming soon - Manage users and teachers</CardDescription>
+          </CardHeader>
+        </Card>
+
+        <Card className="hover:shadow-lg transition-shadow opacity-50 cursor-not-allowed">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5" />
+              Teacher Verification
+            </CardTitle>
+            <CardDescription>Coming soon - Approve teacher verifications</CardDescription>
+          </CardHeader>
+        </Card>
       </div>
 
       <AdminDashboardEnhanced initialData={initialData} />
-
-      {/* LiveKit Dashboard */}
-      {/* <AdminLiveKitDashboard /> */}
     </div>
   );
 }
