@@ -21,28 +21,48 @@ import { GradualRolloutDto } from './dto/gradual-rollout.dto';
 
 @ApiTags('Feature Flags')
 @Controller('admin/feature-flags')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
-@ApiBearerAuth()
 export class FeatureFlagController {
   constructor(
     private readonly featureFlagService: FeatureFlagService,
     private readonly rolloutService: RolloutService,
   ) {}
 
+  @Get('public/:name')
+  @ApiOperation({ summary: 'Get feature flag by name (public endpoint for client-side checks)' })
+  async getByNamePublic(@Param('name') name: string) {
+    // Public endpoint - no auth required, but only returns enabled status and rollout percentage
+    const flag = await this.featureFlagService.getByName(name);
+    if (!flag) {
+      return { enabled: false, rollout_percentage: 0 };
+    }
+    return {
+      enabled: flag.enabled,
+      rollout_percentage: flag.rollout_percentage,
+    };
+  }
+
   @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get all feature flags' })
   async getAll() {
     return this.featureFlagService.getAll();
   }
 
   @Get(':name')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get feature flag by name' })
   async getByName(@Param('name') name: string) {
     return this.featureFlagService.getByName(name);
   }
 
   @Post(':name/enable')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Enable a feature flag' })
   async enable(
@@ -54,6 +74,9 @@ export class FeatureFlagController {
   }
 
   @Post(':name/disable')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Disable a feature flag' })
   async disable(@Param('name') name: string) {
@@ -62,6 +85,9 @@ export class FeatureFlagController {
   }
 
   @Patch(':name/rollout')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Update rollout percentage' })
   async updateRollout(
@@ -76,6 +102,9 @@ export class FeatureFlagController {
   }
 
   @Post(':name/gradual-rollout')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Start gradual rollout (10% → 25% → 50% → 100%)' })
   async gradualRollout(
@@ -98,6 +127,9 @@ export class FeatureFlagController {
   }
 
   @Post(':name/rollback')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Rollback feature flag to 0%' })
   async rollback(@Param('name') name: string) {

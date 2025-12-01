@@ -86,17 +86,23 @@ export function YouTubeSearchModal({
         const detailsData = await detailsResponse.json();
         
         // Step 3: Map results
-        const results: YouTubeSearchResult[] = searchData.items.map((item: any, index: number) => {
-          const details = detailsData.items[index];
-          return {
-            id: item.id.videoId,
-            title: item.snippet.title,
-            thumbnail: item.snippet.thumbnails.medium.url,
-            channelTitle: item.snippet.channelTitle,
-            duration: formatDuration(details.contentDetails.duration),
-            viewCount: formatViews(details.statistics.viewCount),
-          };
-        });
+        const results: YouTubeSearchResult[] = searchData.items
+          .map((item: any, index: number) => {
+            const details = detailsData.items?.[index];
+            // Skip if details not found
+            if (!details || !details.contentDetails || !details.statistics) {
+              return null;
+            }
+            return {
+              id: item.id.videoId,
+              title: item.snippet.title,
+              thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url || '',
+              channelTitle: item.snippet.channelTitle,
+              duration: formatDuration(details.contentDetails.duration),
+              viewCount: formatViews(details.statistics.viewCount),
+            };
+          })
+          .filter((result: any) => result !== null); // Filter out null results
         
         setSearchResults(results);
       } else {
@@ -133,6 +139,7 @@ export function YouTubeSearchModal({
   };
 
   const handleSelectVideo = (videoId: string) => {
+    console.log("🎬 YouTubeSearchModal: handleSelectVideo called with videoId:", videoId);
     onSelectVideo(videoId);
     onClose();
     setSearchQuery("");
@@ -259,9 +266,9 @@ export function YouTubeSearchModal({
             </div>
           )}
 
-          {searchResults.map((video) => (
+          {searchResults.map((video, index) => (
             <div
-              key={video.id}
+              key={`${video.id}-${index}`}
               className="p-2 hover:bg-[#272727] rounded-lg cursor-pointer transition-colors mb-2"
               onClick={() => handleSelectVideo(video.id)}
             >
@@ -282,8 +289,8 @@ export function YouTubeSearchModal({
                 <h3 className="text-white text-sm font-medium line-clamp-2 mb-1 leading-tight">
                   {video.title}
                 </h3>
-                <p className="text-gray-400 text-xs mb-0.5">{video.channelTitle}</p>
-                <p className="text-gray-500 text-xs">{video.viewCount}</p>
+                <div className="text-gray-400 text-xs mb-0.5">{video.channelTitle}</div>
+                <div className="text-gray-500 text-xs">{video.viewCount}</div>
               </div>
             </div>
           ))}

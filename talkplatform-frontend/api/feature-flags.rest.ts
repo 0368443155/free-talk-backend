@@ -15,7 +15,19 @@ export interface FeatureFlag {
  */
 export async function checkFeatureFlag(flagName: string, userId?: string): Promise<boolean> {
   try {
-    const response = await axiosConfig.get<FeatureFlag>(`/admin/feature-flags/${flagName}`);
+    // Try public endpoint first (no auth required)
+    let response;
+    try {
+      response = await axiosConfig.get<{ enabled: boolean; rollout_percentage: number }>(`/admin/feature-flags/public/${flagName}`);
+    } catch (publicError: any) {
+      // Fallback to admin endpoint if public doesn't exist
+      if (publicError.response?.status === 404) {
+        response = await axiosConfig.get<FeatureFlag>(`/admin/feature-flags/${flagName}`);
+      } else {
+        throw publicError;
+      }
+    }
+    
     const flag = response.data;
 
     if (!flag.enabled) {

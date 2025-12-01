@@ -557,6 +557,13 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
     @ConnectedSocket() client: SocketWithUser,
     @MessageBody() data: { targetUserId: string; mute?: boolean },
   ) {
+    // Check if new gateway is enabled - if so, forward to MediaGateway
+    const useNewGateway = await this.featureFlagService.isEnabled('use_new_gateway');
+    if (useNewGateway) {
+      this.logger.warn('admin:mute-user received on old gateway but new gateway is enabled. Event should be sent to /media namespace.');
+      // Still handle it for backward compatibility during migration
+    }
+    
     if (!(await this.ensureHost(client))) return;
     
     // Get current state from database

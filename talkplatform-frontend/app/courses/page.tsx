@@ -66,8 +66,13 @@ export default function CoursesPage() {
         try {
             setLoading(true);
             const response = await getCoursesApi();
-            setCourses(response.data);
+            // Backend returns: { courses: Course[], total, page, limit, totalPages }
+            // Frontend expects: { data: Course[], total, page, limit, totalPages }
+            const coursesData = response?.courses || response?.data || (Array.isArray(response) ? response : []);
+            setCourses(Array.isArray(coursesData) ? coursesData : []);
         } catch (error: any) {
+            console.error('Error loading courses:', error);
+            setCourses([]); // Set empty array on error
             toast({
                 title: "Error",
                 description: error.response?.data?.message || "Failed to load courses",
@@ -147,14 +152,14 @@ export default function CoursesPage() {
         }
     };
 
-    const filteredCourses = courses.filter((course) => {
+    const filteredCourses = (courses || []).filter((course) => {
         const matchesSearch = course.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
             course.description?.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesCategory = selectedCategory === 'all' || course.category === selectedCategory;
         return matchesSearch && matchesCategory;
     });
 
-    const categories: string[] = ['all', ...Array.from(new Set(courses.map(c => c.category).filter((cat): cat is CourseCategory => cat !== undefined && cat !== null).map(cat => String(cat))))];
+    const categories: string[] = ['all', ...Array.from(new Set((courses || []).map(c => c.category).filter((cat): cat is CourseCategory => cat !== undefined && cat !== null).map(cat => String(cat))))];
 
     return (
         <div className="min-h-screen bg-gray-50">

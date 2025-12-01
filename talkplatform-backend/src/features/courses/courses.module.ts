@@ -19,6 +19,8 @@ import { QrCodeService } from '../../common/services/qr-code.service';
 import { Meeting } from '../meeting/entities/meeting.entity';
 import { MeetingsModule } from '../meeting/meetings.module';
 import { CourseAccessGuard } from './guards/course-access.guard';
+import { CourseRepository } from './infrastructure/repositories/course.repository';
+import { EventBusModule } from '../../infrastructure/event-bus/event-bus.module';
 
 // Command Handlers
 import { CreateCourseHandler } from './application/handlers/create-course.handler';
@@ -65,6 +67,7 @@ import { GetCourseMeetingsHandler } from './application/handlers/get-course-meet
         ConfigModule,
         CqrsModule,
         forwardRef(() => MeetingsModule),
+        EventBusModule,
     ],
     controllers: [CoursesController, EnrollmentController],
     providers: [
@@ -72,6 +75,7 @@ import { GetCourseMeetingsHandler } from './application/handlers/get-course-meet
         EnrollmentService,
         QrCodeService,
         CourseAccessGuard,
+        CourseRepository,
         // Command Handlers
         CreateCourseHandler,
         CreateCourseWithSessionsHandler,

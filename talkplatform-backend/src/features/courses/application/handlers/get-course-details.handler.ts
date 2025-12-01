@@ -23,7 +23,14 @@ export class GetCourseDetailsHandler implements IQueryHandler<GetCourseDetailsQu
       throw new NotFoundException('Course not found');
     }
 
-    return courseAggregate.entity;
+    const course = courseAggregate.entity;
+    
+    // If includeSessions is true, add sessions to the course entity
+    if (query.includeSessions && courseAggregate.sessionList.length > 0) {
+      (course as any).sessions = courseAggregate.sessionList;
+    }
+
+    return course;
   }
 }
 

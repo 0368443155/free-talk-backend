@@ -36,6 +36,7 @@ import { MeetingDialogs } from './meeting-dialogs';
 import { useMeetingYouTube } from '@/hooks/use-meeting-youtube';
 import { useMeetingChat } from '@/hooks/use-meeting-chat';
 import { useMeetingParticipants } from '@/hooks/use-meeting-participants';
+import { useYouTubeControls } from '@/hooks/use-youtube-controls';
 import {
   IMeetingChatMessage,
   MessageType,
@@ -714,49 +715,27 @@ export function LiveKitRoomWrapper({
     addReaction(emoji, user.id);
   };
 
-  // YouTube handlers
-  const handleYoutubeSelectVideo = (videoId: string) => {
-    if (!isHost) return;
-    setShowVideoGrid(false);
-    setYoutubeVideoId(videoId);
-    setYoutubeCurrentTime(0);
-    setYoutubeIsPlaying(true);
-    if (youtubePlayerRef.current) {
-      youtubePlayerRef.current.handleSelectVideo(videoId, 0);
-    }
-    if (socket?.connected) {
-      socket.emit("youtube:play", {
-        videoId,
-        currentTime: 0,
-      });
-    }
-  };
-
-  const handleYoutubeTogglePlay = () => {
-    if (!isHost || !youtubeVideoId) return;
-    if (youtubePlayerRef.current) {
-      youtubePlayerRef.current.handleTogglePlay();
-    }
-    setYoutubeIsPlaying(!youtubeIsPlaying);
-  };
-
-  const handleYoutubeClear = () => {
-    if (!isHost) return;
-    setYoutubeVideoId(null);
-    setYoutubeIsPlaying(false);
-    setYoutubeCurrentTime(0);
-    if (youtubePlayerRef.current) {
-      youtubePlayerRef.current.handleClearVideo();
-    }
-    if (socket?.connected) {
-      socket.emit("youtube:clear");
-    }
-  };
+  // YouTube handlers - using shared hook
+  const {
+    handleYoutubeSelectVideo,
+    handleYoutubeTogglePlay,
+    handleYoutubeClear,
+    handleYoutubeMute: handleYoutubeMuteBase,
+  } = useYouTubeControls({
+    socket,
+    isHost,
+    youtubePlayerRef,
+    youtubeVideoId,
+    youtubeIsPlaying,
+    youtubeCurrentTime,
+    setYoutubeVideoId,
+    setYoutubeIsPlaying,
+    setYoutubeCurrentTime,
+    setShowVideoGrid,
+  });
 
   const handleYoutubeMute = () => {
-    if (youtubePlayerRef.current) {
-      youtubePlayerRef.current.handleToggleMute();
-    }
+    handleYoutubeMuteBase();
     setYoutubeVolume(prev => (prev === 0 ? 50 : 0));
   };
 
