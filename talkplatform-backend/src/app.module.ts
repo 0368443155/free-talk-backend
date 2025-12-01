@@ -97,6 +97,7 @@ import { TypeOrmModule as DebugTypeOrmModule } from '@nestjs/typeorm';
         require('./core/storage/storage.module').StorageModule,
         require('./features/booking/booking.module').BookingModule,
         require('./features/global-chat/global-chat.module').GlobalChatModule,
+        require('./features/payments/payments.module').PaymentsModule,
 
         DebugTypeOrmModule.forFeature([
             require('./features/meeting/entities/meeting.entity').Meeting,

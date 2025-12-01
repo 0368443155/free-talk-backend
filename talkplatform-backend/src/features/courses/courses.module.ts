@@ -13,6 +13,9 @@ import { LessonMaterial } from './entities/lesson-material.entity';
 import { CourseEnrollment } from './entities/enrollment.entity';
 import { SessionPurchase } from './entities/session-purchase.entity';
 import { PaymentHold } from './entities/payment-hold.entity';
+import { AttendanceRecord } from './entities/attendance-record.entity';
+import { AttendanceService } from './attendance.service';
+import { CourseAttendanceWebhookController } from './course-attendance-webhook.controller';
 import { User } from '../../users/user.entity';
 import { QrCodeService } from '../../common/services/qr-code.service';
 import { Meeting } from '../meeting/entities/meeting.entity';
@@ -30,15 +33,16 @@ import { CourseAccessGuard } from './guards/course-access.guard';
             CourseEnrollment,
             SessionPurchase,
             PaymentHold,
+            AttendanceRecord,
             User,
             Meeting,
         ]),
         ConfigModule,
         forwardRef(() => MeetingsModule),
     ],
-    controllers: [CoursesController, EnrollmentController],
-    providers: [CoursesService, EnrollmentService, QrCodeService, CourseAccessGuard],
-    exports: [CoursesService, EnrollmentService],
+    controllers: [CoursesController, EnrollmentController, CourseAttendanceWebhookController],
+    providers: [CoursesService, EnrollmentService, AttendanceService, QrCodeService, CourseAccessGuard],
+    exports: [CoursesService, EnrollmentService, AttendanceService],
 })
 export class CoursesModule { }
 

@@ -27,6 +27,9 @@ import { LessonMaterial } from './src/features/courses/entities/lesson-material.
 import { CourseEnrollment } from './src/features/courses/entities/enrollment.entity';
 import { SessionPurchase } from './src/features/courses/entities/session-purchase.entity';
 import { PaymentHold } from './src/features/courses/entities/payment-hold.entity';
+import { AttendanceRecord } from './src/features/courses/entities/attendance-record.entity';
+import { Transaction } from './src/features/payments/entities/transaction.entity';
+import { Withdrawal } from './src/features/payments/entities/withdrawal.entity';
 import { TeacherReview } from './src/features/teachers/entities/teacher-review.entity';
 import { TeacherAvailability } from './src/features/teachers/entities/teacher-availability.entity';
 
@@ -66,6 +69,9 @@ export const dataSourceOptions: DataSourceOptions = {
     CourseEnrollment,
     SessionPurchase,
     PaymentHold,
+    AttendanceRecord,
+    Transaction,
+    Withdrawal,
     TeacherReview,
     TeacherAvailability,
   ],

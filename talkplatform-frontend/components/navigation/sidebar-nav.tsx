@@ -28,7 +28,9 @@ import {
   Clock,
   Search,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  DollarSign,
+  ArrowUpRight
 } from 'lucide-react';
 import { useUser } from '@/store/user-store';
 import { cn } from '@/lib/utils';
@@ -194,6 +196,23 @@ const teacherNavItems = [
   },
   {
     title: 'Earnings',
+    items: [
+      {
+        title: 'Revenue Dashboard',
+        href: '/teacher/revenue',
+        icon: DollarSign,
+        description: 'View earnings and revenue'
+      },
+      {
+        title: 'Withdrawals',
+        href: '/teacher/revenue/withdraw',
+        icon: ArrowUpRight,
+        description: 'Request withdrawal'
+      }
+    ]
+  },
+  {
+    title: 'Earnings (Old)',
     items: [
       {
         title: 'Revenue',

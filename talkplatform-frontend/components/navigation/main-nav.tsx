@@ -32,7 +32,9 @@ import {
     Wallet,
     ShoppingBag,
     ShieldCheck,
-    Video
+    Video,
+    DollarSign,
+    ArrowUpRight
 } from 'lucide-react';
 import { useUser } from '@/store/user-store';
 import { useToast } from '@/components/ui/use-toast';
@@ -121,6 +123,12 @@ const teacherNavItems: NavItem[] = [
         href: '/teacher/dashboard',
         icon: BarChart3,
         description: 'Earnings and analytics'
+    },
+    {
+        title: 'Revenue',
+        href: '/teacher/revenue',
+        icon: DollarSign,
+        description: 'View earnings and withdrawals'
     },
     {
         title: 'My Materials',
