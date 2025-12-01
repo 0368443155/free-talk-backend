@@ -3,6 +3,7 @@ import { BaseRoomService } from './services/base-room.service';
 import { RoomFactoryService } from './services/room-factory.service';
 import { RoomStateManagerService } from './services/room-state-manager.service';
 import { RoomLifecycleService } from './services/room-lifecycle.service';
+import { UserSocketManagerService } from './services/user-socket-manager.service';
 import { RoomAccessGuard } from './guards/room-access.guard';
 import { RoomFeatureGuard } from './guards/room-feature.guard';
 
@@ -12,6 +13,7 @@ import { RoomFeatureGuard } from './guards/room-feature.guard';
     RoomFactoryService,
     RoomStateManagerService,
     RoomLifecycleService,
+    UserSocketManagerService,
     RoomAccessGuard,
     RoomFeatureGuard,
   ],
@@ -20,6 +22,7 @@ import { RoomFeatureGuard } from './guards/room-feature.guard';
     RoomFactoryService,
     RoomStateManagerService,
     RoomLifecycleService,
+    UserSocketManagerService,
     RoomAccessGuard,
     RoomFeatureGuard,
   ],

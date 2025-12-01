@@ -19,6 +19,7 @@
     "migration:run": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli migration:run -d data-source.ts",
     "migration:revert": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli migration:revert -d data-source.ts",
     "migration:show": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli migration:show -d data-source.ts",
+    "seed": "ts-node -r tsconfig-paths/register src/database/seeds/run-seeds.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",

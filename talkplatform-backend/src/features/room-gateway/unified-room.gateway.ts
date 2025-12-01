@@ -14,6 +14,7 @@ import { Repository } from 'typeorm';
 import { BaseRoomGateway } from '../../core/room/gateways/base-room.gateway';
 import { RoomFactoryService } from '../../core/room/services/room-factory.service';
 import { RoomStateManagerService } from '../../core/room/services/room-state-manager.service';
+import { UserSocketManagerService } from '../../core/room/services/user-socket-manager.service';
 import { AccessValidatorService } from '../../core/access-control/services/access-validator.service';
 import { JoinRoomDto, LeaveRoomDto } from './dto';
 import { Meeting } from '../meeting/entities/meeting.entity';
@@ -49,6 +50,7 @@ export class UnifiedRoomGateway
   constructor(
     protected readonly roomFactory: RoomFactoryService,
     protected readonly roomStateManager: RoomStateManagerService,
+    private readonly userSocketManager: UserSocketManagerService,
     private readonly accessValidator: AccessValidatorService,
     @InjectRepository(Meeting)
     private readonly meetingRepository: Repository<Meeting>,
@@ -81,6 +83,9 @@ export class UnifiedRoomGateway
       client.data.userId = user.id;
       client.data.username = user.username;
 
+      // Track user socket for cross-gateway communication
+      await this.userSocketManager.trackUserSocket(user.id, client.id);
+
       this.logger.log(`User ${user.username} (${user.id}) connected via ${client.id}`);
     } catch (error) {
       this.logger.error(`Connection error: ${error.message}`);
@@ -98,6 +103,11 @@ export class UnifiedRoomGateway
     try {
       const userId = client.data.userId;
       const meetingId = client.data.meetingId;
+
+      // Remove user socket tracking
+      if (userId) {
+        await this.userSocketManager.removeUserSocket(userId);
+      }
 
       if (userId && meetingId) {
         // Leave room

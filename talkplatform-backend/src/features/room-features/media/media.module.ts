@@ -6,11 +6,12 @@ import { ScreenShareService } from './services/screen-share.service';
 import { MediaSettingsService } from './services/media-settings.service';
 import { MediaGateway } from './gateways/media.gateway';
 import { MeetingParticipant } from '../../meeting/entities/meeting-participant.entity';
+import { Meeting } from '../../meeting/entities/meeting.entity';
 import { RoomModule } from '../../../core/room/room.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([MeetingParticipant]),
+    TypeOrmModule.forFeature([MeetingParticipant, Meeting]),
     RoomModule,
   ],
   providers: [
