@@ -173,7 +173,10 @@ export class AnalyticsService {
       if (!roomEvents.has(event.roomId)) {
         roomEvents.set(event.roomId, []);
       }
-      roomEvents.get(event.roomId).push(event);
+      const roomEventList = roomEvents.get(event.roomId);
+      if (roomEventList) {
+        roomEventList.push(event);
+      }
     });
 
     // Generate metrics for each room

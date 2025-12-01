@@ -250,13 +250,13 @@ export class CourseAggregate {
         throw new Error('Price per session must be at least $1.00');
       }
       this.course.price_per_session = pricePerSession;
-      this.course.price_full_course = null;
+      this.course.price_full_course = null as any;
     } else {
       if (!priceFullCourse || priceFullCourse < 1) {
         throw new Error('Full course price must be at least $1.00');
       }
       this.course.price_full_course = priceFullCourse;
-      this.course.price_per_session = null;
+      this.course.price_per_session = null as any;
     }
   }
 }

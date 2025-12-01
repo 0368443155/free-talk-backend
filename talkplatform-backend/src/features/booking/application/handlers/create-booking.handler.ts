@@ -15,8 +15,8 @@ import { BookingAggregate } from '../../domain/booking.aggregate';
 import { BookingSlotAggregate } from '../../domain/booking-slot.aggregate';
 import { Booking, BookingStatus } from '../../entities/booking.entity';
 import { BookingSlot } from '../../entities/booking-slot.entity';
-import { User } from '../../../users/user.entity';
-import { Meeting, MeetingType, PricingType } from '../../../features/meeting/entities/meeting.entity';
+import { User } from '../../../../users/user.entity';
+import { Meeting, MeetingType, PricingType } from '../../../../features/meeting/entities/meeting.entity';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
@@ -77,9 +77,10 @@ export class CreateBookingHandler implements ICommandHandler<CreateBookingComman
       }
 
       // 6. Create meeting
+      const teacherUser = await manager.findOne(User, { where: { id: teacher.user_id } });
       const meeting = manager.create(Meeting, {
         id: uuidv4(),
-        title: `Private Session - ${teacher.username}`,
+        title: `Private Session - ${teacherUser?.username || 'Teacher'}`,
         description: command.studentNotes || 'Private session booking',
         meeting_type: MeetingType.PRIVATE_SESSION,
         host: teacher,

@@ -8,12 +8,10 @@ import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { PurchaseMaterialCommand } from '../commands/purchase-material.command';
-import { MaterialRepository } from '../../infrastructure/repositories/material.repository';
-import { PurchaseRepository } from '../../infrastructure/repositories/purchase.repository';
-import { MaterialAggregate } from '../../domain/material.aggregate';
-import { PurchaseAggregate } from '../../domain/purchase.aggregate';
+import { Material } from '../../entities/material.entity';
 import { MaterialPurchase } from '../../entities/material-purchase.entity';
-import { User } from '../../../users/user.entity';
+import { MaterialAggregate } from '../../domain/material.aggregate';
+import { User } from '../../../../users/user.entity';
 import { WalletService } from '../../../wallet/wallet.service';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -25,8 +23,10 @@ export class PurchaseMaterialHandler implements ICommandHandler<PurchaseMaterial
   constructor(
     @InjectDataSource()
     private readonly dataSource: DataSource,
-    private readonly materialRepository: MaterialRepository,
-    private readonly purchaseRepository: PurchaseRepository,
+    @InjectRepository(Material)
+    private readonly materialRepository: Repository<Material>,
+    @InjectRepository(MaterialPurchase)
+    private readonly purchaseRepository: Repository<MaterialPurchase>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     private readonly walletService: WalletService,
@@ -36,26 +36,32 @@ export class PurchaseMaterialHandler implements ICommandHandler<PurchaseMaterial
     this.logger.log(`Purchasing material ${command.materialId} for user ${command.userId}`);
 
     return await this.dataSource.transaction(async (manager) => {
-      // 1. Load material aggregate
-      const materialAggregate = await this.materialRepository.findById(command.materialId, true);
+      // 1. Load material
+      const material = await manager.findOne(Material, {
+        where: { id: command.materialId },
+        relations: ['purchases'],
+      });
 
-      if (!materialAggregate) {
+      if (!material) {
         throw new NotFoundException('Material not found');
       }
 
-      // 2. Check if can purchase
+      // 2. Create material aggregate
+      const materialAggregate = new MaterialAggregate(material);
+
+      // 3. Check if can purchase
       const canPurchase = materialAggregate.canPurchase(command.userId);
       if (!canPurchase.canPurchase) {
         throw new BadRequestException(canPurchase.reason || 'Cannot purchase material');
       }
 
-      // 3. Check user balance
+      // 4. Check user balance
       const balance = await this.walletService.getUserBalance(command.userId);
       if (balance < materialAggregate.priceCredits) {
         throw new BadRequestException('Insufficient credits');
       }
 
-      // 4. Deduct credits
+      // 5. Deduct credits
       const transaction = await this.walletService.deductCredits(
         command.userId,
         materialAggregate.priceCredits,
@@ -68,9 +74,8 @@ export class PurchaseMaterialHandler implements ICommandHandler<PurchaseMaterial
         },
       );
 
-      // 5. Create purchase record
+      // 6. Create purchase record
       const purchase = manager.create(MaterialPurchase, {
-        id: uuidv4(),
         material_id: command.materialId,
         user_id: command.userId,
         price_paid: materialAggregate.priceCredits,
@@ -80,9 +85,9 @@ export class PurchaseMaterialHandler implements ICommandHandler<PurchaseMaterial
 
       const savedPurchase = await manager.save(MaterialPurchase, purchase);
 
-      // 6. Record purchase in material aggregate
+      // 7. Record purchase in material aggregate
       materialAggregate.recordPurchase(savedPurchase);
-      await this.materialRepository.save(materialAggregate);
+      await manager.save(Material, materialAggregate.entity);
 
       this.logger.log(`✅ Material ${command.materialId} purchased by user ${command.userId}`);
 
@@ -90,4 +95,3 @@ export class PurchaseMaterialHandler implements ICommandHandler<PurchaseMaterial
     });
   }
 }
-

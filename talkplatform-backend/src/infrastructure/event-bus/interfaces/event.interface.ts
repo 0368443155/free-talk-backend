@@ -58,6 +58,6 @@ export interface IEventSubscriber {
   /**
    * Unsubscribe from an event type
    */
-  unsubscribe(eventType: string, handler: IEventHandler<T>): void;
+  unsubscribe(eventType: string, handler: IEventHandler<any>): void;
 }
 

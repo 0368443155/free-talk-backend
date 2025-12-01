@@ -9,12 +9,5 @@ export interface WaitingParticipant {
   socketId?: string;
 }
 
-/**
- * Admission status enum
- */
-export enum AdmissionStatus {
-  PENDING = 'pending',
-  ADMITTED = 'admitted',
-  DENIED = 'denied',
-}
+// AdmissionStatus is exported from enums, not here
 

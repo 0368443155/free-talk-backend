@@ -3,6 +3,7 @@ import { RoomType } from '../enums/room-type.enum';
 import { RoomConfig } from '../interfaces/room-config.interface';
 import { getRoomConfig } from '../configs/room-configs.constant';
 import { BaseRoomService } from './base-room.service';
+import { RoomFeature } from '../enums/room-feature.enum';
 
 @Injectable()
 export class RoomFactoryService {
@@ -65,6 +66,13 @@ export class RoomFactoryService {
   }
 
   /**
+   * Get room configuration (alias for getRoomConfigByType)
+   */
+  getRoomConfig(roomType: string | RoomType): RoomConfig {
+    return getRoomConfig(roomType as RoomType);
+  }
+
+  /**
    * Create room with custom features
    */
   async createRoomWithFeatures(
@@ -75,13 +83,10 @@ export class RoomFactoryService {
   ): Promise<string> {
     const baseConfig = getRoomConfig(roomType);
     
-    // Import RoomFeature enum dynamically
-    const { RoomFeature } = await import('../enums/room-feature.enum');
-    
     // Validate features
     const validFeatures = features.filter(f =>
-      Object.values(RoomFeature).includes(f as RoomFeature),
-    ) as RoomFeature[];
+      Object.values(RoomFeature).includes(f as any),
+    ) as any[];
 
     const customConfig: Partial<RoomConfig> = {
       features: validFeatures,

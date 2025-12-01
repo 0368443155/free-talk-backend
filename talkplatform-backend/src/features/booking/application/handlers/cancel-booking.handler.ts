@@ -6,11 +6,12 @@ import {
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
+import { v4 as uuidv4 } from 'uuid';
 import { CancelBookingCommand } from '../commands/cancel-booking.command';
 import { BookingRepository } from '../../infrastructure/repositories/booking.repository';
 import { BookingAggregate } from '../../domain/booking.aggregate';
 import { Booking } from '../../entities/booking.entity';
-import { User } from '../../../users/user.entity';
+import { User } from '../../../../users/user.entity';
 import { EventBusService } from '../../../../infrastructure/event-bus/services/event-bus.service';
 import { RefundIssuedEvent } from '../../../../infrastructure/event-bus/events/payment-events/refund-issued.event';
 
@@ -66,10 +67,12 @@ export class CancelBookingHandler implements ICommandHandler<CancelBookingComman
           // Publish refund event
           await this.eventBus.publish(
             new RefundIssuedEvent({
+              refundId: uuidv4(),
+              transactionId: bookingAggregate.id,
               userId: bookingAggregate.studentId,
               amount: refundAmount,
-              bookingId: bookingAggregate.id,
-              timestamp: new Date(),
+              reason: 'Booking cancelled',
+              issuedAt: new Date(),
             }),
           );
         }

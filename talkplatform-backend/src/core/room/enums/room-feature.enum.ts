@@ -72,5 +72,14 @@ export enum RoomFeature {
   
   /** Analytics and engagement tracking */
   ANALYTICS = 'analytics',
+  
+  /** Advanced analytics with detailed insights */
+  ADVANCED_ANALYTICS = 'advanced_analytics',
+  
+  /** AI-powered transcription */
+  TRANSCRIPTION = 'transcription',
+  
+  /** AI-powered translation */
+  TRANSLATION = 'translation',
 }
 

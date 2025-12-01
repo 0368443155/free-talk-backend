@@ -6,7 +6,8 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { BaseRoomService } from '../services/base-room.service';
-import { RoomFeature, ROOM_FEATURE_KEY } from '../decorators/room-feature.decorator';
+import { ROOM_FEATURE_KEY } from '../decorators/room-feature.decorator';
+import { RoomFeature } from '../enums/room-feature.enum';
 
 @Injectable()
 export class RoomFeatureGuard implements CanActivate {

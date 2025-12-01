@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ModerationAction, ModerationActionType } from '../interfaces/moderation-action.interface';
+import { ModerationAction } from '../interfaces/moderation-action.interface';
+import { ModerationActionType } from '../enums/moderation-action-type.enum';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()

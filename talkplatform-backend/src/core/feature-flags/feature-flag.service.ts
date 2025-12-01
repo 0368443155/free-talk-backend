@@ -2,19 +2,15 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { FeatureFlag } from './entities/feature-flag.entity';
-import { Inject } from '@nestjs/common';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { Cache } from 'cache-manager';
 
 @Injectable()
 export class FeatureFlagService {
   private readonly logger = new Logger(FeatureFlagService.name);
+  private cache: Map<string, { value: boolean; expires: number }> = new Map();
 
   constructor(
     @InjectRepository(FeatureFlag)
     private readonly featureFlagRepository: Repository<FeatureFlag>,
-    @Inject(CACHE_MANAGER)
-    private readonly cacheManager: Cache,
   ) {}
 
   /**
@@ -24,10 +20,10 @@ export class FeatureFlagService {
     try {
       // Try cache first
       const cacheKey = `feature_flag:${flagName}`;
-      const cached = await this.cacheManager.get<boolean>(cacheKey);
-
-      if (cached !== undefined) {
-        return cached;
+      const cached = this.cache.get(cacheKey);
+      
+      if (cached && cached.expires > Date.now()) {
+        return cached.value;
       }
 
       // Get from database
@@ -43,7 +39,10 @@ export class FeatureFlagService {
       const isEnabled = flag.enabled && flag.rollout_percentage >= 100;
 
       // Cache for 1 minute
-      await this.cacheManager.set(cacheKey, isEnabled, 60000);
+      this.cache.set(cacheKey, {
+        value: isEnabled,
+        expires: Date.now() + 60000,
+      });
 
       return isEnabled;
     } catch (error) {
@@ -95,7 +94,7 @@ export class FeatureFlagService {
     );
 
     // Clear cache
-    await this.cacheManager.del(`feature_flag:${flagName}`);
+    this.cache.delete(`feature_flag:${flagName}`);
 
     this.logger.log(
       `Feature flag enabled: ${flagName} (${rolloutPercentage}%)`,
@@ -116,7 +115,7 @@ export class FeatureFlagService {
     );
 
     // Clear cache
-    await this.cacheManager.del(`feature_flag:${flagName}`);
+    this.cache.delete(`feature_flag:${flagName}`);
 
     this.logger.log(`Feature flag disabled: ${flagName}`);
   }
@@ -134,7 +133,7 @@ export class FeatureFlagService {
     );
 
     // Clear cache
-    await this.cacheManager.del(`feature_flag:${flagName}`);
+    this.cache.delete(`feature_flag:${flagName}`);
 
     this.logger.log(
       `Feature flag rollout updated: ${flagName} (${rolloutPercentage}%)`,

@@ -12,7 +12,7 @@ import { BlockUserService } from '../services/block-user.service';
 import { RoomLockService } from '../services/room-lock.service';
 import { MuteControlService } from '../services/mute-control.service';
 import { ModerationLogService } from '../services/moderation-log.service';
-import { ModerationActionType } from '../interfaces/moderation-action.interface';
+import { ModerationActionType } from '../enums/moderation-action-type.enum';
 import { BaseRoomService } from '../../../../core/room/services/base-room.service';
 
 interface SocketWithUser extends Socket {

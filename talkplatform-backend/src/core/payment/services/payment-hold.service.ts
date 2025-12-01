@@ -25,8 +25,8 @@ export class PaymentHoldService {
       enrollment_id: enrollmentId,
       teacher_id: teacherId,
       student_id: studentId,
-      hold_amount: amount,
-      status: HoldStatus.PENDING,
+      amount: amount,
+      status: HoldStatus.HELD,
     });
 
     return this.paymentHoldRepository.save(hold);
@@ -43,12 +43,11 @@ export class PaymentHoldService {
   }
 
   /**
-   * Cancel payment hold
+   * Cancel payment hold (refund)
    */
   async cancelHold(holdId: string): Promise<void> {
     await this.paymentHoldRepository.update(holdId, {
-      status: HoldStatus.CANCELLED,
-      cancelled_at: new Date(),
+      status: HoldStatus.REFUNDED,
     });
   }
 }

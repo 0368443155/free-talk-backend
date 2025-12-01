@@ -28,7 +28,7 @@ export class TeacherClassRoomController {
       req.user.id,
       dto.title,
       dto.description,
-      dto.scheduledAt,
+      dto.scheduledAt ? new Date(dto.scheduledAt) : undefined,
     );
   }
 

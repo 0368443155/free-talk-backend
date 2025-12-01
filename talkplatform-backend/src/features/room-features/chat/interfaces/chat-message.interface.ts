@@ -16,9 +16,9 @@ export interface ChatMessage {
 }
 
 /**
- * Send message DTO
+ * Send message interface (for internal use)
  */
-export interface SendMessageDto {
+export interface SendMessageInterface {
   roomId: string;
   message: string;
   replyTo?: string;
@@ -26,24 +26,24 @@ export interface SendMessageDto {
 }
 
 /**
- * Edit message DTO
+ * Edit message interface (for internal use)
  */
-export interface EditMessageDto {
+export interface EditMessageInterface {
   messageId: string;
   newMessage: string;
 }
 
 /**
- * Delete message DTO
+ * Delete message interface (for internal use)
  */
-export interface DeleteMessageDto {
+export interface DeleteMessageInterface {
   messageId: string;
 }
 
 /**
- * React to message DTO
+ * React to message interface (for internal use)
  */
-export interface ReactToMessageDto {
+export interface ReactToMessageInterface {
   messageId: string;
   reaction: string;
 }

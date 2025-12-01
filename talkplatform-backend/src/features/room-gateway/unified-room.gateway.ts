@@ -20,6 +20,7 @@ import { Meeting } from '../meeting/entities/meeting.entity';
 import { User } from '../../users/user.entity';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { ParticipantRole, ParticipantState } from '../../core/room/interfaces/room-state.interface';
 
 interface SocketWithUser extends Socket {
   data: {
@@ -44,7 +45,6 @@ export class UnifiedRoomGateway
   extends BaseRoomGateway
   implements OnGatewayConnection, OnGatewayDisconnect
 {
-  private readonly logger = new Logger(UnifiedRoomGateway.name);
 
   constructor(
     protected readonly roomFactory: RoomFactoryService,
@@ -159,13 +159,19 @@ export class UnifiedRoomGateway
       client.data.meetingId = dto.roomId;
 
       // Add participant to room state
-      await this.roomStateManager.addParticipant(dto.roomId, {
+      const participantState: ParticipantState = {
         userId,
         username,
-        role: dto.isHost || meeting.host.id === userId ? 'host' : 'participant',
+        role: dto.isHost || meeting.host.id === userId ? ParticipantRole.HOST : ParticipantRole.PARTICIPANT,
         isOnline: true,
+        isMuted: false,
+        isVideoOff: false,
+        isHandRaised: false,
+        isScreenSharing: false,
         joinedAt: new Date(),
-      });
+        lastActivity: new Date(),
+      };
+      await this.roomStateManager.addParticipant(dto.roomId, participantState);
 
       // Get room state
       const roomState = await this.roomStateManager.getRoomState(dto.roomId);
@@ -177,7 +183,7 @@ export class UnifiedRoomGateway
       this.broadcastToRoomExcept(dto.roomId, client.id, 'room:user-joined', {
         userId,
         username,
-        role: dto.isHost ? 'host' : 'participant',
+        role: dto.isHost ? ParticipantRole.HOST : ParticipantRole.PARTICIPANT,
         joinedAt: new Date(),
       });
 

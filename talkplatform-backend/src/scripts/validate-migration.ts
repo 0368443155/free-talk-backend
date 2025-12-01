@@ -137,40 +137,49 @@ export async function validateMigration(
 
 // Run validation if called directly
 if (require.main === module) {
-  import('../database/data-source').then(async ({ dataSource }) => {
-    await dataSource.initialize();
+  (async () => {
+    try {
+      // Use require for CommonJS compatibility
+      const dataSourceModule = require('../database/data-source');
+      const { dataSource } = dataSourceModule;
+      
+      await dataSource.initialize();
 
-    console.log('Running migration validation...');
-    const result = await validateMigration(dataSource);
+      console.log('Running migration validation...');
+      const result = await validateMigration(dataSource);
 
-    console.log('\n=== Validation Results ===');
-    console.log(`Status: ${result.passed ? '✅ PASSED' : '❌ FAILED'}`);
+      console.log('\n=== Validation Results ===');
+      console.log(`Status: ${result.passed ? '✅ PASSED' : '❌ FAILED'}`);
 
-    if (result.errors.length > 0) {
-      console.log('\n❌ Errors:');
-      result.errors.forEach((err) => console.log(`  - ${err}`));
-    }
-
-    if (result.warnings.length > 0) {
-      console.log('\n⚠️  Warnings:');
-      result.warnings.forEach((warn) => console.log(`  - ${warn}`));
-    }
-
-    console.log('\n📊 Stats:');
-    Object.entries(result.stats).forEach(([key, value]) => {
-      if (typeof value === 'object') {
-        console.log(`  ${key}:`);
-        Object.entries(value).forEach(([k, v]) => {
-          console.log(`    ${k}: ${v}`);
-        });
-      } else {
-        console.log(`  ${key}: ${value}`);
+      if (result.errors.length > 0) {
+        console.log('\n❌ Errors:');
+        result.errors.forEach((err) => console.log(`  - ${err}`));
       }
-    });
 
-    await dataSource.destroy();
+      if (result.warnings.length > 0) {
+        console.log('\n⚠️  Warnings:');
+        result.warnings.forEach((warn) => console.log(`  - ${warn}`));
+      }
 
-    process.exit(result.passed ? 0 : 1);
-  });
+      console.log('\n📊 Stats:');
+      Object.entries(result.stats).forEach(([key, value]) => {
+        if (typeof value === 'object') {
+          console.log(`  ${key}:`);
+          Object.entries(value).forEach(([k, v]) => {
+            console.log(`    ${k}: ${v}`);
+          });
+        } else {
+          console.log(`  ${key}: ${value}`);
+        }
+      });
+
+      await dataSource.destroy();
+
+      process.exit(result.passed ? 0 : 1);
+    } catch (error) {
+      console.error('Error running validation:', error);
+      process.exit(1);
+    }
+  })();
 }
 

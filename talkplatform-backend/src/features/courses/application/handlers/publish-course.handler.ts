@@ -41,7 +41,8 @@ export class PublishCourseHandler implements ICommandHandler<PublishCourseComman
       new CoursePublishedEvent({
         courseId: courseAggregate.id,
         teacherId: courseAggregate.teacherId,
-        timestamp: new Date(),
+        courseTitle: courseAggregate.title,
+        publishedAt: new Date(),
       }),
     );
 

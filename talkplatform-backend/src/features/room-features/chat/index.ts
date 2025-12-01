@@ -4,11 +4,11 @@ export * from './interfaces';
 // Enums
 export * from './enums';
 
-// DTOs
-export * from './dto/send-message.dto';
-export * from './dto/edit-message.dto';
-export * from './dto/delete-message.dto';
-export * from './dto/react-to-message.dto';
+// DTOs - Export with explicit names to avoid conflicts
+export { SendMessageDto } from './dto/send-message.dto';
+export { EditMessageDto } from './dto/edit-message.dto';
+export { DeleteMessageDto } from './dto/delete-message.dto';
+export { ReactToMessageDto } from './dto/react-to-message.dto';
 
 // Services
 export * from './services/chat.service';

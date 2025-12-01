@@ -148,7 +148,7 @@ export class QueueService {
     limit: number = 100,
   ): Promise<void> {
     const queue = this.getQueue(queueName);
-    await queue.clean(grace, limit);
+    await queue.clean(grace as any, limit as any);
     this.logger.log(`Queue ${queueName} cleaned`);
   }
 }

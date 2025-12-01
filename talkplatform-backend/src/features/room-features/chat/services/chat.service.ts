@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { MeetingChatMessage, MessageType } from '../../../meeting/entities/meeting-chat-message.entity';
 import { Meeting } from '../../../meeting/entities/meeting.entity';
 import { User } from '../../../../users/user.entity';
-import { SendMessageDto, EditMessageDto, DeleteMessageDto } from '../interfaces/chat-message.interface';
+import { SendMessageInterface, EditMessageInterface, DeleteMessageInterface } from '../interfaces/chat-message.interface';
 import { BaseRoomService } from '../../../../core/room/services/base-room.service';
 import { RoomFeature } from '../../../../core/room/enums/room-feature.enum';
 
@@ -28,7 +28,7 @@ export class ChatService {
   async sendMessage(
     roomId: string,
     userId: string,
-    dto: SendMessageDto,
+    dto: SendMessageInterface,
   ): Promise<MeetingChatMessage> {
     // Check if room has chat feature
     const hasChat = await this.baseRoomService.hasFeature(roomId, RoomFeature.CHAT);
@@ -70,7 +70,7 @@ export class ChatService {
   async editMessage(
     messageId: string,
     userId: string,
-    dto: EditMessageDto,
+    dto: EditMessageInterface,
   ): Promise<MeetingChatMessage> {
     const message = await this.chatMessageRepository.findOne({
       where: { id: messageId },

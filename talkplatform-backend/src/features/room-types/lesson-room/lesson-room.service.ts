@@ -62,10 +62,9 @@ export class LessonRoomService {
       meeting_type: MeetingType.FREE_TALK, // Will be updated to LESSON
       host,
       lesson_id: lessonId,
-      course_id: lesson.course_id,
       max_participants: LESSON_ROOM_CONFIG.maxParticipants,
       pricing_type: PricingType.CREDITS,
-      price_credits: lesson.price || 0,
+      price_credits: 0, // Price comes from course/session, not lesson
       is_private: false,
       is_locked: false,
       status: 'scheduled' as any,

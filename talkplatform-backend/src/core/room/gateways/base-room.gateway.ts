@@ -31,7 +31,7 @@ export abstract class BaseRoomGateway {
   ): Promise<boolean> {
     try {
       const room = await this.getRoomInfo(roomId);
-      const roomConfig = this.roomFactory.getRoomConfig(room.type);
+      const roomConfig = this.roomFactory.getRoomConfigByType(room.type as any);
       
       if (!roomConfig) {
         return false;

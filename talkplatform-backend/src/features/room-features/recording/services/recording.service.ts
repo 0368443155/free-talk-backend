@@ -153,7 +153,7 @@ export class RecordingService {
 
     // Update recording
     recording.fileUrl = fileUrl;
-    recording.fileName = fileUrl.split('/').pop();
+    recording.fileName = fileUrl.split('/').pop() || 'recording.mp4';
     recording.status = RecordingStatus.COMPLETED;
 
     // Calculate duration

@@ -130,7 +130,7 @@ export class MaterialAggregate {
    */
   recordPurchase(purchase: MaterialPurchase): void {
     this.purchases.push(purchase);
-    this.material.purchase_count = (this.material.purchase_count || 0) + 1;
+    this.material.total_sales = (this.material.total_sales || 0) + 1;
   }
 
   /**
@@ -224,7 +224,7 @@ export class MaterialAggregate {
   removeDiscount(): void {
     if (this.material.original_price_credits) {
       this.material.price_credits = this.material.original_price_credits;
-      this.material.original_price_credits = null;
+      this.material.original_price_credits = null as any;
     }
   }
 }

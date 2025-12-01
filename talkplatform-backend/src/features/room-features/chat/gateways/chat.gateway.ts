@@ -64,7 +64,12 @@ export class ChatGateway {
       const savedMessage = await this.chatService.sendMessage(
         client.meetingId,
         client.userId,
-        dto,
+        {
+          roomId: client.meetingId,
+          message: dto.message,
+          replyTo: dto.replyTo,
+          type: dto.type,
+        },
       );
 
       // Broadcast to room

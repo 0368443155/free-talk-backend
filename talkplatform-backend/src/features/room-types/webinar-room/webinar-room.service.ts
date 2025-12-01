@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Meeting, MeetingType, PricingType } from '../../meeting/entities/meeting.entity';
+import { Meeting, MeetingType, MeetingStatus, PricingType } from '../../meeting/entities/meeting.entity';
 import { User } from '../../../users/user.entity';
 import { RoomFactoryService } from '../../../core/room/services/room-factory.service';
 import { BaseRoomService } from '../../../core/room/services/base-room.service';
@@ -42,7 +42,6 @@ export class WebinarRoomService {
     }
 
     const meeting = this.meetingRepository.create({
-      id: uuidv4(),
       title,
       description,
       meeting_type: MeetingType.WORKSHOP, // Use WORKSHOP as closest match
@@ -52,7 +51,7 @@ export class WebinarRoomService {
       price_credits: 5, // Default webinar price
       is_private: false,
       is_locked: false,
-      status: scheduledAt && scheduledAt > new Date() ? 'scheduled' : 'live',
+      status: scheduledAt && scheduledAt > new Date() ? MeetingStatus.SCHEDULED : MeetingStatus.LIVE,
       scheduled_at: scheduledAt,
     });
 
