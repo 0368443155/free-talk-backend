@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Socket } from 'socket.io-client';
+import { useFeatureFlag } from './use-feature-flag';
 
 interface UseWebRTCProps {
   socket: Socket | null;
@@ -46,6 +47,9 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  
+  // Check if new gateway is enabled
+  const useNewGateway = useFeatureFlag('use_new_gateway');
 
   const localStreamRef = useRef<MediaStream | null>(null);
   const peersRef = useRef<Map<string, PeerConnection>>(new Map());
@@ -82,7 +86,12 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
 
       // 🔥 FIX: Notify other peers AND update existing peer connections
       if (socket && isOnline) {
-        socket.emit('webrtc:ready', { userId });
+        // Support both old and new events based on feature flag
+        if (useNewGateway) {
+          socket.emit('media:ready', { roomId: meetingId, userId });
+        } else {
+          socket.emit('webrtc:ready', { userId });
+        }
 
         // 🔥 NEW: Add tracks to existing peer connections in consistent order
         peersRef.current.forEach((peer, targetUserId) => {
@@ -119,7 +128,7 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
       console.error('❌ Failed to get user media:', error);
       throw error;
     }
-  }, [socket, userId, isOnline]);
+  }, [socket, userId, isOnline, useNewGateway, meetingId]);
 
   // Stop local media stream
   const stopLocalStream = useCallback(() => {
@@ -139,9 +148,13 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
         audioTrack.enabled = !audioTrack.enabled;
         setIsMuted(!audioTrack.enabled);
         
-        // Notify server
+        // Notify server - support both old and new events
         if (socket) {
-          socket.emit('media:toggle-mic', { isMuted: !audioTrack.enabled });
+          if (useNewGateway) {
+            socket.emit('media:toggle-mic', { isMuted: !audioTrack.enabled });
+          } else {
+            socket.emit('toggle-audio', { enabled: audioTrack.enabled });
+          }
         }
         
         console.log('🎤 Audio', audioTrack.enabled ? 'unmuted' : 'muted');
@@ -227,14 +240,18 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
       }
     }
 
-    // Notify server
+    // Notify server - support both old and new events
     if (socket) {
-      socket.emit('media:toggle-video', { isVideoOff: willBeOff });
+      if (useNewGateway) {
+        socket.emit('media:toggle-video', { isVideoOff: willBeOff });
+      } else {
+        socket.emit('toggle-video', { enabled: !willBeOff });
+      }
     }
 
     // Force UI update
     setPeers(new Map(peersRef.current));
-  }, [socket, isVideoOff]);
+  }, [socket, isVideoOff, useNewGateway]);
 
   // Toggle screen share: ADD screen track without replacing camera
   const toggleScreenShare = useCallback(async () => {
@@ -281,7 +298,13 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
         }, 500);
 
         setIsScreenSharing(false);
-        if (socket) socket.emit('media:screen-share', { isSharing: false });
+        if (socket) {
+          if (useNewGateway) {
+            socket.emit('media:screen-share', { isSharing: false });
+          } else {
+            socket.emit('screen-share', { enabled: false });
+          }
+        }
         
         // Restore camera after stopping screen share
         const audio = localStreamRef.current?.getAudioTracks() || [];
@@ -364,7 +387,13 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
       setLocalStream(localStreamRef.current);
       setIsScreenSharing(true);
       
-      if (socket) socket.emit('media:screen-share', { isSharing: true });
+      if (socket) {
+        if (useNewGateway) {
+          socket.emit('media:screen-share', { isSharing: true });
+        } else {
+          socket.emit('screen-share', { enabled: true });
+        }
+      }
 
       // Auto-stop when user clicks "Stop sharing"
       screenTrack.onended = () => {
@@ -408,13 +437,21 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
       });
     }
 
-    // Handle ICE candidates
+    // Handle ICE candidates - support both old and new events
     pc.onicecandidate = (event) => {
       if (event.candidate && socket) {
-        socket.emit('webrtc:ice-candidate', {
-          targetUserId,
-          candidate: event.candidate,
-        });
+        if (useNewGateway) {
+          socket.emit('media:ice-candidate', {
+            roomId: meetingId,
+            targetUserId,
+            candidate: event.candidate,
+          });
+        } else {
+          socket.emit('webrtc:ice-candidate', {
+            targetUserId,
+            candidate: event.candidate,
+          });
+        }
       }
     };
 
@@ -513,7 +550,7 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
     };
 
     return pc;
-  }, [socket]);
+  }, [socket, useNewGateway, meetingId]);
 
   // Handle WebRTC signaling
   useEffect(() => {
@@ -556,10 +593,19 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
         });
         await pc.setLocalDescription(answer);
 
-        socket.emit('webrtc:answer', {
-          targetUserId: data.fromUserId,
-          answer: pc.localDescription,
-        });
+        // Support both old and new events
+        if (useNewGateway) {
+          socket.emit('media:answer', {
+            roomId: meetingId,
+            targetUserId: data.fromUserId,
+            answer: pc.localDescription,
+          });
+        } else {
+          socket.emit('webrtc:answer', {
+            targetUserId: data.fromUserId,
+            answer: pc.localDescription,
+          });
+        }
 
         console.log(`📤 Sent answer to ${data.fromUserId}`);
       } catch (error) {
@@ -633,10 +679,19 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
         });
         await pc.setLocalDescription(offer);
 
-        socket.emit('webrtc:offer', {
-          targetUserId: data.userId,
-          offer: pc.localDescription,
-        });
+        // Support both old and new events
+        if (useNewGateway) {
+          socket.emit('media:offer', {
+            roomId: meetingId,
+            targetUserId: data.userId,
+            offer: pc.localDescription,
+          });
+        } else {
+          socket.emit('webrtc:offer', {
+            targetUserId: data.userId,
+            offer: pc.localDescription,
+          });
+        }
 
         console.log(`📤 Sent offer to ${data.userId}`);
       } catch (error) {
@@ -656,10 +711,29 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
       }
     };
 
-    socket.on('webrtc:offer', handleOffer);
-    socket.on('webrtc:answer', handleAnswer);
-    socket.on('webrtc:ice-candidate', handleIceCandidate);
-    socket.on('webrtc:peer-ready', handlePeerReady);
+    // Support both old and new events based on feature flag
+    if (useNewGateway) {
+      // New events
+      socket.on('media:offer', (data: { fromUserId: string; roomId: string; offer: RTCSessionDescriptionInit }) => {
+        handleOffer({ fromUserId: data.fromUserId, offer: data.offer });
+      });
+      socket.on('media:answer', (data: { fromUserId: string; roomId: string; answer: RTCSessionDescriptionInit }) => {
+        handleAnswer({ fromUserId: data.fromUserId, answer: data.answer });
+      });
+      socket.on('media:ice-candidate', (data: { fromUserId: string; roomId: string; candidate: RTCIceCandidateInit }) => {
+        handleIceCandidate({ fromUserId: data.fromUserId, candidate: data.candidate });
+      });
+      socket.on('media:ready', (data: { userId: string; roomId: string }) => {
+        handlePeerReady({ userId: data.userId });
+      });
+    } else {
+      // Old events
+      socket.on('webrtc:offer', handleOffer);
+      socket.on('webrtc:answer', handleAnswer);
+      socket.on('webrtc:ice-candidate', handleIceCandidate);
+      socket.on('webrtc:peer-ready', handlePeerReady);
+    }
+    
     socket.on('meeting:user-left', handleUserLeft);
 
     // Request existing peers when we join
@@ -667,13 +741,21 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
     socket.emit('meeting:request-peers');
     
     return () => {
-      socket.off('webrtc:offer', handleOffer);
-      socket.off('webrtc:answer', handleAnswer);
-      socket.off('webrtc:ice-candidate', handleIceCandidate);
-      socket.off('webrtc:peer-ready', handlePeerReady);
+      // Cleanup based on feature flag
+      if (useNewGateway) {
+        socket.off('media:offer');
+        socket.off('media:answer');
+        socket.off('media:ice-candidate');
+        socket.off('media:ready');
+      } else {
+        socket.off('webrtc:offer', handleOffer);
+        socket.off('webrtc:answer', handleAnswer);
+        socket.off('webrtc:ice-candidate', handleIceCandidate);
+        socket.off('webrtc:peer-ready', handlePeerReady);
+      }
       socket.off('meeting:user-left', handleUserLeft);
     };
-  }, [socket, userId, isOnline, createPeerConnection]);
+  }, [socket, userId, isOnline, createPeerConnection, useNewGateway, meetingId]);
 
   // Cleanup on unmount
   useEffect(() => {

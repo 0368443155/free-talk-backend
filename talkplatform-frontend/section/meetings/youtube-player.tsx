@@ -70,6 +70,7 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
     initialCurrentTime,
     initialIsPlaying,
     isPlayerReady,
+    isHost, // Log host status for debugging
   });
 
   // Get current time from player
@@ -131,6 +132,8 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
           modestbranding: 1,
           rel: 0,
           fs: isHost ? 1 : 0,
+          enablejsapi: 1, // Enable JavaScript API for programmatic control
+          origin: typeof window !== 'undefined' ? window.location.origin : '', // Set origin to fix CORS warnings
         },
         events: {
           onReady: onPlayerReady,
@@ -331,7 +334,47 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, YouTubePlayerProps>
     },
 
     handleSelectVideo: (videoId: string, startSeconds = 0) => {
-      if (!isHost || !isPlayerReady || !playerRef.current) return;
+      if (!isHost) {
+        console.warn("⚠️ handleSelectVideo: Not a host, cannot select video");
+        return;
+      }
+
+      if (!isPlayerReady) {
+        console.warn("⚠️ handleSelectVideo: Player not ready yet, will retry when ready");
+        // Store video to load when player is ready
+        const checkReady = setInterval(() => {
+          if (isPlayerReady && playerRef.current) {
+            clearInterval(checkReady);
+            if (playerRef.current && typeof playerRef.current.loadVideoById === "function") {
+              console.log("🔍 Loading video (delayed):", videoId, "at", startSeconds);
+              playerRef.current.loadVideoById({
+                videoId: videoId,
+                startSeconds,
+              });
+              setTimeout(() => {
+                if (playerRef.current && typeof playerRef.current.playVideo === "function") {
+                  playerRef.current.playVideo();
+                }
+                currentVideoIdRef.current = videoId;
+              }, 500);
+            }
+            if (socket) {
+              socket.emit("youtube:play", {
+                videoId: videoId,
+                currentTime: startSeconds,
+              });
+            }
+          }
+        }, 100);
+        // Clear interval after 10 seconds to avoid infinite loop
+        setTimeout(() => clearInterval(checkReady), 10000);
+        return;
+      }
+
+      if (!playerRef.current) {
+        console.warn("⚠️ handleSelectVideo: Player ref is null");
+        return;
+      }
 
       console.log("🔍 Loading video:", videoId, "at", startSeconds);
       isUpdatingRef.current = true;

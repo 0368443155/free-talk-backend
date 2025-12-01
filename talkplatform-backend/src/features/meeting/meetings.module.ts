@@ -20,6 +20,7 @@ import { Lesson } from '../courses/entities/lesson.entity';
 import { User } from '../../users/user.entity';
 import { LiveKitModule } from '../../livekit/livekit.module';
 import { CoursesModule } from '../courses/courses.module';
+import { FeatureFlagModule } from '../../core/feature-flags/feature-flag.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { CoursesModule } from '../courses/courses.module';
     ScheduleModule.forRoot(),
     forwardRef(() => LiveKitModule),
     forwardRef(() => CoursesModule),
+    FeatureFlagModule,
   ],
   controllers: [PublicMeetingsController, MeetingsGeneralController, WaitingRoomController],
   providers: [MeetingsService, MeetingsGateway, EnhancedMeetingsGateway, WaitingRoomService, MeetingSchedulerService],

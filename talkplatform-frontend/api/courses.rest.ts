@@ -288,7 +288,7 @@ export interface GetCoursesQuery {
 }
 
 export interface CoursesResponse {
-    data: Course[];
+    courses: Course[];
     total: number;
     page: number;
     limit: number;

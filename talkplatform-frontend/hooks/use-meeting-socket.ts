@@ -3,6 +3,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { useFeatureFlag } from './use-feature-flag';
 
 interface UseMeetingSocketProps {
   meetingId: string;
@@ -27,6 +28,9 @@ export function useMeetingSocket({
   const socketRef = useRef<Socket | null>(null);
   const connectionAttempts = useRef(0);
   const maxAttempts = 3;
+  
+  // Check if new gateway is enabled
+  const useNewGateway = useFeatureFlag('use_new_gateway');
 
   useEffect(() => {
     if (!meetingId || !userId) {
@@ -87,7 +91,12 @@ export function useMeetingSocket({
       // Socket join should happen after REST API join
       if (isOnline) {
         console.log('📡 Joining meeting via socket...');
-        newSocket.emit('meeting:join', { meetingId, userId });
+        // Support both old and new events
+        if (useNewGateway) {
+          newSocket.emit('room:join', { roomId: meetingId, userId });
+        } else {
+          newSocket.emit('meeting:join', { meetingId, userId });
+        }
       } else {
         console.log('⏸️ Skipping socket join - user not a participant yet (isOnline:', isOnline, ')');
       }
@@ -144,7 +153,12 @@ export function useMeetingSocket({
       // 🔥 FIX: Only rejoin if user is online (participant exists)
       if (isOnline) {
         console.log('📡 Rejoining meeting via socket after reconnect...');
-        newSocket.emit('meeting:join', { meetingId, userId });
+        // Support both old and new events
+        if (useNewGateway) {
+          newSocket.emit('room:join', { roomId: meetingId, userId });
+        } else {
+          newSocket.emit('meeting:join', { meetingId, userId });
+        }
       } else {
         console.log('⏸️ Skipping socket rejoin - user not a participant yet');
       }
@@ -236,8 +250,13 @@ export function useMeetingSocket({
       console.log('🧹 Cleaning up socket connection...');
       
       if (newSocket.connected) {
-        console.log('📤 Emitting meeting:leave before disconnect');
-        newSocket.emit('meeting:leave', { meetingId, userId });
+        console.log('📤 Emitting leave before disconnect');
+        // Support both old and new events
+        if (useNewGateway) {
+          newSocket.emit('room:leave', { roomId: meetingId, userId });
+        } else {
+          newSocket.emit('meeting:leave', { meetingId, userId });
+        }
       }
       
       newSocket.removeAllListeners();
@@ -259,8 +278,13 @@ export function useMeetingSocket({
     // Join meeting via socket when user becomes online
     // The server will handle duplicate joins gracefully
     console.log('📡 Triggering socket join (isOnline changed to true)...');
-    socket.emit('meeting:join', { meetingId, userId });
-  }, [socket, isConnected, isOnline, meetingId, userId]);
+    // Support both old and new events
+    if (useNewGateway) {
+      socket.emit('room:join', { roomId: meetingId, userId });
+    } else {
+      socket.emit('meeting:join', { meetingId, userId });
+    }
+  }, [socket, isConnected, isOnline, meetingId, userId, useNewGateway]);
 
   return { socket, isConnected, connectionError };
 }

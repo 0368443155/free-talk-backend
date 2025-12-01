@@ -15,7 +15,7 @@ import {
     NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { CoursesService } from './courses.service';
+import { CommandBus, QueryBus } from '@nestjs/cqrs';
 import { CreateCourseDto, UpdateCourseDto, GetCoursesQueryDto, CreateCourseWithSessionsDto } from './dto/course.dto';
 import { CreateSessionDto, UpdateSessionDto } from './dto/session.dto';
 import { CreateLessonDto, UpdateLessonDto } from './dto/lesson.dto';
@@ -28,11 +28,41 @@ import { CourseAccessGuard } from './guards/course-access.guard';
 import { MeetingsService } from '../meeting/meetings.service';
 import { EnrollmentService } from './enrollment.service';
 
+// Commands
+import { CreateCourseCommand } from './application/commands/create-course.command';
+import { CreateCourseWithSessionsCommand } from './application/commands/create-course-with-sessions.command';
+import { UpdateCourseCommand } from './application/commands/update-course.command';
+import { DeleteCourseCommand } from './application/commands/delete-course.command';
+import { PublishCourseCommand } from './application/commands/publish-course.command';
+import { UnpublishCourseCommand } from './application/commands/unpublish-course.command';
+import { AddSessionCommand } from './application/commands/add-session.command';
+import { UpdateSessionCommand } from './application/commands/update-session.command';
+import { DeleteSessionCommand } from './application/commands/delete-session.command';
+import { AddLessonCommand } from './application/commands/add-lesson.command';
+import { UpdateLessonCommand } from './application/commands/update-lesson.command';
+import { DeleteLessonCommand } from './application/commands/delete-lesson.command';
+import { RegenerateQrCodeCommand } from './application/commands/regenerate-qr-code.command';
+
+// Queries
+import { GetCoursesQuery } from './application/queries/get-courses.query';
+import { GetCourseDetailsQuery } from './application/queries/get-course-details.query';
+import { GetTeacherCoursesQuery } from './application/queries/get-teacher-courses.query';
+import { GetCourseSessionsQuery } from './application/queries/get-course-sessions.query';
+import { GetSessionByIdQuery } from './application/queries/get-session-by-id.query';
+import { GetSessionLessonsQuery } from './application/queries/get-session-lessons.query';
+import { GetLessonByIdQuery } from './application/queries/get-lesson-by-id.query';
+import { GetLessonMaterialsQuery } from './application/queries/get-lesson-materials.query';
+import { GetLessonMaterialByIdQuery } from './application/queries/get-lesson-material-by-id.query';
+import { CheckLessonMaterialAccessQuery } from './application/queries/check-lesson-material-access.query';
+import { GetCourseMeetingsQuery } from './application/queries/get-course-meetings.query';
+import { CourseStatus, PriceType } from './entities/course.entity';
+
 @ApiTags('Courses')
 @Controller('courses')
 export class CoursesController {
     constructor(
-        private readonly coursesService: CoursesService,
+        private readonly commandBus: CommandBus,
+        private readonly queryBus: QueryBus,
         private readonly meetingsService: MeetingsService,
         private readonly enrollmentService: EnrollmentService,
     ) { }
@@ -52,7 +82,21 @@ export class CoursesController {
         if (!teacherId) {
             throw new ForbiddenException('User not authenticated');
         }
-        return this.coursesService.createCourse(teacherId, dto);
+        const command = new CreateCourseCommand(
+            teacherId,
+            dto.title,
+            dto.description,
+            dto.duration_hours || 0,
+            dto.price_type,
+            dto.price_per_session,
+            dto.price_full_course,
+            dto.language,
+            dto.level as any,
+            dto.category as any,
+            dto.tags || [],
+            dto.max_students || 20,
+        );
+        return this.commandBus.execute(command);
     }
 
     @Post('with-sessions')
@@ -68,14 +112,30 @@ export class CoursesController {
         if (!teacherId) {
             throw new ForbiddenException('User not authenticated');
         }
-        return this.coursesService.createCourseWithSessions(teacherId, dto);
+        const command = new CreateCourseWithSessionsCommand(teacherId, dto);
+        return this.commandBus.execute(command);
     }
 
     @Get()
     @ApiOperation({ summary: 'Get all courses with filters' })
     @ApiResponse({ status: 200, description: 'Courses retrieved successfully' })
     async getCourses(@Query() query: GetCoursesQueryDto) {
-        return this.coursesService.getCourses(query);
+        const getCoursesQuery = new GetCoursesQuery(
+            {
+                teacherId: query.teacher_id,
+                status: query.status as any,
+                category: query.category as any,
+                level: query.level as any,
+                language: query.language,
+                isPublished: true, // Only published courses by default
+                search: query.search,
+            },
+            {
+                page: query.page || 1,
+                limit: query.limit || 20,
+            },
+        );
+        return this.queryBus.execute(getCoursesQuery);
     }
 
     @Get('my-courses')
@@ -86,7 +146,8 @@ export class CoursesController {
     @ApiResponse({ status: 200, description: 'Courses retrieved successfully' })
     async getMyCourses(@Req() req: any, @Query('status') status?: string) {
         const teacherId = req.user.id;
-        return this.coursesService.getTeacherCourses(teacherId, status as any);
+        const query = new GetTeacherCoursesQuery(teacherId, status as any);
+        return this.queryBus.execute(query);
     }
 
     @Get(':id')
@@ -95,9 +156,8 @@ export class CoursesController {
     @ApiResponse({ status: 200, description: 'Course retrieved successfully' })
     @ApiResponse({ status: 404, description: 'Course not found' })
     async getCourseById(@Param('id') id: string, @Req() req?: any) {
-        // Try to get userId from request, but don't require authentication
-        const userId = req?.user?.id;
-        return this.coursesService.getCourseById(id, userId);
+        const query = new GetCourseDetailsQuery(id, true); // Include sessions
+        return this.queryBus.execute(query);
     }
 
     @Patch(':id')
@@ -114,7 +174,9 @@ export class CoursesController {
         @Body() dto: UpdateCourseDto,
     ) {
         const teacherId = req.user.id;
-        return this.coursesService.updateCourse(id, teacherId, dto);
+        const command = new UpdateCourseCommand(id, teacherId, dto);
+        const result = await this.commandBus.execute(command);
+        return result.entity;
     }
 
     @Delete(':id')
@@ -129,7 +191,8 @@ export class CoursesController {
     @ApiResponse({ status: 404, description: 'Course not found' })
     async deleteCourse(@Param('id') id: string, @Req() req: any) {
         const teacherId = req.user.id;
-        await this.coursesService.deleteCourse(id, teacherId);
+        const command = new DeleteCourseCommand(id, teacherId);
+        await this.commandBus.execute(command);
     }
 
     @Post(':id/regenerate-qr')
@@ -141,7 +204,11 @@ export class CoursesController {
     @ApiResponse({ status: 403, description: 'You can only regenerate QR code for your own courses' })
     async regenerateQrCode(@Param('id') id: string, @Req() req: any) {
         const teacherId = req.user.id;
-        return this.coursesService.regenerateQrCode(id, teacherId);
+        const command = new RegenerateQrCodeCommand(id, teacherId);
+        await this.commandBus.execute(command);
+        // Return updated course
+        const query = new GetCourseDetailsQuery(id);
+        return this.queryBus.execute(query);
     }
 
     @Patch(':id/publish')
@@ -155,7 +222,11 @@ export class CoursesController {
     @ApiResponse({ status: 404, description: 'Course not found' })
     async publishCourse(@Param('id') id: string, @Req() req: any) {
         const teacherId = req.user.id;
-        return this.coursesService.publishCourse(id, teacherId);
+        const command = new PublishCourseCommand(id, teacherId);
+        await this.commandBus.execute(command);
+        // Return updated course
+        const query = new GetCourseDetailsQuery(id);
+        return this.queryBus.execute(query);
     }
 
     @Patch(':id/unpublish')
@@ -168,7 +239,11 @@ export class CoursesController {
     @ApiResponse({ status: 404, description: 'Course not found' })
     async unpublishCourse(@Param('id') id: string, @Req() req: any) {
         const teacherId = req.user.id;
-        return this.coursesService.unpublishCourse(id, teacherId);
+        const command = new UnpublishCourseCommand(id, teacherId);
+        await this.commandBus.execute(command);
+        // Return updated course
+        const query = new GetCourseDetailsQuery(id);
+        return this.queryBus.execute(query);
     }
 
     // ==================== SESSION ENDPOINTS ====================
@@ -187,7 +262,8 @@ export class CoursesController {
         @Body() dto: CreateSessionDto,
     ) {
         const teacherId = req.user.id;
-        return this.coursesService.addSession(courseId, teacherId, dto);
+        const command = new AddSessionCommand(courseId, teacherId, dto);
+        return this.commandBus.execute(command);
     }
 
     @Get(':id/sessions')
@@ -195,7 +271,8 @@ export class CoursesController {
     @ApiResponse({ status: 200, description: 'Sessions retrieved successfully' })
     @ApiResponse({ status: 404, description: 'Course not found' })
     async getCourseSessions(@Param('id') courseId: string) {
-        return this.coursesService.getCourseSessions(courseId);
+        const query = new GetCourseSessionsQuery(courseId);
+        return this.queryBus.execute(query);
     }
 
     @Get(':id/sessions/:sessionId')
@@ -203,7 +280,8 @@ export class CoursesController {
     @ApiResponse({ status: 200, description: 'Session retrieved successfully' })
     @ApiResponse({ status: 404, description: 'Session not found' })
     async getSessionById(@Param('sessionId') sessionId: string) {
-        return this.coursesService.getSessionById(sessionId);
+        const query = new GetSessionByIdQuery(sessionId);
+        return this.queryBus.execute(query);
     }
 
     @Patch(':id/sessions/:sessionId')
@@ -220,7 +298,8 @@ export class CoursesController {
         @Body() dto: UpdateSessionDto,
     ) {
         const teacherId = req.user.id;
-        return this.coursesService.updateSession(sessionId, teacherId, dto);
+        const command = new UpdateSessionCommand(sessionId, teacherId, dto);
+        return this.commandBus.execute(command);
     }
 
     @Delete(':id/sessions/:sessionId')
@@ -234,7 +313,8 @@ export class CoursesController {
     @ApiResponse({ status: 404, description: 'Session not found' })
     async deleteSession(@Param('sessionId') sessionId: string, @Req() req: any) {
         const teacherId = req.user.id;
-        await this.coursesService.deleteSession(sessionId, teacherId);
+        const command = new DeleteSessionCommand(sessionId, teacherId);
+        await this.commandBus.execute(command);
     }
 
     // ==================== LESSON ENDPOINTS ====================
@@ -244,7 +324,8 @@ export class CoursesController {
     @ApiResponse({ status: 200, description: 'Lessons retrieved successfully' })
     @ApiResponse({ status: 404, description: 'Session not found' })
     async getSessionLessons(@Param('sessionId') sessionId: string) {
-        return this.coursesService.getSessionLessons(sessionId);
+        const query = new GetSessionLessonsQuery(sessionId);
+        return this.queryBus.execute(query);
     }
 
     @Get(':id/sessions/:sessionId/lessons/:lessonId')
@@ -252,7 +333,8 @@ export class CoursesController {
     @ApiResponse({ status: 200, description: 'Lesson retrieved successfully' })
     @ApiResponse({ status: 404, description: 'Lesson not found' })
     async getLessonById(@Param('lessonId') lessonId: string) {
-        return this.coursesService.getLessonById(lessonId);
+        const query = new GetLessonByIdQuery(lessonId);
+        return this.queryBus.execute(query);
     }
 
     @Post(':id/sessions/:sessionId/lessons')
@@ -269,7 +351,8 @@ export class CoursesController {
         @Body() dto: CreateLessonDto,
     ) {
         const teacherId = req.user.id;
-        return this.coursesService.addLesson(sessionId, teacherId, dto);
+        const command = new AddLessonCommand(sessionId, teacherId, dto);
+        return this.commandBus.execute(command);
     }
 
     @Patch(':id/sessions/:sessionId/lessons/:lessonId')
@@ -286,7 +369,8 @@ export class CoursesController {
         @Body() dto: UpdateLessonDto,
     ) {
         const teacherId = req.user.id;
-        return this.coursesService.updateLesson(lessonId, teacherId, dto);
+        const command = new UpdateLessonCommand(lessonId, teacherId, dto);
+        return this.commandBus.execute(command);
     }
 
     @Delete(':id/sessions/:sessionId/lessons/:lessonId')
@@ -300,7 +384,8 @@ export class CoursesController {
     @ApiResponse({ status: 404, description: 'Lesson not found' })
     async deleteLesson(@Param('lessonId') lessonId: string, @Req() req: any) {
         const teacherId = req.user.id;
-        await this.coursesService.deleteLesson(lessonId, teacherId);
+        const command = new DeleteLessonCommand(lessonId, teacherId);
+        await this.commandBus.execute(command);
     }
 
     // ==================== LESSON MEETING ENDPOINTS ====================
@@ -345,7 +430,8 @@ export class CoursesController {
     async getLessonMaterials(
         @Param('lessonId') lessonId: string,
     ) {
-        return this.coursesService.getLessonMaterials(lessonId);
+        const query = new GetLessonMaterialsQuery(lessonId);
+        return this.queryBus.execute(query);
     }
 
     @Get('materials/:materialId/download')
@@ -360,14 +446,16 @@ export class CoursesController {
         @Req() req: any,
     ) {
         const userId = req.user.userId || req.user.id;
-        const hasAccess = await this.coursesService.checkLessonMaterialAccess(userId, materialId);
+        const accessQuery = new CheckLessonMaterialAccessQuery(userId, materialId);
+        const hasAccess = await this.queryBus.execute(accessQuery);
 
         if (!hasAccess) {
             throw new ForbiddenException('Purchase required to download this material');
         }
 
         // Get material details
-        const material = await this.coursesService.getLessonMaterialById(materialId);
+        const materialQuery = new GetLessonMaterialByIdQuery(materialId);
+        const material = await this.queryBus.execute(materialQuery);
         if (!material) {
             throw new NotFoundException('Material not found');
         }
@@ -387,6 +475,7 @@ export class CoursesController {
     @ApiResponse({ status: 200, description: 'Meetings retrieved successfully' })
     @ApiResponse({ status: 404, description: 'Course not found' })
     async getCourseMeetings(@Param('id') courseId: string) {
-        return this.coursesService.getCourseMeetings(courseId);
+        const query = new GetCourseMeetingsQuery(courseId);
+        return this.queryBus.execute(query);
     }
 }

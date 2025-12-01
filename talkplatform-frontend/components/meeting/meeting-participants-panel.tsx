@@ -9,6 +9,7 @@ import { Crown, Shield, UserX, VolumeX, MicOff, VideoOff, MonitorUp, Mic, Video 
 import { IMeetingParticipant, ParticipantRole } from "@/api/meeting.rest";
 import { Socket } from "socket.io-client";
 import { useToast } from "@/components/ui/use-toast";
+import { useFeatureFlag } from "@/hooks/use-feature-flag";
 
 interface MeetingParticipantsPanelProps {
   participants: IMeetingParticipant[];
@@ -34,6 +35,7 @@ export function MeetingParticipantsPanel({
   onStopScreenShare,
 }: MeetingParticipantsPanelProps) {
   const { toast } = useToast();
+  const useNewGateway = useFeatureFlag('use_new_gateway');
 
   const getRoleIcon = (role: ParticipantRole) => {
     if (role === ParticipantRole.HOST) return <Crown className="w-4 h-4 text-yellow-500" />;
@@ -46,11 +48,21 @@ export function MeetingParticipantsPanel({
     const shouldMute = !currentIsMuted;
 
     if (socket?.connected) {
-      socket.emit('admin:mute-user', {
-        targetUserId: participantUserId,
-        mute: shouldMute
-      });
+      // Support both old and new gateway events
+      if (useNewGateway) {
+        socket.emit('admin:mute-user', {
+          targetUserId: participantUserId,
+          mute: shouldMute
+        });
+      } else {
+        socket.emit('admin:mute-user', {
+          targetUserId: participantUserId,
+          mute: shouldMute
+        });
+      }
       toast({ title: shouldMute ? `Muted ${participantName}` : `Unmuted ${participantName}` });
+    } else {
+      toast({ title: "Socket not connected", variant: "destructive" });
     }
     onMuteParticipant?.(participantUserId);
   };
@@ -65,6 +77,8 @@ export function MeetingParticipantsPanel({
         videoOff: shouldTurnOff
       });
       toast({ title: shouldTurnOff ? `Turned off ${participantName}'s camera` : `Turned on ${participantName}'s camera` });
+    } else {
+      toast({ title: "Socket not connected", variant: "destructive" });
     }
     onVideoOffParticipant?.(participantUserId);
   };
@@ -75,6 +89,8 @@ export function MeetingParticipantsPanel({
         targetUserId: participantUserId
       });
       toast({ title: `Stopped ${participantName}'s screen share` });
+    } else {
+      toast({ title: "Socket not connected", variant: "destructive" });
     }
     onStopScreenShare?.(participantUserId);
   };

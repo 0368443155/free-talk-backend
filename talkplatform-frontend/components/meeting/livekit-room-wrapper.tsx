@@ -36,6 +36,7 @@ import { MeetingDialogs } from './meeting-dialogs';
 import { useMeetingYouTube } from '@/hooks/use-meeting-youtube';
 import { useMeetingChat } from '@/hooks/use-meeting-chat';
 import { useMeetingParticipants } from '@/hooks/use-meeting-participants';
+import { useYouTubeControls } from '@/hooks/use-youtube-controls';
 import {
   IMeetingChatMessage,
   MessageType,
@@ -150,7 +151,7 @@ export function LiveKitRoomWrapper({
   // Dialog states
   const [confirmKickOpen, setConfirmKickOpen] = useState(false);
   const [confirmBlockOpen, setConfirmBlockOpen] = useState(false);
-  const [targetParticipant, setTargetParticipant] = useState<{ id: string; name: string } | null>(null);
+  const [targetParticipant, setTargetParticipant] = useState<{ id: string; userId?: string; name: string } | null>(null);
 
   // Chat input state (for MeetingChatPanel)
   const [newMessage, setNewMessage] = useState("");
@@ -714,49 +715,27 @@ export function LiveKitRoomWrapper({
     addReaction(emoji, user.id);
   };
 
-  // YouTube handlers
-  const handleYoutubeSelectVideo = (videoId: string) => {
-    if (!isHost) return;
-    setShowVideoGrid(false);
-    setYoutubeVideoId(videoId);
-    setYoutubeCurrentTime(0);
-    setYoutubeIsPlaying(true);
-    if (youtubePlayerRef.current) {
-      youtubePlayerRef.current.handleSelectVideo(videoId, 0);
-    }
-    if (socket?.connected) {
-      socket.emit("youtube:play", {
-        videoId,
-        currentTime: 0,
-      });
-    }
-  };
-
-  const handleYoutubeTogglePlay = () => {
-    if (!isHost || !youtubeVideoId) return;
-    if (youtubePlayerRef.current) {
-      youtubePlayerRef.current.handleTogglePlay();
-    }
-    setYoutubeIsPlaying(!youtubeIsPlaying);
-  };
-
-  const handleYoutubeClear = () => {
-    if (!isHost) return;
-    setYoutubeVideoId(null);
-    setYoutubeIsPlaying(false);
-    setYoutubeCurrentTime(0);
-    if (youtubePlayerRef.current) {
-      youtubePlayerRef.current.handleClearVideo();
-    }
-    if (socket?.connected) {
-      socket.emit("youtube:clear");
-    }
-  };
+  // YouTube handlers - using shared hook
+  const {
+    handleYoutubeSelectVideo,
+    handleYoutubeTogglePlay,
+    handleYoutubeClear,
+    handleYoutubeMute: handleYoutubeMuteBase,
+  } = useYouTubeControls({
+    socket,
+    isHost,
+    youtubePlayerRef,
+    youtubeVideoId,
+    youtubeIsPlaying,
+    youtubeCurrentTime,
+    setYoutubeVideoId,
+    setYoutubeIsPlaying,
+    setYoutubeCurrentTime,
+    setShowVideoGrid,
+  });
 
   const handleYoutubeMute = () => {
-    if (youtubePlayerRef.current) {
-      youtubePlayerRef.current.handleToggleMute();
-    }
+    handleYoutubeMuteBase();
     setYoutubeVolume(prev => (prev === 0 ? 50 : 0));
   };
 
@@ -859,24 +838,60 @@ export function LiveKitRoomWrapper({
 
   // Host participant management
   // UI handlers for opening dialogs
-  const handleKickParticipant = (participantId: string, participantName: string) => {
-    setTargetParticipant({ id: participantId, name: participantName });
+  const handleKickParticipant = (participantUserId: string, participantName: string) => {
+    // Find participant by user_id to get participant.id (needed for API)
+    const participant = participants.find(p => {
+      const pid = p.user?.id || (p.user as any)?.user_id;
+      return pid === participantUserId;
+    });
+    
+    if (!participant) {
+      console.error('❌ Participant not found for kick:', participantUserId);
+      toast({
+        title: "Error",
+        description: "Participant not found",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Use participant.id (database ID) for API call, but user_id for socket
+    setTargetParticipant({ 
+      id: participant.id, // participant.id for API
+      userId: participantUserId, // user_id for socket
+      name: participantName 
+    });
     setConfirmKickOpen(true);
   };
 
   const confirmKickParticipant = async () => {
     if (!targetParticipant) return;
+    
     // Emit socket event for real-time notification
-    if (socket?.connected) {
+    if (socket?.connected && targetParticipant.userId) {
       socket.emit('admin:kick-user', {
-        targetUserId: targetParticipant.id,
+        targetUserId: targetParticipant.userId,
         reason: 'Kicked by host'
       });
     }
-    // Call API to actually kick
-    await handleKickParticipantApi(targetParticipant.id, targetParticipant.name);
-    setConfirmKickOpen(false);
-    setTargetParticipant(null);
+    
+    // Call API to actually kick (using participant.id, not user_id)
+    try {
+      await handleKickParticipantApi(targetParticipant.id, targetParticipant.name);
+      setConfirmKickOpen(false);
+      setTargetParticipant(null);
+      
+      // Refresh participants list
+      await fetchParticipants();
+      setParticipantsRefreshKey(prev => prev + 1);
+    } catch (error: any) {
+      console.error('❌ Error kicking participant:', error);
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || "Failed to kick participant",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleBlockParticipant = (participantId: string, participantName: string) => {
@@ -906,11 +921,26 @@ export function LiveKitRoomWrapper({
         const pid = p.user?.id || (p.user as any)?.user_id;
         return pid === participantUserId;
       });
-      if (!participant) return;
+      if (!participant) {
+        console.error('❌ Participant not found for mute:', participantUserId);
+        toast({
+          title: "Error",
+          description: "Participant not found",
+          variant: "destructive",
+        });
+        return;
+      }
 
       // Get current mute state from database (source of truth)
       const currentIsMuted = (participant as any).is_muted ?? false;
       const shouldMute = !currentIsMuted; // Toggle: if not muted, mute it; if muted, unmute it
+
+      console.log('🔇 Muting participant:', {
+        participantUserId,
+        currentIsMuted,
+        shouldMute,
+        socketConnected: socket?.connected
+      });
 
       // Emit socket event for real-time notification and database update
       // Socket event will handle both database update and broadcast
@@ -937,8 +967,9 @@ export function LiveKitRoomWrapper({
       setTimeout(async () => {
         await fetchParticipants();
         setParticipantsRefreshKey(prev => prev + 1);
-      }, 200);
+      }, 300);
     } catch (error) {
+      console.error('❌ Error muting participant:', error);
       toast({
         title: "Error",
         description: "Failed to toggle mute",
@@ -955,7 +986,12 @@ export function LiveKitRoomWrapper({
         return pid === participantUserId;
       });
       if (!participant) {
-        console.error('❌ Participant not found:', participantUserId);
+        console.error('❌ Participant not found for video off:', participantUserId);
+        toast({
+          title: "Error",
+          description: "Participant not found",
+          variant: "destructive",
+        });
         return;
       }
 
@@ -967,7 +1003,8 @@ export function LiveKitRoomWrapper({
         participantUserId,
         currentIsVideoOff,
         shouldTurnOff,
-        participantId: participant.id
+        participantId: participant.id,
+        socketConnected: socket?.connected
       });
 
       // Emit socket event for real-time notification and database update
@@ -975,6 +1012,10 @@ export function LiveKitRoomWrapper({
         socket.emit('admin:video-off-user', {
           targetUserId: participantUserId,
           videoOff: shouldTurnOff
+        });
+
+        toast({
+          title: shouldTurnOff ? `Turned off participant's camera` : `Turned on participant's camera`
         });
       } else {
         console.error('❌ Socket not connected');
@@ -986,13 +1027,12 @@ export function LiveKitRoomWrapper({
         return;
       }
 
-      toast({
-        title: shouldTurnOff ? `Turned off participant's camera` : `Turned on participant's camera`
-      });
-
       // Force refresh participants to get updated state
-      await fetchParticipants();
-      setParticipantsRefreshKey(prev => prev + 1);
+      // Small delay to ensure database update is complete
+      setTimeout(async () => {
+        await fetchParticipants();
+        setParticipantsRefreshKey(prev => prev + 1);
+      }, 300);
     } catch (error) {
       console.error('❌ Error toggling camera:', error);
       toast({
@@ -1006,13 +1046,27 @@ export function LiveKitRoomWrapper({
   const handleStopScreenShareParticipant = async (participantUserId: string) => {
     try {
       if (socket?.connected) {
-        socket.emit('admin:stop-screen-share', {
+        // Use correct event name: admin:stop-share-user (not admin:stop-screen-share)
+        socket.emit('admin:stop-share-user', {
           targetUserId: participantUserId
         });
+        toast({ title: `Stopped participant's screen share` });
+      } else {
+        toast({
+          title: "Error",
+          description: "Socket not connected",
+          variant: "destructive",
+        });
+        return;
       }
-      toast({ title: `Stopped participant's screen share` });
-      await fetchParticipants();
+      
+      // Force refresh participants to get updated state
+      setTimeout(async () => {
+        await fetchParticipants();
+        setParticipantsRefreshKey(prev => prev + 1);
+      }, 200);
     } catch (error) {
+      console.error('❌ Error stopping screen share:', error);
       toast({
         title: "Error",
         description: "Failed to stop screen share",

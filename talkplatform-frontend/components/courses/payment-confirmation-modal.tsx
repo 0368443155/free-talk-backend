@@ -44,7 +44,7 @@ export function PaymentConfirmationModal({
             {title}
           </AlertDialogTitle>
           <AlertDialogDescription className="text-base space-y-3">
-            <p>{description}</p>
+            <div>{description}</div>
             
             <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 space-y-2">
               <div className="flex justify-between items-center">
@@ -71,9 +71,9 @@ export function PaymentConfirmationModal({
 
             {!hasEnoughCredits && (
               <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
-                <p className="text-sm text-red-800 dark:text-red-200">
+                <div className="text-sm text-red-800 dark:text-red-200">
                   Insufficient credits. You need ${(amount - currentBalance).toFixed(2)} more credits to complete this purchase.
-                </p>
+                </div>
               </div>
             )}
           </AlertDialogDescription>

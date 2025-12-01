@@ -36,6 +36,7 @@ import { MeetingDialogs } from "@/components/meeting/meeting-dialogs";
 import { useMeetingYouTube } from "@/hooks/use-meeting-youtube";
 import { useMeetingChat } from "@/hooks/use-meeting-chat";
 import { useMeetingParticipants } from "@/hooks/use-meeting-participants";
+import { useYouTubeControls } from "@/hooks/use-youtube-controls";
 import { Slider } from "@/components/ui/slider";
 import { MeetingBandwidthMonitor } from "@/components/meeting-bandwidth-monitor";
 import {
@@ -166,7 +167,16 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   };
   const ALL_EMOJIS = Object.values(EMOJI_CATEGORIES).flat();
 
+  // Determine if current user is the meeting host
+  // Host has full control over YouTube player, meeting settings, etc.
   const isHost = meeting.host?.id === user.id;
+  
+  console.log("🎯 Meeting Room - Host Check:", {
+    meetingHostId: meeting.host?.id,
+    currentUserId: user.id,
+    isHost,
+    userRole: user.role,
+  });
   const isPublicMeeting = !classroomId;
 
   // Meeting type selection handlers
@@ -707,68 +717,27 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     }
   };
 
-  // YouTube handlers
-  const handleYoutubeSelectVideo = (videoId: string) => {
-    if (!isHost) return;
-
-    console.log("🎬 Host selected video:", videoId);
-    setShowVideoGrid(false);
-    setYoutubeVideoId(videoId);
-    setYoutubeCurrentTime(0);
-    setYoutubeIsPlaying(true);
-
-    if (youtubePlayerRef.current) {
-      youtubePlayerRef.current.handleSelectVideo(videoId, 0);
-    } else if (socket) {
-      socket.emit("youtube:play", {
-        videoId,
-        currentTime: 0,
-      });
-    }
-  };
-
-  const handleYoutubeTogglePlay = () => {
-    if (!isHost || !youtubeVideoId) return;
-
-    console.log(`🎬 Toggle: ${youtubeIsPlaying ? 'Pause' : 'Play'} | VideoID: ${youtubeVideoId}`);
-
-    if (youtubePlayerRef.current) {
-      youtubePlayerRef.current.handleTogglePlay();
-    } else if (socket) {
-      if (youtubeIsPlaying) {
-        socket.emit("youtube:pause", {
-          currentTime: youtubeCurrentTime,
-        });
-      } else {
-        socket.emit("youtube:play", {
-          videoId: youtubeVideoId,
-          currentTime: youtubeCurrentTime,
-        });
-      }
-    }
-
-    setYoutubeIsPlaying(!youtubeIsPlaying);
-  };
-
-  const handleYoutubeClear = () => {
-    if (!isHost) return;
-
-    console.log("❌ Host clearing video");
-    setYoutubeVideoId(null);
-    setYoutubeIsPlaying(false);
-    setYoutubeCurrentTime(0);
-
-    if (youtubePlayerRef.current) {
-      youtubePlayerRef.current.handleClearVideo();
-    } else if (socket) {
-      socket.emit("youtube:clear");
-    }
-  };
+  // YouTube handlers - using shared hook
+  const {
+    handleYoutubeSelectVideo,
+    handleYoutubeTogglePlay,
+    handleYoutubeClear,
+    handleYoutubeMute: handleYoutubeMuteBase,
+  } = useYouTubeControls({
+    socket,
+    isHost,
+    youtubePlayerRef,
+    youtubeVideoId,
+    youtubeIsPlaying,
+    youtubeCurrentTime,
+    setYoutubeVideoId,
+    setYoutubeIsPlaying,
+    setYoutubeCurrentTime,
+    setShowVideoGrid,
+  });
 
   const handleYoutubeMute = () => {
-    if (youtubePlayerRef.current) {
-      youtubePlayerRef.current.handleToggleMute();
-    }
+    handleYoutubeMuteBase();
     setYoutubeVolume(prev => (prev === 0 ? 50 : 0));
   };
 

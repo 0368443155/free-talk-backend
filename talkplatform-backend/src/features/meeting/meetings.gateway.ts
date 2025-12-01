@@ -8,7 +8,7 @@ import {
   MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Injectable, UseGuards } from '@nestjs/common';
+import { Injectable, UseGuards, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Meeting } from './entities/meeting.entity';
@@ -16,6 +16,7 @@ import { MeetingParticipant } from './entities/meeting-participant.entity';
 import { MeetingChatMessage, MessageType } from './entities/meeting-chat-message.entity';
 import { BlockedParticipant } from './entities/blocked-participant.entity';
 import { User } from '../../users/user.entity';
+import { FeatureFlagService } from '../../core/feature-flags/feature-flag.service';
 
 interface SocketWithUser extends Socket {
   user?: User;
@@ -27,6 +28,18 @@ interface SocketWithUser extends Socket {
 const userSocketMap = new Map<string, string>();
 const peerConnectionMap = new Map<string, Set<string>>();
 
+/**
+ * @deprecated This gateway is deprecated. Please use UnifiedRoomGateway and feature-specific gateways instead.
+ * Migration guide: See docs/after_refactor/EVENT_MIGRATION_MAP.md
+ * 
+ * This gateway will be removed in a future version. All events have been migrated to:
+ * - UnifiedRoomGateway: room:join, room:leave
+ * - MediaGateway: media:offer, media:answer, media:ice-candidate, media:ready, media:toggle-mic, etc.
+ * - ChatGateway: chat:send
+ * - YoutubeSyncGateway: youtube:play, youtube:pause, youtube:seek
+ * - ModerationGateway: moderation:kick, moderation:block
+ * - HandRaiseGateway: hand:raise, hand:lower
+ */
 @WebSocketGateway({
   cors: {
     origin: ['http://localhost:3000', 'http://localhost:3001'], // Allow both frontend & backend
@@ -52,6 +65,8 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
   @WebSocketServer()
   server: Server;
 
+  private readonly logger = new Logger(MeetingsGateway.name);
+
   constructor(
     @InjectRepository(Meeting)
     private readonly meetingRepository: Repository<Meeting>,
@@ -63,9 +78,31 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly userRepository: Repository<User>,
     @InjectRepository(BlockedParticipant)
     private readonly blockedParticipantRepository: Repository<BlockedParticipant>,
+    private readonly featureFlagService: FeatureFlagService,
   ) {}
 
   async handleConnection(client: SocketWithUser) {
+    // Check if new gateway is enabled
+    const useNewGateway = await this.featureFlagService.isEnabled('use_new_gateway');
+
+    if (useNewGateway) {
+      this.logger.warn(
+        `⚠️ Old gateway connection rejected. User should connect to UnifiedRoomGateway instead. ` +
+        `Socket: ${client.id}`
+      );
+      client.emit('error', {
+        message: 'This gateway is deprecated. Please use the new UnifiedRoomGateway.',
+        migrationGuide: 'See docs/after_refactor/EVENT_MIGRATION_MAP.md',
+      });
+      client.disconnect();
+      return;
+    }
+
+    this.logger.warn(
+      `⚠️ DEPRECATED: Using old MeetingsGateway. ` +
+      `Please migrate to UnifiedRoomGateway. Socket: ${client.id}`
+    );
+
     console.log(`🟢 Client connected:`, {
       socketId: client.id,
       transport: (client as any).conn?.transport?.name,
@@ -328,6 +365,10 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
   }
 
+  /**
+   * @deprecated Use media:offer in MediaGateway instead
+   * See docs/after_refactor/EVENT_MIGRATION_MAP.md for migration guide
+   */
   @SubscribeMessage('webrtc:offer')
   handleWebRTCOffer(
     @ConnectedSocket() client: SocketWithUser,
@@ -364,6 +405,9 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
   }
 
+  /**
+   * @deprecated Use media:answer in MediaGateway instead
+   */
   @SubscribeMessage('webrtc:answer')
   handleWebRTCAnswer(
     @ConnectedSocket() client: SocketWithUser,
@@ -399,6 +443,9 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
   }
 
+  /**
+   * @deprecated Use media:ice-candidate in MediaGateway instead
+   */
   @SubscribeMessage('webrtc:ice-candidate')
   handleICECandidate(
     @ConnectedSocket() client: SocketWithUser,
@@ -510,6 +557,13 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
     @ConnectedSocket() client: SocketWithUser,
     @MessageBody() data: { targetUserId: string; mute?: boolean },
   ) {
+    // Check if new gateway is enabled - if so, forward to MediaGateway
+    const useNewGateway = await this.featureFlagService.isEnabled('use_new_gateway');
+    if (useNewGateway) {
+      this.logger.warn('admin:mute-user received on old gateway but new gateway is enabled. Event should be sent to /media namespace.');
+      // Still handle it for backward compatibility during migration
+    }
+    
     if (!(await this.ensureHost(client))) return;
     
     // Get current state from database
