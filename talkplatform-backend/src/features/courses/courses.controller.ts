@@ -86,15 +86,15 @@ export class CoursesController {
             teacherId,
             dto.title,
             dto.description,
-            dto.category as any,
-            dto.level as any,
-            dto.language,
-            dto.price_type,
-            dto.price_full_course,
-            dto.price_per_session,
-            dto.max_students || 20,
             dto.duration_hours || 0,
+            dto.price_type,
+            dto.price_per_session,
+            dto.price_full_course,
+            dto.language,
+            dto.level as any,
+            dto.category as any,
             dto.tags || [],
+            dto.max_students || 20,
         );
         return this.commandBus.execute(command);
     }

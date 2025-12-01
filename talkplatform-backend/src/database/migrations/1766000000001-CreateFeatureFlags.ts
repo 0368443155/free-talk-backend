@@ -1,4 +1,5 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
+import { randomUUID } from 'crypto';
 
 export class CreateFeatureFlags1766000000001 implements MigrationInterface {
   name = 'CreateFeatureFlags1766000000001';
@@ -27,15 +28,21 @@ export class CreateFeatureFlags1766000000001 implements MigrationInterface {
     `);
 
     // Insert default feature flags
-    await queryRunner.query(`
-      INSERT INTO \`feature_flags\` (\`id\`, \`name\`, \`enabled\`, \`rollout_percentage\`, \`description\`)
-      VALUES 
-        (UUID(), 'use_new_gateway', false, 0, 'Use new modular gateway instead of monolithic'),
-        (UUID(), 'use_room_factory', false, 0, 'Use room factory for creating rooms'),
-        (UUID(), 'use_feature_modules', false, 0, 'Use feature modules (chat, media, etc)'),
-        (UUID(), 'use_access_control', false, 0, 'Use new access control system'),
-        (UUID(), 'use_cqrs_pattern', false, 0, 'Use CQRS pattern for domain modules')
-    `);
+    // Generate UUIDs in Node.js for compatibility
+    const flags = [
+      { id: randomUUID(), name: 'use_new_gateway', enabled: false, rollout_percentage: 0, description: 'Use new modular gateway instead of monolithic' },
+      { id: randomUUID(), name: 'use_room_factory', enabled: false, rollout_percentage: 0, description: 'Use room factory for creating rooms' },
+      { id: randomUUID(), name: 'use_feature_modules', enabled: false, rollout_percentage: 0, description: 'Use feature modules (chat, media, etc)' },
+      { id: randomUUID(), name: 'use_access_control', enabled: false, rollout_percentage: 0, description: 'Use new access control system' },
+      { id: randomUUID(), name: 'use_cqrs_pattern', enabled: false, rollout_percentage: 0, description: 'Use CQRS pattern for domain modules' },
+    ];
+
+    for (const flag of flags) {
+      await queryRunner.query(`
+        INSERT INTO \`feature_flags\` (\`id\`, \`name\`, \`enabled\`, \`rollout_percentage\`, \`description\`)
+        VALUES (?, ?, ?, ?, ?)
+      `, [flag.id, flag.name, flag.enabled, flag.rollout_percentage, flag.description]);
+    }
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

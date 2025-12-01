@@ -15,18 +15,27 @@ export async function runSeeds(dataSource: DataSource): Promise<void> {
 
 // For CLI usage
 if (require.main === module) {
-  import('../../data-source').then(({ dataSource }) => {
-    dataSource
-      .initialize()
-      .then(async () => {
-        await runSeeds(dataSource);
-        await dataSource.destroy();
-        process.exit(0);
-      })
-      .catch((error) => {
-        console.error('Error:', error);
-        process.exit(1);
-      });
-  });
+  // Use require for dynamic import to avoid module resolution issues
+  // Path: src/database/seeds/ -> root = ../../../data-source
+  // data-source.ts exports default, so we need to access .default
+  const dataSourceModule = require('../../../data-source');
+  const dataSource = dataSourceModule.default || dataSourceModule.dataSource;
+  
+  if (!dataSource) {
+    console.error('❌ Could not find dataSource in data-source.ts');
+    process.exit(1);
+  }
+  
+  dataSource
+    .initialize()
+    .then(async () => {
+      await runSeeds(dataSource);
+      await dataSource.destroy();
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error('Error:', error);
+      process.exit(1);
+    });
 }
 

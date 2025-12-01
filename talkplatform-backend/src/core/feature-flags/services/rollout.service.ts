@@ -46,7 +46,7 @@ export class RolloutService {
    * Calculate rollout steps
    */
   private calculateSteps(current: number, target: number): number[] {
-    const steps = [];
+    const steps: number[] = [];
     let next = current;
 
     while (next < target) {

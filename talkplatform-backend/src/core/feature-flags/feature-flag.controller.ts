@@ -16,6 +16,8 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../../users/user.entity';
 import { UpdateFeatureFlagDto } from './dto/update-feature-flag.dto';
+import { RolloutService } from './services/rollout.service';
+import { GradualRolloutDto } from './dto/gradual-rollout.dto';
 
 @ApiTags('Feature Flags')
 @Controller('admin/feature-flags')
@@ -23,7 +25,10 @@ import { UpdateFeatureFlagDto } from './dto/update-feature-flag.dto';
 @Roles(UserRole.ADMIN)
 @ApiBearerAuth()
 export class FeatureFlagController {
-  constructor(private readonly featureFlagService: FeatureFlagService) {}
+  constructor(
+    private readonly featureFlagService: FeatureFlagService,
+    private readonly rolloutService: RolloutService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Get all feature flags' })
@@ -67,6 +72,39 @@ export class FeatureFlagController {
     return {
       success: true,
       message: `Feature flag ${name} rollout updated to ${dto.rolloutPercentage}%`,
+    };
+  }
+
+  @Post(':name/gradual-rollout')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Start gradual rollout (10% → 25% → 50% → 100%)' })
+  async gradualRollout(
+    @Param('name') name: string,
+    @Body() dto: GradualRolloutDto,
+  ) {
+    const currentFlag = await this.featureFlagService.getByName(name);
+    const currentPercentage = dto.currentPercentage ?? currentFlag?.rollout_percentage ?? 0;
+    
+    await this.rolloutService.gradualRollout(
+      name,
+      dto.targetPercentage,
+      currentPercentage,
+    );
+    
+    return {
+      success: true,
+      message: `Gradual rollout started for ${name}: ${currentPercentage}% → ${dto.targetPercentage}%`,
+    };
+  }
+
+  @Post(':name/rollback')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Rollback feature flag to 0%' })
+  async rollback(@Param('name') name: string) {
+    await this.rolloutService.rollback(name);
+    return {
+      success: true,
+      message: `Feature flag ${name} rolled back to 0%`,
     };
   }
 }

@@ -257,6 +257,10 @@ export class CreateCourseWithSessionsHandler
         relations: ['sessions', 'teacher'],
       });
 
+      if (!finalCourse) {
+        throw new BadRequestException('Failed to retrieve created course');
+      }
+
       this.logger.log(`Course with sessions created: ${finalCourse.id}`);
       return finalCourse;
     });

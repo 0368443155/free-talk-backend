@@ -19,10 +19,17 @@
 9. ✅ Frontend Update Guide - Created `FRONTEND_UPDATE_GUIDE.md`
 10. ✅ Gradual Rollout Plan - Created `GRADUAL_ROLLOUT_PLAN.md`
 11. ✅ Rollout Service - Created for automated rollout management
+12. ✅ Frontend Update - Feature flag hook and API created
+13. ✅ Frontend Update - WebRTC hooks updated to support new events
+14. ✅ Frontend Update - Meeting socket hooks updated
+15. ✅ Gradual Rollout Endpoints - Admin API for rollout management
 
 ### Remaining ⏳
-- [ ] Frontend code update (follow FRONTEND_UPDATE_GUIDE.md)
-- [ ] Execute gradual rollout (10% → 50% → 100%)
+- [ ] Execute gradual rollout (follow GRADUAL_ROLLOUT_PLAN.md)
+  - [ ] Internal testing
+  - [ ] Canary release (10%)
+  - [ ] Gradual increase (25% → 50% → 100%)
+  - [ ] Full rollout (100%)
 - [ ] Remove old gateway code after 100% migration
 
 **Files Created:**

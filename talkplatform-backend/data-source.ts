@@ -29,6 +29,7 @@ import { SessionPurchase } from './src/features/courses/entities/session-purchas
 import { PaymentHold } from './src/features/courses/entities/payment-hold.entity';
 import { TeacherReview } from './src/features/teachers/entities/teacher-review.entity';
 import { TeacherAvailability } from './src/features/teachers/entities/teacher-availability.entity';
+import { FeatureFlag } from './src/core/feature-flags/entities/feature-flag.entity';
 
 dotenv.config(); // Nạp .env
 
@@ -68,6 +69,7 @@ export const dataSourceOptions: DataSourceOptions = {
     PaymentHold,
     TeacherReview,
     TeacherAvailability,
+    FeatureFlag,
   ],
   migrations: [path.join(__dirname, 'src', 'database', 'migrations', '*{.ts,.js}')], // Đường dẫn migrations chính xác
   migrationsTableName: 'migrations_typeorm', // Tên bảng migrations
