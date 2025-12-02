@@ -8,6 +8,13 @@ export interface MetricsState {
   quality: 'excellent' | 'good' | 'fair' | 'poor';
   usingRelay: boolean;
   packetLoss: number;
+  // YouTube metrics (optional)
+  youtube?: {
+    downloadBitrate: number;
+    quality: string;
+    totalBytesDownloaded: number;
+    bufferingEvents: number;
+  };
 }
 
 export function useThrottledMetrics(

@@ -11,6 +11,13 @@ import { BandwidthChart } from '@/components/admin/BandwidthChart';
 import { QualityDistribution } from '@/components/admin/QualityDistribution';
 import { ExportService } from '@/lib/export-service';
 
+interface YouTubeMetrics {
+  downloadBitrate: number;
+  quality: string;
+  totalBytesDownloaded: number;
+  bufferingEvents: number;
+}
+
 interface UserMetrics {
   uploadBitrate: number;
   downloadBitrate: number;
@@ -18,6 +25,7 @@ interface UserMetrics {
   quality: string;
   usingRelay: boolean;
   packetLoss: number;
+  youtube?: YouTubeMetrics;
 }
 
 interface MeetingData {
@@ -283,6 +291,11 @@ function UserMetricsRow({ userId, metrics }: { userId: string; metrics: UserMetr
         <span className="text-blue-600">↓ {Math.round(metrics.downloadBitrate)} kbps</span>
         <span className="text-gray-600">{Math.round(metrics.latency)}ms</span>
         <span className="text-orange-600">{metrics.packetLoss.toFixed(1)}% loss</span>
+        {metrics.youtube && (
+          <span className="text-purple-600" title="YouTube bandwidth">
+            📺 {Math.round(metrics.youtube.downloadBitrate)} kbps ({metrics.youtube.quality})
+          </span>
+        )}
       </div>
     </div>
   );

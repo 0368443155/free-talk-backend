@@ -24,6 +24,7 @@ import { useMeetingSocket } from "@/hooks/use-meeting-socket";
 import { useWebRTC } from "@/hooks/use-webrtc";
 import { useWebRTCStatsWorker } from "@/hooks/useWebRTCStatsWorker";
 import { useThrottledMetrics } from "@/hooks/useThrottledMetrics";
+import { useYouTubeBandwidth } from "@/hooks/useYouTubeBandwidth";
 import { VideoGrid } from "./video-grid";
 import { MeetingChat } from "./meeting-chat";
 import { YouTubePlayer, YouTubePlayerHandle } from "./youtube-player";
@@ -436,8 +437,36 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     }
   }, [aggregatedMetrics]);
 
-  // Throttled metrics emission to backend
-  useThrottledMetrics(socket, meeting.id, aggregatedMetrics, user.id);
+  // YouTube bandwidth monitoring
+  const youtubeMetrics = useYouTubeBandwidth(youtubeVideoId);
+
+  // Merge YouTube metrics into aggregated metrics
+  const metricsWithYouTube = useMemo(() => {
+    return {
+      ...aggregatedMetrics,
+      youtube: youtubeMetrics.isActive ? {
+        downloadBitrate: youtubeMetrics.downloadBitrate,
+        quality: youtubeMetrics.quality,
+        totalBytesDownloaded: youtubeMetrics.totalBytesDownloaded,
+        bufferingEvents: youtubeMetrics.bufferingEvents,
+      } : undefined,
+    };
+  }, [aggregatedMetrics, youtubeMetrics]);
+
+  // Debug: Log YouTube metrics
+  useEffect(() => {
+    if (youtubeMetrics.isActive) {
+      console.log('📺 [DEBUG] YouTube metrics:', {
+        downloadBitrate: `${youtubeMetrics.downloadBitrate} kbps`,
+        quality: youtubeMetrics.quality,
+        totalBytes: `${(youtubeMetrics.totalBytesDownloaded / 1024 / 1024).toFixed(2)} MB`,
+        bufferingEvents: youtubeMetrics.bufferingEvents,
+      });
+    }
+  }, [youtubeMetrics]);
+
+  // Throttled metrics emission to backend (includes YouTube)
+  useThrottledMetrics(socket, meeting.id, metricsWithYouTube, user.id);
 
   // Bandwidth monitoring is now handled by backend middleware
   const isReporting = false;

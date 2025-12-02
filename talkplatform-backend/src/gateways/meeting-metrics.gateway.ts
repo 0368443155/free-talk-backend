@@ -12,6 +12,13 @@ import { Logger, Injectable } from '@nestjs/common';
 import { InjectRedis } from '@nestjs-modules/ioredis';
 import Redis from 'ioredis';
 
+interface YouTubeMetrics {
+  downloadBitrate?: number;
+  quality?: string;
+  totalBytesDownloaded?: number;
+  bufferingEvents?: number;
+}
+
 interface UserMetrics {
   uploadBitrate?: number;
   downloadBitrate?: number;
@@ -19,6 +26,7 @@ interface UserMetrics {
   quality?: string;
   usingRelay?: boolean;
   packetLoss?: number;
+  youtube?: YouTubeMetrics;
 }
 
 interface Alert {
@@ -97,6 +105,11 @@ export class MeetingMetricsGateway implements OnGatewayConnection, OnGatewayDisc
       );
       
       this.logger.debug(`✅ Stored metrics in Redis for user ${userId}`);
+      
+      // Log YouTube metrics if present
+      if (mergedMetrics.youtube) {
+        this.logger.log(`📺 YouTube metrics for user ${userId}: ${mergedMetrics.youtube.downloadBitrate} kbps (${mergedMetrics.youtube.quality})`);
+      }
       
       // 3. Check for alerts (immediate)
       await this.checkAlerts(meetingId, userId, mergedMetrics);
@@ -184,16 +197,26 @@ export class MeetingMetricsGateway implements OnGatewayConnection, OnGatewayDisc
       });
     }
     
-    // Poor connection
-    if (metrics.quality === 'poor') {
-      alerts.push({
-        type: 'poor-connection',
-        severity: 'critical',
-        message: `User ${userId} has poor connection quality`,
-      });
-    }
-    
-    if (alerts.length > 0) {
+      // Poor connection
+      if (metrics.quality === 'poor') {
+        alerts.push({
+          type: 'poor-connection',
+          severity: 'critical',
+          message: `User ${userId} has poor connection quality`,
+        });
+      }
+
+      // High YouTube bandwidth usage (>5 Mbps)
+      if (metrics.youtube && metrics.youtube.downloadBitrate && metrics.youtube.downloadBitrate > 5000) {
+        alerts.push({
+          type: 'high-youtube-bandwidth',
+          severity: 'warning',
+          message: `User ${userId} is using high YouTube bandwidth: ${metrics.youtube.downloadBitrate} kbps (${metrics.youtube.quality})`,
+          cost: true,
+        });
+      }
+
+      if (alerts.length > 0) {
       // Immediate broadcast (no throttle for alerts)
       this.server.to('admin-dashboard').emit('meeting:alerts', {
         meetingId,
