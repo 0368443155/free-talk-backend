@@ -59,6 +59,7 @@ export default function CourseDetailPage() {
     const [paymentAmount, setPaymentAmount] = useState(0);
     const [paymentSessionId, setPaymentSessionId] = useState<string | null>(null);
     const [isEnrolled, setIsEnrolled] = useState(false);
+    const [hasPurchased, setHasPurchased] = useState(false); // Either enrolled or purchased session
     const [reviews, setReviews] = useState<Review[]>([]);
     const [reviewStats, setReviewStats] = useState<ReviewStatsType | null>(null);
     const [myReview, setMyReview] = useState<Review | null>(null);
@@ -103,6 +104,7 @@ export default function CourseDetailPage() {
     const checkEnrollment = async () => {
         if (!user?.id) {
             setIsEnrolled(false);
+            setHasPurchased(false);
             return;
         }
 
@@ -112,9 +114,26 @@ export default function CourseDetailPage() {
                 (e) => e.course_id === courseId && e.status === 'active' && e.enrollment_type === 'full_course'
             );
             setIsEnrolled(!!enrollment);
+
+            // Also check if user has purchased any session
+            if (!enrollment) {
+                try {
+                    const { getMySessionPurchasesApi } = await import('@/api/enrollments.rest');
+                    const purchases = await getMySessionPurchasesApi();
+                    const hasSessionPurchase = purchases.some(
+                        (p) => p.course_id === courseId && p.status === 'active'
+                    );
+                    setHasPurchased(hasSessionPurchase);
+                } catch {
+                    setHasPurchased(false);
+                }
+            } else {
+                setHasPurchased(true);
+            }
         } catch (error) {
             console.error('Failed to check enrollment:', error);
             setIsEnrolled(false);
+            setHasPurchased(false);
         }
     };
 
@@ -249,8 +268,8 @@ export default function CourseDetailPage() {
     }
 
     const isTeacherOrAdmin = user?.id === course.teacher_id || user?.role === 'admin';
-    const rating = 4.5; // Mock
-    const reviewCount = 1234; // Mock
+    const rating = course?.average_rating || 0;
+    const reviewCount = course?.total_reviews || 0;
 
     return (
         <div className="min-h-screen bg-white">
@@ -277,7 +296,7 @@ export default function CourseDetailPage() {
 
                         <div className="flex items-center gap-4 text-sm">
                             <div className="flex items-center gap-1">
-                                <span className="font-bold text-amber-400">{rating}</span>
+                                <span className="font-bold text-amber-400">{rating > 0 ? rating.toFixed(1) : 'N/A'}</span>
                                 <StarRating rating={rating} size={14} />
                                 <span className="text-slate-300 underline">({reviewCount} ratings)</span>
                             </div>
@@ -430,7 +449,7 @@ export default function CourseDetailPage() {
                         {reviewStats && <ReviewStats stats={reviewStats} />}
 
                         {/* Write Review Button/Form */}
-                        {isEnrolled && (
+                        {hasPurchased && (
                             <div className="mt-6">
                                 {!showReviewForm && !myReview && (
                                     <Button onClick={() => setShowReviewForm(true)}>
@@ -474,7 +493,14 @@ export default function CourseDetailPage() {
                             <h3 className="text-xl font-semibold mb-4">
                                 All Reviews ({reviewStats?.total || 0})
                             </h3>
-                            <ReviewList reviews={reviews} loading={loadingReviews} />
+                            <ReviewList 
+                                reviews={reviews} 
+                                loading={loadingReviews}
+                                courseId={courseId}
+                                isTeacher={user?.id === course?.teacher_id}
+                                isFreeCourse={!course?.price_full_course && !course?.price_per_session}
+                                onReviewUpdated={loadReviews}
+                            />
                         </div>
                     </div>
                 </div>

@@ -63,6 +63,7 @@ export interface Review {
     user_id: string;
     rating: number;
     comment?: string;
+    is_hidden?: boolean;
     created_at: string;
     updated_at: string;
     user?: {
@@ -591,7 +592,7 @@ export async function getReviewStatsApi(courseId: string): Promise<ReviewStats> 
  * Get my review for a course
  */
 export async function getMyReviewApi(courseId: string): Promise<Review | null> {
-    const response = await apiClient.get(`/courses/${courseId}/reviews/my-review`);
+    const response = await apiClient.get(`/courses/${courseId}/reviews/my`);
     return response.data;
 }
 
@@ -600,4 +601,20 @@ export async function getMyReviewApi(courseId: string): Promise<Review | null> {
  */
 export async function deleteReviewApi(courseId: string): Promise<void> {
     await apiClient.delete(`/courses/${courseId}/reviews`);
+}
+
+/**
+ * Hide a review (teacher only, free courses only)
+ */
+export async function hideReviewApi(courseId: string, reviewId: string): Promise<Review> {
+    const response = await apiClient.patch(`/courses/${courseId}/reviews/${reviewId}/hide`);
+    return response.data;
+}
+
+/**
+ * Show a review (teacher only, free courses only)
+ */
+export async function showReviewApi(courseId: string, reviewId: string): Promise<Review> {
+    const response = await apiClient.patch(`/courses/${courseId}/reviews/${reviewId}/show`);
+    return response.data;
 }

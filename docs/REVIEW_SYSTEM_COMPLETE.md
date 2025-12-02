@@ -1,314 +1,193 @@
-# ✅ REVIEW SYSTEM - IMPLEMENTATION COMPLETE
+# ✅ Review System - Complete Implementation
 
-**Date**: 2025-12-01  
-**Status**: ✅ Backend Complete | 🚧 Frontend In Progress
-
----
-
-## 📦 Đã Hoàn Thành
-
-### 1. ✅ Backend (100%)
-
-#### Database Schema
-```sql
--- Reviews table
-CREATE TABLE reviews (
-  id VARCHAR(36) PRIMARY KEY,
-  course_id VARCHAR(36) NOT NULL,
-  user_id VARCHAR(36) NOT NULL,
-  rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
-  comment TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE(course_id, user_id),
-  FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
--- Added to courses table
-ALTER TABLE courses ADD COLUMN thumbnail_url TEXT;
-ALTER TABLE courses ADD COLUMN average_rating DECIMAL(3,2) DEFAULT 0.00;
-ALTER TABLE courses ADD COLUMN total_reviews INT DEFAULT 0;
-```
-
-#### API Endpoints
-| Method | Endpoint | Description | Auth Required |
-|--------|----------|-------------|---------------|
-| POST | `/courses/:id/reviews` | Create/update review | ✅ Yes (Enrolled) |
-| GET | `/courses/:id/reviews` | Get all reviews | ❌ No |
-| GET | `/courses/:id/reviews/stats` | Get rating stats | ❌ No |
-| GET | `/courses/:id/reviews/my-review` | Get my review | ✅ Yes |
-| DELETE | `/courses/:id/reviews` | Delete my review | ✅ Yes |
-
-#### Backend Files Created
-- ✅ `review.entity.ts` - Review entity
-- ✅ `create-review.dto.ts` - Validation DTO
-- ✅ `review.service.ts` - Business logic
-- ✅ Updated `courses.controller.ts` - API endpoints
-- ✅ Updated `courses.module.ts` - Module registration
+**Completion Date**: 2025-12-01  
+**Status**: ✅ **COMPLETE**
 
 ---
 
-### 2. ✅ Frontend API Client (100%)
+## 📋 Overview
 
-#### Updated Files
-- ✅ `api/courses.rest.ts`
-  - Added `Review` interface
-  - Added `ReviewStats` interface
-  - Added `CreateReviewDto` interface
-  - Updated `Course` interface with:
-    - `thumbnail_url?: string`
-    - `average_rating: number`
-    - `total_reviews: number`
-  - Added 5 review API functions
-
-#### API Functions
-```typescript
-createReviewApi(courseId, data)      // Create/update review
-getCourseReviewsApi(courseId)        // Get all reviews
-getReviewStatsApi(courseId)          // Get statistics
-getMyReviewApi(courseId)             // Get my review
-deleteReviewApi(courseId)            // Delete review
-```
+Complete review system implementation with purchase verification, visibility controls for free courses, and always-visible ratings.
 
 ---
 
-### 3. ✅ Frontend Components (100%)
+## ✅ Features Implemented
 
-#### Created Components
-1. **ReviewStars** (`review-stars.tsx`)
-   - Display star rating (read-only or interactive)
-   - Support partial stars
-   - Sizes: sm, md, lg
-   - Show numeric rating
+### 1. Review Entity ✅
 
-2. **ReviewForm** (`review-form.tsx`)
-   - Interactive star selection
-   - Comment textarea (500 chars)
-   - Submit/Update review
-   - Validation
+**File**: `talkplatform-backend/src/features/courses/entities/review.entity.ts`
 
-3. **ReviewList** (`review-list.tsx`)
-   - Display all reviews
-   - User avatar & name
-   - Rating & comment
-   - Timestamp (relative)
-   - Loading skeleton
+- Added `is_hidden` field (boolean, default: false)
+- Unique constraint: one review per user per course
+- Rating validation: 1-5 stars
 
-4. **ReviewStats** (`review-stats.tsx`)
-   - Overall rating display
-   - Rating distribution (1-5 stars)
-   - Progress bars
-   - Total review count
+### 2. Review Service ✅
 
-5. **CourseCardUdemy** (Updated)
-   - Display real `average_rating`
-   - Display real `total_reviews`
-   - Show thumbnail image
-   - Support free courses
+**File**: `talkplatform-backend/src/features/courses/services/review.service.ts`
 
----
+#### Key Methods:
 
-## 🚧 Còn Lại - Cần Implement
+**`createOrUpdateReview()`**
+- ✅ Checks if user has purchased course (enrollment OR session purchase)
+- ✅ Allows review creation only for purchasers
+- ✅ Updates course average rating automatically
 
-### 1. Update Course Detail Page
-File: `app/courses/[id]/page.tsx`
+**`getCourseReviews()`**
+- ✅ For **free courses**: Filters out hidden reviews (`is_hidden = false`)
+- ✅ For **paid courses**: Shows all reviews (ignores `is_hidden`)
+- ✅ For **teacher**: Shows all reviews including hidden ones
+- ✅ Rating is always included in stats regardless of visibility
 
-**Cần thêm**:
-```typescript
-// 1. Import components
-import { ReviewStats } from '@/components/courses/review-stats';
-import { ReviewList } from '@/components/courses/review-list';
-import { ReviewForm } from '@/components/courses/review-form';
+**`toggleReviewVisibility()`**
+- ✅ Only works for **free courses**
+- ✅ Only course teacher can hide/show reviews
+- ✅ Validates permissions before allowing action
 
-// 2. Fetch reviews data
-const [reviews, setReviews] = useState<Review[]>([]);
-const [reviewStats, setReviewStats] = useState<ReviewStats | null>(null);
-const [myReview, setMyReview] = useState<Review | null>(null);
+**`getReviewStats()`**
+- ✅ Includes ALL reviews (even hidden) for accurate rating calculation
+- ✅ Returns average, total, and distribution
 
-// 3. Add Reviews tab/section
-<Tabs>
-  <TabsList>
-    <TabsTrigger value="overview">Overview</TabsTrigger>
-    <TabsTrigger value="curriculum">Curriculum</TabsTrigger>
-    <TabsTrigger value="reviews">Reviews ({reviewStats?.total || 0})</TabsTrigger>
-  </TabsList>
-  
-  <TabsContent value="reviews">
-    <ReviewStats stats={reviewStats} />
-    {isEnrolled && <ReviewForm onSubmit={handleSubmitReview} />}
-    <ReviewList reviews={reviews} />
-  </TabsContent>
-</Tabs>
-```
+### 3. Review Controller ✅
 
----
+**File**: `talkplatform-backend/src/features/courses/review.controller.ts`
 
-### 2. Update Create Course Form
-File: `app/courses/create/page.tsx` (or similar)
+**Endpoints:**
+- `GET /courses/:courseId/reviews` - Get all reviews (filtered by visibility rules)
+- `GET /courses/:courseId/reviews/stats` - Get review statistics
+- `GET /courses/:courseId/reviews/my` - Get current user's review
+- `POST /courses/:courseId/reviews` - Create/update review (requires purchase)
+- `DELETE /courses/:courseId/reviews` - Delete user's review
+- `PATCH /courses/:courseId/reviews/:reviewId/hide` - Hide review (teacher, free courses only)
+- `PATCH /courses/:courseId/reviews/:reviewId/show` - Show review (teacher, free courses only)
 
-**Cần thêm**:
-```typescript
-// 1. Add thumbnail field
-<div>
-  <Label>Course Thumbnail</Label>
-  <Input
-    type="url"
-    placeholder="https://example.com/image.jpg"
-    value={thumbnailUrl}
-    onChange={(e) => setThumbnailUrl(e.target.value)}
-  />
-  {thumbnailUrl && (
-    <img src={thumbnailUrl} alt="Preview" className="mt-2 w-32 h-32 object-cover" />
-  )}
-</div>
+### 4. Database Migration ✅
 
-// 2. Add free course toggle
-<div className="flex items-center space-x-2">
-  <Switch
-    id="is-free"
-    checked={isFree}
-    onCheckedChange={(checked) => {
-      setIsFree(checked);
-      if (checked) {
-        setPriceFullCourse(0);
-        setPricePerSession(0);
-      }
-    }}
-  />
-  <Label htmlFor="is-free">This is a free course</Label>
-</div>
+**File**: `talkplatform-backend/src/database/migrations/1733100000000-AddIsHiddenToReviews.ts`
 
-// 3. Update CreateCourseDto
-interface CreateCourseDto {
-  // ... existing fields
-  thumbnail_url?: string;
-}
-```
+- Adds `is_hidden` column to `reviews` table
+- Creates index on `is_hidden` for performance
+
+### 5. Frontend Components ✅
+
+#### ReviewList Component
+**File**: `talkplatform-frontend/components/courses/review-list.tsx`
+
+- ✅ Displays reviews with user info and ratings
+- ✅ Shows "Hidden" badge for hidden reviews
+- ✅ Hide/Show buttons for teachers (free courses only)
+- ✅ Filters hidden reviews based on course type and user role
+
+#### Course Detail Page
+**File**: `talkplatform-frontend/app/courses/[id]/page.tsx`
+
+- ✅ Checks purchase status (enrollment OR session purchase)
+- ✅ Shows review form only for purchasers
+- ✅ Displays reviews with proper filtering
+- ✅ Passes teacher and free course flags to ReviewList
+
+#### API Client
+**File**: `talkplatform-frontend/api/courses.rest.ts`
+
+- ✅ `getCourseReviewsApi()` - Get reviews
+- ✅ `getReviewStatsApi()` - Get stats
+- ✅ `getMyReviewApi()` - Get user's review
+- ✅ `createReviewApi()` - Create/update review
+- ✅ `deleteReviewApi()` - Delete review
+- ✅ `hideReviewApi()` - Hide review
+- ✅ `showReviewApi()` - Show review
 
 ---
 
-## 🎯 Features Implemented
+## 🔒 Business Rules
 
-### Auto-Update Rating ✅
-- When review created → Recalculate average
-- When review updated → Recalculate average
-- When review deleted → Recalculate average
-- Atomic database update
+### Purchase Verification
+- ✅ User must have **enrolled in full course** OR **purchased at least one session**
+- ✅ Checked in `createOrUpdateReview()` method
+- ✅ Frontend checks both enrollment and session purchases
 
-### Access Control ✅
-- Only enrolled students can review
-- One review per user per course
-- Can update own review
-- Can delete own review
+### Visibility Rules
 
-### Review Statistics ✅
-```json
-{
-  "average": 4.5,
-  "total": 123,
-  "distribution": {
-    "5": 56,
-    "4": 45,
-    "3": 15,
-    "2": 5,
-    "1": 2
-  }
-}
-```
+#### Free Courses:
+- ✅ Teacher can hide/show reviews
+- ✅ Hidden reviews are filtered out for regular users
+- ✅ Teacher sees all reviews (including hidden)
+- ✅ **Rating is always visible** (included in stats)
+
+#### Paid Courses:
+- ✅ Reviews cannot be hidden
+- ✅ All reviews are always visible
+- ✅ **Rating is always visible** (included in stats)
+
+### Rating Display
+- ✅ **Always visible** regardless of review visibility
+- ✅ Included in `average_rating` and `total_reviews` on Course entity
+- ✅ Stats calculation includes ALL reviews (even hidden)
 
 ---
 
-## 📝 Testing Checklist
+## 📊 API Endpoints Summary
 
-### Backend
-- [ ] Test create review (enrolled user)
-- [ ] Test create review (non-enrolled user) → Should fail
-- [ ] Test update review
-- [ ] Test delete review
-- [ ] Test get reviews
-- [ ] Test get stats
-- [ ] Verify average_rating auto-updates
-
-### Frontend
-- [ ] Display real ratings on course cards
-- [ ] Show thumbnail images
-- [ ] Display "Free" for free courses
-- [ ] Review form validation
-- [ ] Submit review
-- [ ] Update review
-- [ ] Delete review
-- [ ] Review list pagination
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/courses/:courseId/reviews` | Optional | Get reviews (filtered by visibility) |
+| GET | `/courses/:courseId/reviews/stats` | No | Get review statistics |
+| GET | `/courses/:courseId/reviews/my` | Yes | Get current user's review |
+| POST | `/courses/:courseId/reviews` | Yes | Create/update review (requires purchase) |
+| DELETE | `/courses/:courseId/reviews` | Yes | Delete user's review |
+| PATCH | `/courses/:courseId/reviews/:reviewId/hide` | Yes | Hide review (teacher, free courses) |
+| PATCH | `/courses/:courseId/reviews/:reviewId/show` | Yes | Show review (teacher, free courses) |
 
 ---
 
-## 🚀 Next Steps
+## 🎨 Frontend Features
 
-1. **Implement Course Detail Reviews Tab** (30 min)
-   - Add Reviews tab
-   - Fetch and display reviews
-   - Add ReviewForm for enrolled students
+### Review Display
+- ✅ Reviews shown with user avatar, name, rating, and comment
+- ✅ "Hidden" badge for hidden reviews (teacher view)
+- ✅ Hide/Show buttons for teachers on free courses
+- ✅ Rating stars always visible
 
-2. **Update Create Course Form** (20 min)
-   - Add thumbnail URL input
-   - Add free course toggle
-   - Update form submission
+### Review Form
+- ✅ Only shown to users who have purchased
+- ✅ Edit/Delete options for user's own review
+- ✅ Real-time validation
 
-3. **Testing** (30 min)
-   - Test full review flow
-   - Test rating calculations
-   - Test access control
-
-4. **Polish** (20 min)
-   - Add loading states
-   - Error handling
-   - Toast notifications
-
-**Total Estimated Time**: ~2 hours
+### Statistics
+- ✅ Average rating display
+- ✅ Total reviews count
+- ✅ Rating distribution (1-5 stars)
+- ✅ Always includes all reviews (even hidden) for accuracy
 
 ---
 
-## 📚 Documentation
+## 🧪 Testing Checklist
 
-### How to Use Review System
+### Backend:
+- [ ] Test review creation with enrollment
+- [ ] Test review creation with session purchase
+- [ ] Test review creation without purchase (should fail)
+- [ ] Test hide/show for free courses (teacher only)
+- [ ] Test hide/show for paid courses (should fail)
+- [ ] Test review visibility filtering
+- [ ] Test rating calculation (includes hidden reviews)
 
-#### As a Student:
-1. Enroll in a course
-2. Go to course detail page
-3. Click "Reviews" tab
-4. Click "Write a Review"
-5. Select rating (1-5 stars)
-6. Write comment (optional)
-7. Submit
-
-#### As a Teacher:
-- View all reviews on course detail page
-- See average rating on course card
-- Cannot delete student reviews
-- Can respond (future feature)
-
----
-
-## 🔧 Technical Notes
-
-### Database Indexes
-```sql
-CREATE INDEX idx_reviews_course ON reviews(course_id);
-CREATE INDEX idx_reviews_user ON reviews(user_id);
-CREATE UNIQUE INDEX idx_reviews_course_user ON reviews(course_id, user_id);
-```
-
-### Performance Considerations
-- Reviews are cached on course entity (`average_rating`, `total_reviews`)
-- No need to calculate on every request
-- Update only when review changes
-
-### Security
-- JWT authentication required for write operations
-- Enrollment check before allowing review
-- User can only modify own reviews
-- SQL injection prevention via TypeORM
+### Frontend:
+- [ ] Test review display for free courses
+- [ ] Test review display for paid courses
+- [ ] Test hide/show buttons (teacher, free courses)
+- [ ] Test review form visibility (purchasers only)
+- [ ] Test rating display (always visible)
 
 ---
 
-**Status**: Ready for integration and testing! 🎉
+## 📝 Notes
+
+1. **Purchase Check**: Uses both `CourseEnrollment` and `SessionPurchase` to verify purchase
+2. **Free Course Detection**: Course is free if both `price_full_course` and `price_per_session` are 0 or null
+3. **Rating Calculation**: Always includes ALL reviews (even hidden) to ensure accurate statistics
+4. **Teacher View**: Teachers see all reviews including hidden ones for moderation purposes
+
+---
+
+**Review System: ✅ COMPLETE**  
+**Ready for Testing!** 🚀

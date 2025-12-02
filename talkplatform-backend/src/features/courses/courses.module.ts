@@ -18,6 +18,7 @@ import { AttendanceRecord } from './entities/attendance-record.entity';
 import { Review } from './entities/review.entity';
 import { AttendanceService } from './attendance.service';
 import { ReviewService } from './services/review.service';
+import { ReviewController } from './review.controller';
 import { CourseAttendanceWebhookController } from './course-attendance-webhook.controller';
 import { User } from '../../users/user.entity';
 import { QrCodeService } from '../../common/services/qr-code.service';
@@ -76,7 +77,7 @@ import { GetCourseMeetingsHandler } from './application/handlers/get-course-meet
         forwardRef(() => MeetingsModule),
         EventBusModule,
     ],
-    controllers: [CoursesController, EnrollmentController, CourseAttendanceWebhookController],
+    controllers: [CoursesController, EnrollmentController, ReviewController, CourseAttendanceWebhookController],
     providers: [
         CoursesService,
         EnrollmentService,
