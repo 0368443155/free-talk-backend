@@ -1,4 +1,4 @@
-import { Module, ValidationPipe, ClassSerializerInterceptor } from '@nestjs/common';
+import { Module, ValidationPipe, ClassSerializerInterceptor, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { RedisModule } from '@nestjs-modules/ioredis';
@@ -22,6 +22,7 @@ import { APP_PIPE, APP_INTERCEPTOR, Reflector } from '@nestjs/core';
 import { DebugController } from './debug/debug.controller';
 import { DebugPublicController } from './debug/debug-public.controller';
 import { TypeOrmModule as DebugTypeOrmModule } from '@nestjs/typeorm';
+import { MetricsMiddleware } from './common/middleware/metrics.middleware';
 
 @Module({
     imports: [
@@ -124,4 +125,10 @@ import { TypeOrmModule as DebugTypeOrmModule } from '@nestjs/typeorm';
         },
     ],
 })
-export class AppModule { }
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(MetricsMiddleware)
+      .forRoutes('*'); // Apply to all routes
+  }
+}
