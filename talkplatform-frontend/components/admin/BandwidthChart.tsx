@@ -7,7 +7,6 @@ interface DataPoint {
   time: string;
   upload: number;
   download: number;
-  youtube?: number;
 }
 
 interface Props {
@@ -35,24 +34,14 @@ export function BandwidthChart({ data }: Props) {
               name="Upload"
               strokeWidth={2}
             />
-                  <Line
-                    type="monotone"
-                    dataKey="download"
-                    stroke="#3b82f6"
-                    name="Download"
-                    strokeWidth={2}
-                  />
-                  {data.some(d => d.youtube && d.youtube > 0) && (
-                    <Line
-                      type="monotone"
-                      dataKey="youtube"
-                      stroke="#a855f7"
-                      name="YouTube"
-                      strokeWidth={2}
-                      strokeDasharray="5 5"
-                    />
-                  )}
-                </LineChart>
+            <Line 
+              type="monotone" 
+              dataKey="download" 
+              stroke="#3b82f6" 
+              name="Download"
+              strokeWidth={2}
+            />
+          </LineChart>
         </ResponsiveContainer>
       </CardContent>
     </Card>

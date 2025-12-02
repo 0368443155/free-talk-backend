@@ -10,13 +10,9 @@ interface Props {
   download: number;
   latency: number;
   peerStats: PeerStats[];
-  youtube?: {
-    downloadBitrate: number;
-    quality: string;
-  };
 }
 
-export function BandwidthDisplay({ upload, download, latency, peerStats, youtube }: Props) {
+export function BandwidthDisplay({ upload, download, latency, peerStats }: Props) {
   const [expanded, setExpanded] = useState(false);
   
   return (
@@ -36,14 +32,6 @@ export function BandwidthDisplay({ upload, download, latency, peerStats, youtube
           <ArrowDown className="w-4 h-4 text-blue-400" />
           <span className="text-sm font-mono tabular-nums">{formatBitrate(download)}</span>
         </div>
-        
-        {youtube && youtube.downloadBitrate > 0 && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-purple-400">📺</span>
-            <span className="text-sm font-mono tabular-nums text-purple-400">{formatBitrate(youtube.downloadBitrate)}</span>
-            <span className="text-xs text-purple-300">({youtube.quality})</span>
-          </div>
-        )}
         
         <div className="text-xs text-gray-400 font-mono tabular-nums">
           {latency}ms

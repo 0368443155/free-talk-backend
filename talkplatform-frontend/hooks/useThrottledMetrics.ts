@@ -8,13 +8,6 @@ export interface MetricsState {
   quality: 'excellent' | 'good' | 'fair' | 'poor';
   usingRelay: boolean;
   packetLoss: number;
-  // YouTube metrics (optional)
-  youtube?: {
-    downloadBitrate: number;
-    quality: string;
-    totalBytesDownloaded: number;
-    bufferingEvents: number;
-  };
 }
 
 export function useThrottledMetrics(
@@ -65,21 +58,12 @@ export function useThrottledMetrics(
   }, [meetingId, userId]);
   
   useEffect(() => {
-    if (!metricsSocket || !meetingId) {
-      console.warn('⚠️ [METRICS] Cannot emit - missing socket or meetingId', {
-        hasSocket: !!metricsSocket,
-        socketConnected: metricsSocket?.connected,
-        meetingId,
-      });
-      return;
-    }
+    if (!metricsSocket || !meetingId) return;
     
     const shouldEmit = shouldEmitMetrics(currentMetrics);
     
     if (shouldEmit) {
       emitMetrics(currentMetrics);
-    } else {
-      console.log('⏸️ [METRICS] Skipping emit - throttled or no changes');
     }
   }, [currentMetrics, metricsSocket, meetingId]);
   
@@ -87,42 +71,24 @@ export function useThrottledMetrics(
     // 1. First connection or reconnection - send full state
     if (isFirstConnection.current || !lastSentMetrics.current) {
       isFirstConnection.current = false;
-      console.log('✅ [METRICS] First emit - sending full state');
       return true;
     }
     
     const now = Date.now();
     
-    // 2. YouTube metrics changed or started (important!)
-    if (metrics.youtube) {
-      const prevYouTube = lastSentMetrics.current.youtube;
-      if (!prevYouTube) {
-        console.log('📺 [METRICS] YouTube started - emitting');
-        return true;
-      }
-      if (metrics.youtube.downloadBitrate !== prevYouTube.downloadBitrate) {
-        console.log('📺 [METRICS] YouTube bitrate changed:', prevYouTube.downloadBitrate, '→', metrics.youtube.downloadBitrate);
-        return true;
-      }
-      if (metrics.youtube.quality !== prevYouTube.quality) {
-        console.log('📺 [METRICS] YouTube quality changed:', prevYouTube.quality, '→', metrics.youtube.quality);
-        return true;
-      }
-    }
-    
-    // 3. Quality changed (important!)
+    // 2. Quality changed (important!)
     if (metrics.quality !== lastSentMetrics.current.quality) {
       console.log('Quality changed:', lastSentMetrics.current.quality, '→', metrics.quality);
       return true;
     }
     
-    // 4. Started using TURN relay (cost alert!)
+    // 3. Started using TURN relay (cost alert!)
     if (metrics.usingRelay && !lastSentMetrics.current.usingRelay) {
       console.log('Started using TURN relay');
       return true;
     }
     
-    // 5. Large bandwidth change (>50%)
+    // 4. Large bandwidth change (>50%)
     const currentTotal = metrics.uploadBitrate + metrics.downloadBitrate;
     const prevTotal = lastSentMetrics.current.uploadBitrate + lastSentMetrics.current.downloadBitrate;
     
@@ -136,24 +102,14 @@ export function useThrottledMetrics(
       }
     }
     
-    // 6. High packet loss (>5%)
+    // 5. High packet loss (>5%)
     if (metrics.packetLoss > 5 && lastSentMetrics.current.packetLoss <= 5) {
       console.log('High packet loss detected:', metrics.packetLoss);
       return true;
     }
     
-    // 7. YouTube active - emit more frequently (every 3 seconds)
-    if (metrics.youtube && metrics.youtube.downloadBitrate > 0) {
-      const YOUTUBE_THROTTLE = 3000; // 3 seconds for YouTube
-      if (now - lastSentTime.current > YOUTUBE_THROTTLE) {
-        console.log('📺 [METRICS] YouTube active - time-based emit (3s interval)');
-        return true;
-      }
-    }
-    
-    // 8. Time-based throttle (10 seconds) for non-YouTube
+    // 6. Time-based throttle (10 seconds)
     if (now - lastSentTime.current > THROTTLE_INTERVAL) {
-      console.log('⏰ [METRICS] Time-based emit (10s interval)');
       return true;
     }
     

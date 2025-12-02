@@ -12,13 +12,6 @@ import { Logger, Injectable } from '@nestjs/common';
 import { InjectRedis } from '@nestjs-modules/ioredis';
 import Redis from 'ioredis';
 
-interface YouTubeMetrics {
-  downloadBitrate?: number;
-  quality?: string;
-  totalBytesDownloaded?: number;
-  bufferingEvents?: number;
-}
-
 interface UserMetrics {
   uploadBitrate?: number;
   downloadBitrate?: number;
@@ -26,7 +19,6 @@ interface UserMetrics {
   quality?: string;
   usingRelay?: boolean;
   packetLoss?: number;
-  youtube?: YouTubeMetrics;
 }
 
 interface Alert {
@@ -106,11 +98,6 @@ export class MeetingMetricsGateway implements OnGatewayConnection, OnGatewayDisc
       
       this.logger.debug(`✅ Stored metrics in Redis for user ${userId}`);
       
-      // Log YouTube metrics if present
-      if (mergedMetrics.youtube) {
-        this.logger.log(`📺 YouTube metrics for user ${userId}: ${mergedMetrics.youtube.downloadBitrate} kbps (${mergedMetrics.youtube.quality})`);
-      }
-      
       // 3. Check for alerts (immediate)
       await this.checkAlerts(meetingId, userId, mergedMetrics);
       
@@ -148,20 +135,12 @@ export class MeetingMetricsGateway implements OnGatewayConnection, OnGatewayDisc
     const now = Date.now();
     const lastTime = this.lastBroadcast.get(key) || 0;
     
-    // Reduce throttle for YouTube metrics (1 second instead of 2)
-    const throttleTime = metrics.youtube && metrics.youtube.downloadBitrate ? 1000 : this.BROADCAST_THROTTLE;
-    
-    // Only broadcast if throttle time passed
-    if (now - lastTime > throttleTime) {
+    // Only broadcast if 2 seconds passed
+    if (now - lastTime > this.BROADCAST_THROTTLE) {
       const adminRoom = this.server.sockets.adapter.rooms.get('admin-dashboard');
       const adminCount = adminRoom ? adminRoom.size : 0;
       
-      this.logger.log(`📡 Broadcasting to ${adminCount} admin(s) in admin-dashboard room`, {
-        meetingId,
-        userId,
-        hasYouTube: !!metrics.youtube,
-        youtubeBitrate: metrics.youtube?.downloadBitrate,
-      });
+      this.logger.debug(`📡 Broadcasting to ${adminCount} admin(s) in admin-dashboard room`);
       
       this.server.to('admin-dashboard').emit('meeting:metrics:update', {
         meetingId,
@@ -171,8 +150,6 @@ export class MeetingMetricsGateway implements OnGatewayConnection, OnGatewayDisc
       });
       
       this.lastBroadcast.set(key, now);
-    } else {
-      this.logger.debug(`⏸️ Throttled broadcast for ${key} (${now - lastTime}ms < ${throttleTime}ms)`);
     }
   }
   
@@ -207,34 +184,16 @@ export class MeetingMetricsGateway implements OnGatewayConnection, OnGatewayDisc
       });
     }
     
-      // Poor connection
-      if (metrics.quality === 'poor') {
-        alerts.push({
-          type: 'poor-connection',
-          severity: 'critical',
-          message: `User ${userId} has poor connection quality`,
-        });
-      }
-
-      // High YouTube bandwidth usage (>5 Mbps) - Only alert once per user
-      if (metrics.youtube && metrics.youtube.downloadBitrate && metrics.youtube.downloadBitrate > 5000) {
-        const alertKey = `youtube-high-${userId}`;
-        const lastAlertTime = this.lastBroadcast.get(alertKey) || 0;
-        const now = Date.now();
-        
-        // Only alert if 30 seconds passed since last alert
-        if (now - lastAlertTime > 30000) {
-          alerts.push({
-            type: 'high-youtube-bandwidth',
-            severity: 'warning',
-            message: `User ${userId} is using high YouTube bandwidth: ${metrics.youtube.downloadBitrate} kbps (${metrics.youtube.quality})`,
-            cost: true,
-          });
-          this.lastBroadcast.set(alertKey, now);
-        }
-      }
-
-      if (alerts.length > 0) {
+    // Poor connection
+    if (metrics.quality === 'poor') {
+      alerts.push({
+        type: 'poor-connection',
+        severity: 'critical',
+        message: `User ${userId} has poor connection quality`,
+      });
+    }
+    
+    if (alerts.length > 0) {
       // Immediate broadcast (no throttle for alerts)
       this.server.to('admin-dashboard').emit('meeting:alerts', {
         meetingId,

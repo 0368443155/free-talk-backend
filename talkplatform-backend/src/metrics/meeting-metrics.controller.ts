@@ -54,7 +54,7 @@ export class MeetingMetricsController {
   @Get(':id')
   async getMeeting(@Query('id') meetingId: string) {
     const keys = await this.redis.keys(`meeting:${meetingId}:user:*:metrics`);
-    const users: any[] = [];
+    const users = [];
     
     for (const key of keys) {
       const userId = key.split(':')[3];

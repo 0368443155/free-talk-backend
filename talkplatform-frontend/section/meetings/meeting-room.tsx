@@ -24,7 +24,6 @@ import { useMeetingSocket } from "@/hooks/use-meeting-socket";
 import { useWebRTC } from "@/hooks/use-webrtc";
 import { useWebRTCStatsWorker } from "@/hooks/useWebRTCStatsWorker";
 import { useThrottledMetrics } from "@/hooks/useThrottledMetrics";
-import { useYouTubeBandwidth } from "@/hooks/useYouTubeBandwidth";
 import { VideoGrid } from "./video-grid";
 import { MeetingChat } from "./meeting-chat";
 import { YouTubePlayer, YouTubePlayerHandle } from "./youtube-player";
@@ -437,60 +436,8 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     }
   }, [aggregatedMetrics]);
 
-  // YouTube bandwidth monitoring
-  const youtubeMetrics = useYouTubeBandwidth(youtubeVideoId);
-
-  // Merge YouTube metrics into aggregated metrics
-  const metricsWithYouTube = useMemo(() => {
-    // Always include YouTube if videoId exists and metrics are active
-    const hasYouTube = youtubeVideoId && youtubeMetrics.isActive;
-    
-    const result = {
-      ...aggregatedMetrics,
-      youtube: hasYouTube ? {
-        downloadBitrate: youtubeMetrics.downloadBitrate,
-        quality: youtubeMetrics.quality,
-        totalBytesDownloaded: youtubeMetrics.totalBytesDownloaded,
-        bufferingEvents: youtubeMetrics.bufferingEvents,
-      } : undefined,
-    };
-    
-    // Force update every 2 seconds if YouTube is active to trigger re-render
-    if (hasYouTube) {
-      console.log('📊 [DEBUG] metricsWithYouTube (YouTube active):', {
-        hasYouTube: !!result.youtube,
-        youtubeBitrate: result.youtube?.downloadBitrate,
-        upload: result.uploadBitrate,
-        download: result.downloadBitrate,
-        timestamp: Date.now(), // Force update
-      });
-    }
-    
-    return result;
-  }, [aggregatedMetrics, youtubeMetrics, youtubeVideoId]);
-
-  // Debug: Log YouTube metrics
-  useEffect(() => {
-    console.log('📺 [DEBUG] YouTube metrics state:', {
-      isActive: youtubeMetrics.isActive,
-      downloadBitrate: youtubeMetrics.downloadBitrate,
-      quality: youtubeMetrics.quality,
-      totalBytes: youtubeMetrics.totalBytesDownloaded,
-      videoId: youtubeVideoId,
-    });
-    
-    if (youtubeMetrics.isActive) {
-      console.log('📺 [DEBUG] YouTube metrics ACTIVE:', {
-        downloadBitrate: `${youtubeMetrics.downloadBitrate} kbps`,
-        quality: youtubeMetrics.quality,
-        totalBytes: `${(youtubeMetrics.totalBytesDownloaded / 1024 / 1024).toFixed(2)} MB`,
-        bufferingEvents: youtubeMetrics.bufferingEvents,
-      });
-    }
-  }, [youtubeMetrics, youtubeVideoId]);
-
-  // Throttled metrics emission to backend (includes YouTube)
-  useThrottledMetrics(socket, meeting.id, metricsWithYouTube, user.id);
+  // Throttled metrics emission to backend
+  useThrottledMetrics(socket, meeting.id, aggregatedMetrics, user.id);
 
   // Bandwidth monitoring is now handled by backend middleware
   const isReporting = false;
@@ -1315,14 +1262,6 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
                 <ArrowUp className="w-3 h-3 text-green-400" />
                 <span className="text-xs">{formatBandwidth(aggregatedMetrics.uploadBitrate)}</span>
               </div>
-              
-              {metricsWithYouTube.youtube && metricsWithYouTube.youtube.downloadBitrate > 0 && (
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-purple-400">📺</span>
-                  <span className="text-xs text-purple-400">{formatBandwidth(metricsWithYouTube.youtube.downloadBitrate)}</span>
-                  <span className="text-xs text-purple-300">({metricsWithYouTube.youtube.quality})</span>
-                </div>
-              )}
               
               <div className="flex items-center gap-1">
                 <span className="text-xs text-gray-400">Latency:</span>
