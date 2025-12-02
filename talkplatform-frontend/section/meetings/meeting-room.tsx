@@ -383,6 +383,13 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   // Collect WebRTC stats using Web Worker
   const { stats: webrtcStats, workerReady: statsWorkerReady } = useWebRTCStatsWorker(peerConnectionsMap);
 
+  // Debug: Log stats (có thể xóa sau khi test)
+  useEffect(() => {
+    if (webrtcStats.length > 0) {
+      console.log('📊 [DEBUG] webrtcStats:', webrtcStats);
+    }
+  }, [webrtcStats]);
+
   // Calculate aggregated metrics
   const aggregatedMetrics = useMemo(() => {
     if (webrtcStats.length === 0) {
@@ -414,6 +421,20 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
       usingRelay,
     };
   }, [webrtcStats, getConnectionQuality]);
+
+  // Debug: Log aggregated metrics (có thể xóa sau khi test)
+  useEffect(() => {
+    if (aggregatedMetrics.downloadBitrate > 0 || aggregatedMetrics.uploadBitrate > 0) {
+      console.log('📊 [DEBUG] aggregatedMetrics:', {
+        upload: `${aggregatedMetrics.uploadBitrate} kbps`,
+        download: `${aggregatedMetrics.downloadBitrate} kbps`,
+        latency: `${aggregatedMetrics.latency}ms`,
+        quality: aggregatedMetrics.quality,
+        usingRelay: aggregatedMetrics.usingRelay,
+        packetLoss: `${aggregatedMetrics.packetLoss}%`,
+      });
+    }
+  }, [aggregatedMetrics]);
 
   // Throttled metrics emission to backend
   useThrottledMetrics(socket, meeting.id, aggregatedMetrics);
