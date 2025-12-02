@@ -46,7 +46,7 @@ export const dataSourceOptions: DataSourceOptions = {
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_DATABASE || 'talkplatform',
   synchronize: false,
-  logging: process.env.NODE_ENV === 'development',
+  logging: false, // Disable verbose query logs
 
   // *** SỬA LẠI 2 DÒNG SAU ĐÂY (SỬ DỤNG path.join) ***
   //entities: [path.join(__dirname, 'src', '**', '*.entity{.ts,.js}')], // Tìm Entities

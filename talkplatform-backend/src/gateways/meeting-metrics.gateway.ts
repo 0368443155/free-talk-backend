@@ -54,14 +54,14 @@ export class MeetingMetricsGateway implements OnGatewayConnection, OnGatewayDisc
   ) {}
   
   handleConnection(client: SocketWithUser) {
-    this.logger.log(`Client connected: ${client.id}`);
+    // Verbose logging disabled to reduce log noise
     // Extract userId from handshake auth if available
     const userId = (client.handshake.auth as any)?.userId || client.id;
     client.data.userId = userId;
   }
   
   handleDisconnect(client: SocketWithUser) {
-    this.logger.log(`Client disconnected: ${client.id}`);
+    // Verbose logging disabled to reduce log noise
   }
   
   @SubscribeMessage('meeting:metrics')
@@ -80,16 +80,10 @@ export class MeetingMetricsGateway implements OnGatewayConnection, OnGatewayDisc
     // Check if metrics object is empty (delta compression sent nothing)
     const hasMetrics = metrics && Object.keys(metrics).length > 0;
     
-    this.logger.log(`📊 Received metrics from user ${userId} in meeting ${meetingId}`, {
-      hasMetrics,
-      metricsKeys: metrics ? Object.keys(metrics) : [],
-      isFullState,
-      socketId: client.id,
-    });
+    // Verbose logging disabled to reduce log noise
     
     // If delta is empty and not full state, skip processing
     if (!hasMetrics && !isFullState) {
-      this.logger.debug(`⏸️ Skipping empty delta update for user ${userId}`);
       return;
     }
     
@@ -106,11 +100,7 @@ export class MeetingMetricsGateway implements OnGatewayConnection, OnGatewayDisc
         300,
       );
       
-      this.logger.debug(`✅ Stored metrics in Redis for user ${userId}`, {
-        upload: mergedMetrics.uploadBitrate,
-        download: mergedMetrics.downloadBitrate,
-        quality: mergedMetrics.quality,
-      });
+      // Debug logging disabled to reduce log noise
       
       // 3. Check for alerts (immediate)
       await this.checkAlerts(meetingId, userId, mergedMetrics);
@@ -128,13 +118,13 @@ export class MeetingMetricsGateway implements OnGatewayConnection, OnGatewayDisc
   @SubscribeMessage('admin:subscribe')
   handleAdminSubscribe(@ConnectedSocket() client: SocketWithUser) {
     client.join('admin-dashboard');
-    this.logger.log(`Admin subscribed: ${client.id}`);
+    // Verbose logging disabled to reduce log noise
   }
   
   @SubscribeMessage('admin:unsubscribe')
   handleAdminUnsubscribe(@ConnectedSocket() client: SocketWithUser) {
     client.leave('admin-dashboard');
-    this.logger.log(`Admin unsubscribed: ${client.id}`);
+    // Verbose logging disabled to reduce log noise
   }
   
   private async getExistingMetrics(meetingId: string, userId: string): Promise<UserMetrics> {
@@ -163,17 +153,9 @@ export class MeetingMetricsGateway implements OnGatewayConnection, OnGatewayDisc
         }
       } catch (error) {
         // If we can't get count, just broadcast anyway
-        this.logger.debug('Could not get admin count, broadcasting anyway');
       }
       
-      this.logger.log(`📡 Broadcasting to admin-dashboard room`, {
-        meetingId,
-        userId,
-        adminCount,
-        upload: metrics.uploadBitrate,
-        download: metrics.downloadBitrate,
-        quality: metrics.quality,
-      });
+      // Verbose logging disabled to reduce log noise
       
       // Always emit - Socket.IO will handle if no one is listening
       this.server.to('admin-dashboard').emit('meeting:metrics:update', {
@@ -184,8 +166,6 @@ export class MeetingMetricsGateway implements OnGatewayConnection, OnGatewayDisc
       });
       
       this.lastBroadcast.set(key, now);
-    } else {
-      this.logger.debug(`⏸️ Throttled broadcast for ${key} (${now - lastTime}ms < ${this.BROADCAST_THROTTLE}ms)`);
     }
   }
   

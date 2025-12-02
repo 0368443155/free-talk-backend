@@ -38,7 +38,7 @@ export class MetricsCollector {
       // Trim list to prevent overflow (keep last 10k items)
       await this.redis.ltrim(this.BUFFER_KEY, 0, this.MAX_BUFFER_SIZE - 1);
       
-      this.logger.debug(`Metric collected: ${metric.method} ${metric.endpoint}`);
+      // Debug logging disabled to reduce log noise
     } catch (error) {
       // Silent fail - don't break API request
       this.logger.error('Failed to collect metric:', error);

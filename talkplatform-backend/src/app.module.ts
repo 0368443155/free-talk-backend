@@ -60,7 +60,7 @@ import { MeetingMetricsGateway } from './gateways/meeting-metrics.gateway';
                 entities: [__dirname + '/**/*.entity{.ts,.js}'],
                 synchronize: false,
                 autoLoadEntities: true,
-                logging: configService.get<string>('NODE_ENV') === 'development',
+                logging: false, // Disable verbose query logs
             }),
         }),
 

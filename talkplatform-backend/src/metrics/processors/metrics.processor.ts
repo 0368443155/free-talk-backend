@@ -46,11 +46,10 @@ export class MetricsProcessor {
       const batch = await this.popBatch();
       
       if (batch.length === 0) {
-        this.logger.debug('No metrics to process');
         return { processed: 0 };
       }
       
-      this.logger.log(`Processing ${batch.length} metrics`);
+      // Verbose logging disabled to reduce log noise
       
       // 2. Aggregate by endpoint
       const aggregated = this.aggregateMetrics(batch);
@@ -64,10 +63,9 @@ export class MetricsProcessor {
         await this.persistToDatabase(aggregated);
       }
       
-      const duration = Date.now() - startTime;
-      this.logger.log(`Processed ${batch.length} metrics in ${duration}ms`);
+      // Verbose logging disabled to reduce log noise
       
-      return { processed: batch.length, duration };
+      return { processed: batch.length };
       
     } catch (error) {
       this.logger.error('Failed to process metrics:', error);
@@ -209,7 +207,7 @@ export class MetricsProcessor {
         .execute();
     }
     
-    this.logger.log(`Persisted ${aggregated.size} aggregated metrics to database`);
+    // Verbose logging disabled to reduce log noise
   }
   
   private getHourStart(date: Date): Date {

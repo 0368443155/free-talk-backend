@@ -30,7 +30,7 @@ export class SystemHealthService {
     try {
       const healthMetrics = await this.getSystemHealthMetrics();
       
-      this.logger.debug(`System Health: CPU ${healthMetrics.cpuUsage.toFixed(1)}%, Memory ${healthMetrics.memoryUsage.toFixed(1)}%, DB ${healthMetrics.dbResponseTime.toFixed(2)}ms`);
+      // Debug logging disabled to reduce log noise
       
       // Phát sự kiện system health
       this.appService.addEvent('system-health', healthMetrics);
