@@ -8,6 +8,7 @@ export class MetricsMiddleware implements NestMiddleware {
 
   use(req: Request, res: Response, next: NextFunction) {
     const startTime = Date.now();
+    const metricsCollector = this.metricsCollector; // Capture for closure
     
     // Get request size from Content-Length header
     const requestSize = parseInt(req.headers['content-length'] || '0', 10);

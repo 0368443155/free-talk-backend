@@ -73,3 +73,4 @@ npm install axios
 - Kiểm tra Redis: `redis-cli LLEN metrics:buffer`
 - Kiểm tra logs của server xem có lỗi không
 
+

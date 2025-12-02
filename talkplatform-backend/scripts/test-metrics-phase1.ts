@@ -11,7 +11,12 @@
 import axios from 'axios';
 
 const BASE_URL = process.env.API_URL || 'http://localhost:3000';
-const TEST_ENDPOINT = '/api/courses'; // Change to any valid endpoint
+// Try multiple endpoints - use the first one that works
+const TEST_ENDPOINTS = [
+  '/api/v1', // Root endpoint (should work)
+  '/api/v1/courses', // Courses endpoint
+  '/api/v1/auth', // Auth endpoint
+];
 
 async function testMetricsCollection() {
   console.log('🧪 Testing Phase 1 Metrics System\n');
@@ -20,8 +25,34 @@ async function testMetricsCollection() {
   try {
     // 1. Make a test request to trigger metrics collection
     console.log('\n1️⃣ Making test request to trigger metrics...');
-    const response = await axios.get(`${BASE_URL}${TEST_ENDPOINT}`);
-    console.log(`✅ Request successful: ${response.status}`);
+    let response;
+    let testEndpoint = '';
+    
+    // Try each endpoint until one works
+    for (const endpoint of TEST_ENDPOINTS) {
+      try {
+        console.log(`   Trying: ${endpoint}...`);
+        response = await axios.get(`${BASE_URL}${endpoint}`, {
+          validateStatus: (status) => status < 500, // Accept any status < 500
+        });
+        testEndpoint = endpoint;
+        console.log(`✅ Request successful: ${response.status} (${endpoint})`);
+        break;
+      } catch (error: any) {
+        if (error.response && error.response.status < 500) {
+          // 4xx errors are OK - endpoint exists, just needs auth
+          testEndpoint = endpoint;
+          console.log(`✅ Endpoint exists: ${error.response.status} (${endpoint})`);
+          response = error.response;
+          break;
+        }
+        console.log(`   ❌ Failed: ${error.message}`);
+      }
+    }
+    
+    if (!response) {
+      throw new Error('Could not find any working endpoint');
+    }
     
     // 2. Wait a bit for metrics to be processed
     console.log('\n2️⃣ Waiting 6 seconds for metrics processing...');
@@ -30,7 +61,7 @@ async function testMetricsCollection() {
     // 3. Check buffer status
     console.log('\n3️⃣ Checking buffer status...');
     try {
-      const statusResponse = await axios.get(`${BASE_URL}/metrics/status`, {
+      const statusResponse = await axios.get(`${BASE_URL}/api/v1/metrics/status`, {
         headers: {
           'Authorization': `Bearer ${process.env.ADMIN_TOKEN || ''}` // Add token if needed
         }
@@ -44,7 +75,7 @@ async function testMetricsCollection() {
     // 4. Check real-time metrics
     console.log('\n4️⃣ Checking real-time metrics...');
     try {
-      const realtimeResponse = await axios.get(`${BASE_URL}/metrics/realtime`, {
+      const realtimeResponse = await axios.get(`${BASE_URL}/api/v1/metrics/realtime`, {
         headers: {
           'Authorization': `Bearer ${process.env.ADMIN_TOKEN || ''}`
         }
@@ -58,7 +89,7 @@ async function testMetricsCollection() {
     // 5. Check hourly metrics
     console.log('\n5️⃣ Checking hourly metrics...');
     try {
-      const hourlyResponse = await axios.get(`${BASE_URL}/metrics/hourly-new?hours=1`, {
+      const hourlyResponse = await axios.get(`${BASE_URL}/api/v1/metrics/hourly-new?hours=1`, {
         headers: {
           'Authorization': `Bearer ${process.env.ADMIN_TOKEN || ''}`
         }
@@ -92,4 +123,5 @@ async function testMetricsCollection() {
 
 // Run test
 testMetricsCollection();
+
 

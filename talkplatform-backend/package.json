@@ -25,7 +25,8 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "test:metrics": "ts-node -r tsconfig-paths/register scripts/test-metrics-phase1.ts"
+    "test:metrics": "ts-node -r tsconfig-paths/register scripts/test-metrics-phase1.ts",
+    "check:metrics": "powershell -ExecutionPolicy Bypass -File scripts/check-metrics-status.ps1"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.937.0",

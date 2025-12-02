@@ -50,3 +50,4 @@ export class MetricsHourly {
   updated_at: Date;
 }
 
+

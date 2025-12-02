@@ -35,3 +35,4 @@ export class MetricsDaily {
   created_at: Date;
 }
 
+

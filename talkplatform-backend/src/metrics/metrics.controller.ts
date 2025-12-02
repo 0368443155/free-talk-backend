@@ -53,7 +53,16 @@ export class MetricsController {
   @Roles(UserRole.ADMIN)
   async getRealtimeMetrics() {
     const keys = await this.redis.keys('metrics:realtime:*');
-    const metrics = [];
+    const metrics: Array<{
+      endpoint: string;
+      method: string;
+      totalRequests: number;
+      totalInbound: number;
+      totalOutbound: number;
+      avgResponseTime: number;
+      maxResponseTime: number;
+      errorCount: number;
+    }> = [];
     
     for (const key of keys) {
       const data = await this.redis.hgetall(key);
