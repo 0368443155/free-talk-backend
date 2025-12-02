@@ -268,8 +268,8 @@ export default function CourseDetailPage() {
     }
 
     const isTeacherOrAdmin = user?.id === course.teacher_id || user?.role === 'admin';
-    const rating = course?.average_rating || 0;
-    const reviewCount = course?.total_reviews || 0;
+    const rating = Number(course?.average_rating) || 0;
+    const reviewCount = Number(course?.total_reviews) || 0;
 
     return (
         <div className="min-h-screen bg-white">
@@ -296,7 +296,7 @@ export default function CourseDetailPage() {
 
                         <div className="flex items-center gap-4 text-sm">
                             <div className="flex items-center gap-1">
-                                <span className="font-bold text-amber-400">{rating > 0 ? rating.toFixed(1) : 'N/A'}</span>
+                                <span className="font-bold text-amber-400">{rating > 0 ? Number(rating).toFixed(1) : 'N/A'}</span>
                                 <StarRating rating={rating} size={14} />
                                 <span className="text-slate-300 underline">({reviewCount} ratings)</span>
                             </div>

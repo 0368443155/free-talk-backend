@@ -131,7 +131,7 @@ export default function TeacherProfilePage() {
                       <Star className="w-4 h-4 text-yellow-500 fill-current" />
                       <span>Rating</span>
                     </div>
-                    <span className="font-semibold">{teacher.average_rating?.toFixed(1) || '0.0'}</span>
+                    <span className="font-semibold">{teacher.average_rating ? Number(teacher.average_rating).toFixed(1) : '0.0'}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">

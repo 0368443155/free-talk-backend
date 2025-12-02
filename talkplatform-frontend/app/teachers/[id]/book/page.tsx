@@ -234,7 +234,7 @@ export default function BookTeacherPage() {
 
             <div className="flex items-center gap-2">
               <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-              <span className="font-semibold">{teacher.average_rating.toFixed(1)}</span>
+              <span className="font-semibold">{teacher.average_rating ? Number(teacher.average_rating).toFixed(1) : '0.0'}</span>
               <span className="text-sm text-gray-600">({teacher.total_hours_taught} hours taught)</span>
             </div>
 

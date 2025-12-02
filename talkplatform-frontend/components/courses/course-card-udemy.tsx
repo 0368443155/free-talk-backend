@@ -68,13 +68,13 @@ export function CourseCardUdemy({ course, onClick }: CourseCardUdemyProps) {
                 {/* Rating */}
                 <div className="flex items-center gap-2 mb-3">
                     <span className="font-bold text-sm text-gray-900">
-                        {course.average_rating > 0
-                            ? course.average_rating.toFixed(1)
+                        {course.average_rating && Number(course.average_rating) > 0
+                            ? Number(course.average_rating).toFixed(1)
                             : "New"}
                     </span>
-                    <StarRating rating={course.average_rating} size={14} />
+                    <StarRating rating={Number(course.average_rating) || 0} size={14} />
                     <span className="text-xs text-gray-500">
-                        ({course.total_reviews})
+                        ({course.total_reviews || 0})
                     </span>
                 </div>
 
