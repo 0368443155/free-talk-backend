@@ -77,6 +77,12 @@ export class MeetingMetricsGateway implements OnGatewayConnection, OnGatewayDisc
     const { meetingId, metrics, isFullState } = data;
     const userId = client.data.userId || client.id;
     
+    this.logger.log(`📊 Received metrics from user ${userId} in meeting ${meetingId}`, {
+      metrics,
+      isFullState,
+      socketId: client.id,
+    });
+    
     try {
       // 1. Merge with existing metrics in Redis (delta update)
       const existingMetrics = await this.getExistingMetrics(meetingId, userId);
@@ -90,16 +96,16 @@ export class MeetingMetricsGateway implements OnGatewayConnection, OnGatewayDisc
         300,
       );
       
+      this.logger.debug(`✅ Stored metrics in Redis for user ${userId}`);
+      
       // 3. Check for alerts (immediate)
       await this.checkAlerts(meetingId, userId, mergedMetrics);
       
       // 4. Throttled broadcast to admin (2s interval)
       await this.throttledBroadcast(meetingId, userId, mergedMetrics);
       
-      this.logger.debug(`Metrics received from user ${userId} in meeting ${meetingId}`);
-      
     } catch (error) {
-      this.logger.error('Failed to handle metrics:', error);
+      this.logger.error('❌ Failed to handle metrics:', error);
     }
   }
   
@@ -131,6 +137,11 @@ export class MeetingMetricsGateway implements OnGatewayConnection, OnGatewayDisc
     
     // Only broadcast if 2 seconds passed
     if (now - lastTime > this.BROADCAST_THROTTLE) {
+      const adminRoom = this.server.sockets.adapter.rooms.get('admin-dashboard');
+      const adminCount = adminRoom ? adminRoom.size : 0;
+      
+      this.logger.debug(`📡 Broadcasting to ${adminCount} admin(s) in admin-dashboard room`);
+      
       this.server.to('admin-dashboard').emit('meeting:metrics:update', {
         meetingId,
         userId,

@@ -437,7 +437,7 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   }, [aggregatedMetrics]);
 
   // Throttled metrics emission to backend
-  useThrottledMetrics(socket, meeting.id, aggregatedMetrics);
+  useThrottledMetrics(socket, meeting.id, aggregatedMetrics, user.id);
 
   // Bandwidth monitoring is now handled by backend middleware
   const isReporting = false;

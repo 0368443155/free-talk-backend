@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { Socket } from 'socket.io-client';
+import { useEffect, useRef, useState } from 'react';
+import { Socket, io } from 'socket.io-client';
 
 export interface MetricsState {
   uploadBitrate: number;
@@ -11,47 +11,61 @@ export interface MetricsState {
 }
 
 export function useThrottledMetrics(
-  socket: Socket | null,
+  socket: Socket | null, // Keep for backward compatibility but create own socket
   meetingId: string,
   currentMetrics: MetricsState,
+  userId?: string, // Optional userId for socket auth
 ) {
+  // Create dedicated socket for metrics namespace
+  const [metricsSocket, setMetricsSocket] = useState<Socket | null>(null);
   const lastSentMetrics = useRef<MetricsState | null>(null);
   const lastSentTime = useRef<number>(0);
   const isFirstConnection = useRef<boolean>(true);
   const THROTTLE_INTERVAL = 10000; // 10 seconds
   
-  // 🔥 FIX 4: Reset state on socket reconnect
+  // Create dedicated socket for /meeting-metrics namespace
   useEffect(() => {
-    if (!socket) return;
+    if (!meetingId) return;
     
-    const handleConnect = () => {
-      console.log('Socket connected, sending full state');
+    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 
+                      process.env.NEXT_PUBLIC_NESTJS_URL || 
+                      'http://localhost:3000';
+    
+    const newSocket = io(`${socketUrl}/meeting-metrics`, {
+      auth: {
+        userId: userId || 'anonymous',
+      },
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+    });
+    
+    newSocket.on('connect', () => {
+      console.log('✅ Metrics socket connected to /meeting-metrics');
       isFirstConnection.current = true;
       lastSentMetrics.current = null; // Force full state send
-    };
+    });
     
-    const handleDisconnect = () => {
-      console.log('Socket disconnected');
-    };
+    newSocket.on('disconnect', () => {
+      console.log('❌ Metrics socket disconnected');
+    });
     
-    socket.on('connect', handleConnect);
-    socket.on('disconnect', handleDisconnect);
+    setMetricsSocket(newSocket);
     
     return () => {
-      socket.off('connect', handleConnect);
-      socket.off('disconnect', handleDisconnect);
+      newSocket.disconnect();
+      setMetricsSocket(null);
     };
-  }, [socket]);
+  }, [meetingId, userId]);
   
   useEffect(() => {
-    if (!socket || !meetingId) return;
+    if (!metricsSocket || !meetingId) return;
     
     const shouldEmit = shouldEmitMetrics(currentMetrics);
     
     if (shouldEmit) {
       emitMetrics(currentMetrics);
     }
-  }, [currentMetrics, socket, meetingId]);
+  }, [currentMetrics, metricsSocket, meetingId]);
   
   const shouldEmitMetrics = (metrics: MetricsState): boolean => {
     // 1. First connection or reconnection - send full state
@@ -103,7 +117,10 @@ export function useThrottledMetrics(
   };
   
   const emitMetrics = (metrics: MetricsState) => {
-    if (!socket) return;
+    if (!metricsSocket || !metricsSocket.connected) {
+      console.warn('⚠️ Metrics socket not connected, skipping emit');
+      return;
+    }
     
     // Delta compression: Only send changed fields
     const delta: Partial<MetricsState> = {};
@@ -111,7 +128,7 @@ export function useThrottledMetrics(
     if (!lastSentMetrics.current) {
       // First time or reconnect: send all
       Object.assign(delta, metrics);
-      console.log('Sending full state:', delta);
+      console.log('📤 [METRICS] Sending full state:', delta);
     } else {
       // Send only changed fields
       for (const key in metrics) {
@@ -122,7 +139,13 @@ export function useThrottledMetrics(
       }
     }
     
-    socket.emit('meeting:metrics', {
+    console.log('📤 [METRICS] Emitting to /meeting-metrics:', {
+      meetingId,
+      metrics: delta,
+      socketId: metricsSocket.id,
+    });
+    
+    metricsSocket.emit('meeting:metrics', {
       meetingId,
       metrics: delta,
       isFullState: !lastSentMetrics.current, // 🔥 Flag for server

@@ -43,8 +43,15 @@ export default function AdminMeetingsPage() {
     });
 
     newSocket.on('connect', () => {
-      console.log('✅ Admin connected to meeting-metrics');
+      console.log('✅ Admin connected to meeting-metrics', {
+        socketId: newSocket.id,
+        connected: newSocket.connected,
+      });
       newSocket.emit('admin:subscribe');
+    });
+
+    newSocket.on('connect_error', (error) => {
+      console.error('❌ Admin connection error:', error);
     });
 
     // Listen for metrics updates
