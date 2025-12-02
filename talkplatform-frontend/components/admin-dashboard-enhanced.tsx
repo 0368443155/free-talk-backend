@@ -10,6 +10,27 @@ import { Activity, ArrowDown, ArrowUp, Users, Server, Wifi, AlertTriangle, Monit
 import { AdminUserManagement } from './admin-user-management';
 import { AdminTeacherVerification } from './admin-teacher-verification';
 
+// Error Boundary Component
+function ErrorBoundary({ children, fallback }: { children: React.ReactNode; fallback?: React.ReactNode }) {
+  const [hasError, setHasError] = useState(false);
+  
+  useEffect(() => {
+    const errorHandler = (error: ErrorEvent) => {
+      console.error('Error in component:', error);
+      setHasError(true);
+    };
+    
+    window.addEventListener('error', errorHandler);
+    return () => window.removeEventListener('error', errorHandler);
+  }, []);
+  
+  if (hasError) {
+    return fallback || <div className="p-4 text-red-600">An error occurred. Please refresh the page.</div>;
+  }
+  
+  return <>{children}</>;
+}
+
 interface SystemMetrics {
   totalBandwidth: number;
   activeUsers: number;
@@ -273,7 +294,7 @@ export default function AdminDashboardEnhanced({ initialData }: { initialData?: 
       )}
 
       <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList>
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="bandwidth">Bandwidth</TabsTrigger>
           <TabsTrigger value="system">System Health</TabsTrigger>
@@ -559,12 +580,16 @@ export default function AdminDashboardEnhanced({ initialData }: { initialData?: 
 
         {/* User Management Tab */}
         <TabsContent value="users" className="space-y-6">
-          <AdminUserManagement />
+          <ErrorBoundary>
+            <AdminUserManagement />
+          </ErrorBoundary>
         </TabsContent>
 
         {/* Teacher Verifications Tab */}
         <TabsContent value="teacher-verifications" className="space-y-6">
-          <AdminTeacherVerification />
+          <ErrorBoundary>
+            <AdminTeacherVerification />
+          </ErrorBoundary>
         </TabsContent>
 
         {/* Historical Data Tab */}
