@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -64,6 +64,17 @@ export default function AdminMeetingsPage() {
 
     // Listen for metrics updates
     newSocket.on('meeting:metrics:update', ({ meetingId, userId, metrics, timestamp }: any) => {
+      console.log('📊 [ADMIN] Received metrics update:', {
+        meetingId,
+        userId,
+        hasYouTube: !!metrics.youtube,
+        youtubeBitrate: metrics.youtube?.downloadBitrate,
+        youtubeQuality: metrics.youtube?.quality,
+        upload: metrics.uploadBitrate,
+        download: metrics.downloadBitrate,
+        timestamp: new Date(timestamp).toLocaleTimeString(),
+      });
+      
       setMeetings((prev) => {
         const meeting = prev.get(meetingId) || {
           meetingId,
@@ -105,12 +116,28 @@ export default function AdminMeetingsPage() {
   }, []);
   
   // Calculate statistics
-  const stats = {
-    totalMeetings: meetings.size,
-    totalUsers: Array.from(meetings.values()).reduce((sum, m) => sum + m.users.size, 0),
-    turnUsers: turnUsers.size,
-    activeAlerts: alerts.filter(a => a.severity === 'critical').length,
-  };
+  const stats = useMemo(() => {
+    let totalYouTubeBandwidth = 0;
+    let youtubeUsers = 0;
+    
+    Array.from(meetings.values()).forEach((meeting) => {
+      Array.from(meeting.users.values()).forEach((metrics) => {
+        if (metrics.youtube && metrics.youtube.downloadBitrate) {
+          totalYouTubeBandwidth += metrics.youtube.downloadBitrate;
+          youtubeUsers++;
+        }
+      });
+    });
+    
+    return {
+      totalMeetings: meetings.size,
+      totalUsers: Array.from(meetings.values()).reduce((sum, m) => sum + m.users.size, 0),
+      turnUsers: turnUsers.size,
+      activeAlerts: alerts.filter(a => a.severity === 'critical').length,
+      youtubeUsers,
+      totalYouTubeBandwidth: Math.round(totalYouTubeBandwidth),
+    };
+  }, [meetings, turnUsers, alerts]);
   
   // Calculate TURN cost (example: $0.05/user/hour)
   const turnCostPerHour = turnUsers.size * 0.05;
@@ -145,7 +172,7 @@ export default function AdminMeetingsPage() {
       </div>
       
       {/* Summary Cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-5 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
@@ -168,6 +195,21 @@ export default function AdminMeetingsPage() {
           </CardContent>
         </Card>
         
+        <Card className={stats.youtubeUsers > 0 ? 'border-purple-200 bg-purple-50' : ''}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-gray-500 flex items-center gap-2">
+              <span className="text-purple-600">📺</span>
+              YouTube Users
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-purple-600">{stats.youtubeUsers}</div>
+            <p className="text-xs text-purple-700 mt-1">
+              {formatBandwidth(stats.totalYouTubeBandwidth)} total
+            </p>
+          </CardContent>
+        </Card>
+
         <Card className={stats.turnUsers > 0 ? 'border-orange-200 bg-orange-50' : ''}>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500 flex items-center gap-2">
@@ -204,18 +246,26 @@ export default function AdminMeetingsPage() {
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
         </TabsList>
         
-        <TabsContent value="meetings" className="space-y-4">
-          {Array.from(meetings.values()).map((meeting) => (
-            <MeetingCard key={meeting.meetingId} meeting={meeting} />
-          ))}
-          
-          {meetings.size === 0 && (
-            <Card className="p-12 text-center">
-              <Activity className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-              <p className="text-gray-500">No active meetings</p>
-            </Card>
-          )}
-        </TabsContent>
+              <TabsContent value="meetings" className="space-y-4">
+                {Array.from(meetings.values()).map((meeting) => {
+                  console.log('📊 [ADMIN] Rendering meeting:', {
+                    meetingId: meeting.meetingId,
+                    userCount: meeting.users.size,
+                    users: Array.from(meeting.users.keys()),
+                  });
+                  return <MeetingCard key={meeting.meetingId} meeting={meeting} />;
+                })}
+
+                {meetings.size === 0 && (
+                  <Card className="p-12 text-center">
+                    <Activity className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                    <p className="text-gray-500">No active meetings</p>
+                    <p className="text-xs text-gray-400 mt-2">
+                      Socket: {socket?.connected ? '✅ Connected' : '❌ Disconnected'}
+                    </p>
+                  </Card>
+                )}
+              </TabsContent>
         
         <TabsContent value="alerts" className="space-y-4">
           <AlertsList alerts={alerts} />
@@ -350,7 +400,7 @@ function AnalyticsView({ meetings }: { meetings: Map<string, MeetingData> }) {
   };
   
   // Calculate bandwidth over time (last 10 data points)
-  const bandwidthData: Array<{ time: string; upload: number; download: number }> = [];
+  const bandwidthData: Array<{ time: string; upload: number; download: number; youtube: number }> = [];
   const timePoints: string[] = [];
   
   Array.from(meetings.values()).forEach((meeting) => {
@@ -369,12 +419,14 @@ function AnalyticsView({ meetings }: { meetings: Map<string, MeetingData> }) {
           time: timeStr,
           upload: metrics.uploadBitrate,
           download: metrics.downloadBitrate,
+          youtube: metrics.youtube?.downloadBitrate || 0,
         });
       } else {
         const existing = bandwidthData.find(d => d.time === timeStr);
         if (existing) {
           existing.upload += metrics.uploadBitrate;
           existing.download += metrics.downloadBitrate;
+          existing.youtube += metrics.youtube?.downloadBitrate || 0;
         }
       }
     });
@@ -388,7 +440,7 @@ function AnalyticsView({ meetings }: { meetings: Map<string, MeetingData> }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <BandwidthChart data={sortedBandwidthData.length > 0 ? sortedBandwidthData : [
-        { time: '00:00', upload: 0, download: 0 }
+        { time: '00:00', upload: 0, download: 0, youtube: 0 }
       ]} />
       <QualityDistribution data={qualityData} />
     </div>
@@ -422,6 +474,11 @@ function getSeverityVariant(severity: string) {
     case 'info': return 'secondary';
     default: return 'outline';
   }
+}
+
+function formatBandwidth(kbps: number): string {
+  if (kbps < 1000) return `${kbps} kbps`;
+  return `${(kbps / 1000).toFixed(1)} Mbps`;
 }
 
 function formatTime(date: Date): string {

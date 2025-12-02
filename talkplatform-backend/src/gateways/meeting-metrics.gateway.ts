@@ -148,12 +148,20 @@ export class MeetingMetricsGateway implements OnGatewayConnection, OnGatewayDisc
     const now = Date.now();
     const lastTime = this.lastBroadcast.get(key) || 0;
     
-    // Only broadcast if 2 seconds passed
-    if (now - lastTime > this.BROADCAST_THROTTLE) {
+    // Reduce throttle for YouTube metrics (1 second instead of 2)
+    const throttleTime = metrics.youtube && metrics.youtube.downloadBitrate ? 1000 : this.BROADCAST_THROTTLE;
+    
+    // Only broadcast if throttle time passed
+    if (now - lastTime > throttleTime) {
       const adminRoom = this.server.sockets.adapter.rooms.get('admin-dashboard');
       const adminCount = adminRoom ? adminRoom.size : 0;
       
-      this.logger.debug(`📡 Broadcasting to ${adminCount} admin(s) in admin-dashboard room`);
+      this.logger.log(`📡 Broadcasting to ${adminCount} admin(s) in admin-dashboard room`, {
+        meetingId,
+        userId,
+        hasYouTube: !!metrics.youtube,
+        youtubeBitrate: metrics.youtube?.downloadBitrate,
+      });
       
       this.server.to('admin-dashboard').emit('meeting:metrics:update', {
         meetingId,
@@ -163,6 +171,8 @@ export class MeetingMetricsGateway implements OnGatewayConnection, OnGatewayDisc
       });
       
       this.lastBroadcast.set(key, now);
+    } else {
+      this.logger.debug(`⏸️ Throttled broadcast for ${key} (${now - lastTime}ms < ${throttleTime}ms)`);
     }
   }
   
@@ -206,14 +216,22 @@ export class MeetingMetricsGateway implements OnGatewayConnection, OnGatewayDisc
         });
       }
 
-      // High YouTube bandwidth usage (>5 Mbps)
+      // High YouTube bandwidth usage (>5 Mbps) - Only alert once per user
       if (metrics.youtube && metrics.youtube.downloadBitrate && metrics.youtube.downloadBitrate > 5000) {
-        alerts.push({
-          type: 'high-youtube-bandwidth',
-          severity: 'warning',
-          message: `User ${userId} is using high YouTube bandwidth: ${metrics.youtube.downloadBitrate} kbps (${metrics.youtube.quality})`,
-          cost: true,
-        });
+        const alertKey = `youtube-high-${userId}`;
+        const lastAlertTime = this.lastBroadcast.get(alertKey) || 0;
+        const now = Date.now();
+        
+        // Only alert if 30 seconds passed since last alert
+        if (now - lastAlertTime > 30000) {
+          alerts.push({
+            type: 'high-youtube-bandwidth',
+            severity: 'warning',
+            message: `User ${userId} is using high YouTube bandwidth: ${metrics.youtube.downloadBitrate} kbps (${metrics.youtube.quality})`,
+            cost: true,
+          });
+          this.lastBroadcast.set(alertKey, now);
+        }
       }
 
       if (alerts.length > 0) {

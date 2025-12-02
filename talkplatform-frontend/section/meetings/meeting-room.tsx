@@ -442,28 +442,52 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
 
   // Merge YouTube metrics into aggregated metrics
   const metricsWithYouTube = useMemo(() => {
-    return {
+    // Always include YouTube if videoId exists and metrics are active
+    const hasYouTube = youtubeVideoId && youtubeMetrics.isActive;
+    
+    const result = {
       ...aggregatedMetrics,
-      youtube: youtubeMetrics.isActive ? {
+      youtube: hasYouTube ? {
         downloadBitrate: youtubeMetrics.downloadBitrate,
         quality: youtubeMetrics.quality,
         totalBytesDownloaded: youtubeMetrics.totalBytesDownloaded,
         bufferingEvents: youtubeMetrics.bufferingEvents,
       } : undefined,
     };
-  }, [aggregatedMetrics, youtubeMetrics]);
+    
+    // Force update every 2 seconds if YouTube is active to trigger re-render
+    if (hasYouTube) {
+      console.log('📊 [DEBUG] metricsWithYouTube (YouTube active):', {
+        hasYouTube: !!result.youtube,
+        youtubeBitrate: result.youtube?.downloadBitrate,
+        upload: result.uploadBitrate,
+        download: result.downloadBitrate,
+        timestamp: Date.now(), // Force update
+      });
+    }
+    
+    return result;
+  }, [aggregatedMetrics, youtubeMetrics, youtubeVideoId]);
 
   // Debug: Log YouTube metrics
   useEffect(() => {
+    console.log('📺 [DEBUG] YouTube metrics state:', {
+      isActive: youtubeMetrics.isActive,
+      downloadBitrate: youtubeMetrics.downloadBitrate,
+      quality: youtubeMetrics.quality,
+      totalBytes: youtubeMetrics.totalBytesDownloaded,
+      videoId: youtubeVideoId,
+    });
+    
     if (youtubeMetrics.isActive) {
-      console.log('📺 [DEBUG] YouTube metrics:', {
+      console.log('📺 [DEBUG] YouTube metrics ACTIVE:', {
         downloadBitrate: `${youtubeMetrics.downloadBitrate} kbps`,
         quality: youtubeMetrics.quality,
         totalBytes: `${(youtubeMetrics.totalBytesDownloaded / 1024 / 1024).toFixed(2)} MB`,
         bufferingEvents: youtubeMetrics.bufferingEvents,
       });
     }
-  }, [youtubeMetrics]);
+  }, [youtubeMetrics, youtubeVideoId]);
 
   // Throttled metrics emission to backend (includes YouTube)
   useThrottledMetrics(socket, meeting.id, metricsWithYouTube, user.id);
@@ -1291,6 +1315,14 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
                 <ArrowUp className="w-3 h-3 text-green-400" />
                 <span className="text-xs">{formatBandwidth(aggregatedMetrics.uploadBitrate)}</span>
               </div>
+              
+              {metricsWithYouTube.youtube && metricsWithYouTube.youtube.downloadBitrate > 0 && (
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-purple-400">📺</span>
+                  <span className="text-xs text-purple-400">{formatBandwidth(metricsWithYouTube.youtube.downloadBitrate)}</span>
+                  <span className="text-xs text-purple-300">({metricsWithYouTube.youtube.quality})</span>
+                </div>
+              )}
               
               <div className="flex items-center gap-1">
                 <span className="text-xs text-gray-400">Latency:</span>
