@@ -64,7 +64,7 @@ export default function CoursesPage() {
         try {
             setLoading(true);
             const response = await getCoursesApi();
-            const coursesData = response?.courses || response?.data || (Array.isArray(response) ? response : []);
+            const coursesData = response?.courses || (Array.isArray(response) ? response : []);
             setCourses(Array.isArray(coursesData) ? coursesData : []);
         } catch (error: any) {
             console.error('Error loading courses:', error);

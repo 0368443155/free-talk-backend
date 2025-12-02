@@ -21,6 +21,13 @@ interface UserMetrics {
   packetLoss?: number;
 }
 
+interface Alert {
+  type: string;
+  severity: string;
+  message: string;
+  cost?: boolean;
+}
+
 interface SocketWithUser extends Socket {
   userId?: string;
   meetingId?: string;
@@ -136,7 +143,7 @@ export class MeetingMetricsGateway implements OnGatewayConnection, OnGatewayDisc
   }
   
   private async checkAlerts(meetingId: string, userId: string, metrics: UserMetrics) {
-    const alerts = [];
+    const alerts: Alert[] = [];
     
     // High latency
     if (metrics.latency && metrics.latency > 300) {
