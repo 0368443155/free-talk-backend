@@ -34,7 +34,8 @@ import {
     ShieldCheck,
     Video,
     DollarSign,
-    ArrowUpRight
+    ArrowUpRight,
+    Activity
 } from 'lucide-react';
 import { useUser } from '@/store/user-store';
 import { useToast } from '@/components/ui/use-toast';
@@ -249,7 +250,8 @@ export default function MainNav() {
                 { title: 'Dashboard', href: '/admin', icon: BarChart3 },
                 { title: 'User Management', href: '/admin/users', icon: Users },
                 { title: 'Teacher Verification', href: '/admin/teachers', icon: GraduationCap },
-                { title: 'LiveKit Monitoring', href: '/admin/livekit', icon: Video }
+                { title: 'LiveKit Monitoring', href: '/admin/livekit', icon: Video },
+                { title: 'Meetings Monitor', href: '/admin/meetings', icon: Activity }
             ]
         });
     }

@@ -7,6 +7,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MetricsService } from './metrics.service';
 import { MetricsController } from './metrics.controller';
+import { MeetingMetricsController } from './meeting-metrics.controller';
 import { BandwidthRedisService } from './services/bandwidth-redis.service';
 import { MetricsCollector } from './services/metrics-collector.service';
 import { MetricsProcessor } from './processors/metrics.processor';
@@ -55,7 +56,7 @@ import { LiveKitMetric } from './livekit-metric.entity';
       }),
     }),
   ],
-  controllers: [MetricsController],
+  controllers: [MetricsController, MeetingMetricsController],
   providers: [
     MetricsService, 
     BandwidthRedisService,

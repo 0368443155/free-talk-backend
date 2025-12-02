@@ -22,6 +22,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useMeetingSocket } from "@/hooks/use-meeting-socket";
 import { useWebRTC } from "@/hooks/use-webrtc";
+import { useWebRTCStatsWorker } from "@/hooks/useWebRTCStatsWorker";
+import { useThrottledMetrics } from "@/hooks/useThrottledMetrics";
 import { VideoGrid } from "./video-grid";
 import { MeetingChat } from "./meeting-chat";
 import { YouTubePlayer, YouTubePlayerHandle } from "./youtube-player";
@@ -348,6 +350,73 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     userId: user.id,
     isOnline,
   });
+
+  // Helper function to determine connection quality
+  const getConnectionQuality = useCallback((
+    latency: number, 
+    packetLoss: number
+  ): 'excellent' | 'good' | 'fair' | 'poor' => {
+    if (latency < 100 && packetLoss < 1) return 'excellent';
+    if (latency < 200 && packetLoss < 3) return 'good';
+    if (latency < 400 && packetLoss < 5) return 'fair';
+    return 'poor';
+  }, []);
+
+  // Helper function to format bandwidth
+  const formatBandwidth = useCallback((kbps: number): string => {
+    if (kbps < 1000) return `${Math.round(kbps)} KB/s`;
+    return `${(kbps / 1000).toFixed(1)} MB/s`;
+  }, []);
+
+  // Phase 2: WebRTC Stats Collection
+  // Convert peers Map to RTCPeerConnection Map for stats worker
+  const peerConnectionsMap = useMemo(() => {
+    const connections = new Map<string, RTCPeerConnection>();
+    peers.forEach((peer, userId) => {
+      if (peer.connection) {
+        connections.set(userId, peer.connection);
+      }
+    });
+    return connections;
+  }, [peers]);
+
+  // Collect WebRTC stats using Web Worker
+  const { stats: webrtcStats, workerReady: statsWorkerReady } = useWebRTCStatsWorker(peerConnectionsMap);
+
+  // Calculate aggregated metrics
+  const aggregatedMetrics = useMemo(() => {
+    if (webrtcStats.length === 0) {
+      return {
+        uploadBitrate: 0,
+        downloadBitrate: 0,
+        latency: 0,
+        packetLoss: 0,
+        quality: 'good' as const,
+        usingRelay: false,
+      };
+    }
+
+    const totalUpload = webrtcStats.reduce((sum: number, s) => sum + s.uploadBitrate, 0);
+    const totalDownload = webrtcStats.reduce((sum: number, s) => sum + s.downloadBitrate, 0);
+    const avgLatency = webrtcStats.reduce((sum: number, s) => sum + s.latency, 0) / webrtcStats.length;
+    const avgPacketLoss = webrtcStats.reduce((sum: number, s) => sum + s.packetLoss, 0) / webrtcStats.length;
+    const usingRelay = webrtcStats.some((s: any) => s.usingRelay);
+    
+    // Determine connection quality
+    const quality = getConnectionQuality(avgLatency, avgPacketLoss);
+    
+    return {
+      uploadBitrate: totalUpload,
+      downloadBitrate: totalDownload,
+      latency: Math.round(avgLatency),
+      packetLoss: Math.round(avgPacketLoss * 10) / 10,
+      quality,
+      usingRelay,
+    };
+  }, [webrtcStats, getConnectionQuality]);
+
+  // Throttled metrics emission to backend
+  useThrottledMetrics(socket, meeting.id, aggregatedMetrics);
 
   // Bandwidth monitoring is now handled by backend middleware
   const isReporting = false;
@@ -1149,27 +1218,53 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
       <div className="h-14 bg-gray-800 p-2 flex items-center justify-between flex-shrink-0 border-t border-gray-700">
         {/* Left side: Main controls */}
         
-        {/* Left side - Bandwidth monitoring */}
+        {/* Left side - Bandwidth monitoring (Phase 3: Real data) */}
         <div className="flex items-center gap-3 text-sm text-gray-300">
           <div className="flex items-center gap-1">
-            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+            <div className={`w-2 h-2 rounded-full ${
+              aggregatedMetrics.quality === 'excellent' ? 'bg-green-500' :
+              aggregatedMetrics.quality === 'good' ? 'bg-blue-500' :
+              aggregatedMetrics.quality === 'fair' ? 'bg-yellow-500' :
+              'bg-red-500'
+            }`} />
             <span className="text-xs">Quality</span>
           </div>
           
-          <div className="flex items-center gap-1">
-            <ArrowDown className="w-3 h-3 text-blue-400" />
-            <span className="text-xs">{Math.round(Math.random() * 500 + 200)}KB/s</span>
-          </div>
-          
-          <div className="flex items-center gap-1">
-            <ArrowUp className="w-3 h-3 text-green-400" />
-            <span className="text-xs">{Math.round(Math.random() * 300 + 100)}KB/s</span>
-          </div>
-          
-          <div className="flex items-center gap-1">
-            <span className="text-xs text-gray-400">Latency:</span>
-            <span className="text-xs">{Math.round(Math.random() * 50 + 20)}ms</span>
-          </div>
+          {statsWorkerReady && aggregatedMetrics.downloadBitrate > 0 ? (
+            <>
+              <div className="flex items-center gap-1">
+                <ArrowDown className="w-3 h-3 text-blue-400" />
+                <span className="text-xs">{formatBandwidth(aggregatedMetrics.downloadBitrate)}</span>
+              </div>
+              
+              <div className="flex items-center gap-1">
+                <ArrowUp className="w-3 h-3 text-green-400" />
+                <span className="text-xs">{formatBandwidth(aggregatedMetrics.uploadBitrate)}</span>
+              </div>
+              
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-gray-400">Latency:</span>
+                <span className="text-xs">{aggregatedMetrics.latency}ms</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-1">
+                <ArrowDown className="w-3 h-3 text-blue-400" />
+                <span className="text-xs">-- KB/s</span>
+              </div>
+              
+              <div className="flex items-center gap-1">
+                <ArrowUp className="w-3 h-3 text-green-400" />
+                <span className="text-xs">-- KB/s</span>
+              </div>
+              
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-gray-400">Latency:</span>
+                <span className="text-xs">-- ms</span>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Center - Main Controls */}

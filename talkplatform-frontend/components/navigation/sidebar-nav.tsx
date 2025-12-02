@@ -28,6 +28,7 @@ import {
   Clock,
   Search,
   ChevronLeft,
+  Activity,
   ChevronRight,
   DollarSign,
   ArrowUpRight
@@ -257,6 +258,12 @@ const adminNavItems = [
         href: '/admin/livekit',
         icon: Video,
         description: 'System monitoring'
+      },
+      {
+        title: 'Meetings Monitor',
+        href: '/admin/meetings',
+        icon: Activity,
+        description: 'Real-time meeting metrics'
       },
       {
         title: 'Revenue Analytics',
