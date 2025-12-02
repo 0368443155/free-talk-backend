@@ -122,10 +122,12 @@ export function useThrottledMetrics(
       return;
     }
     
+    const isFullState = !lastSentMetrics.current;
+    
     // Delta compression: Only send changed fields
     const delta: Partial<MetricsState> = {};
     
-    if (!lastSentMetrics.current) {
+    if (isFullState) {
       // First time or reconnect: send all
       Object.assign(delta, metrics);
       console.log('📤 [METRICS] Sending full state:', delta);
@@ -137,18 +139,27 @@ export function useThrottledMetrics(
           delta[k] = metrics[k] as any;
         }
       }
+      
+      // If delta is empty, don't send
+      if (Object.keys(delta).length === 0) {
+        console.log('⏸️ [METRICS] No changes detected, skipping emit');
+        return;
+      }
+      
+      console.log('📤 [METRICS] Sending delta:', delta);
     }
     
     console.log('📤 [METRICS] Emitting to /meeting-metrics:', {
       meetingId,
       metrics: delta,
+      isFullState,
       socketId: metricsSocket.id,
     });
     
     metricsSocket.emit('meeting:metrics', {
       meetingId,
       metrics: delta,
-      isFullState: !lastSentMetrics.current, // 🔥 Flag for server
+      isFullState,
       timestamp: Date.now(),
     });
     

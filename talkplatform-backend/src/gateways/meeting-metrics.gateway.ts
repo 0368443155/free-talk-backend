@@ -77,11 +77,21 @@ export class MeetingMetricsGateway implements OnGatewayConnection, OnGatewayDisc
     const { meetingId, metrics, isFullState } = data;
     const userId = client.data.userId || client.id;
     
+    // Check if metrics object is empty (delta compression sent nothing)
+    const hasMetrics = metrics && Object.keys(metrics).length > 0;
+    
     this.logger.log(`📊 Received metrics from user ${userId} in meeting ${meetingId}`, {
-      metrics,
+      hasMetrics,
+      metricsKeys: metrics ? Object.keys(metrics) : [],
       isFullState,
       socketId: client.id,
     });
+    
+    // If delta is empty and not full state, skip processing
+    if (!hasMetrics && !isFullState) {
+      this.logger.debug(`⏸️ Skipping empty delta update for user ${userId}`);
+      return;
+    }
     
     try {
       // 1. Merge with existing metrics in Redis (delta update)
@@ -96,13 +106,19 @@ export class MeetingMetricsGateway implements OnGatewayConnection, OnGatewayDisc
         300,
       );
       
-      this.logger.debug(`✅ Stored metrics in Redis for user ${userId}`);
+      this.logger.debug(`✅ Stored metrics in Redis for user ${userId}`, {
+        upload: mergedMetrics.uploadBitrate,
+        download: mergedMetrics.downloadBitrate,
+        quality: mergedMetrics.quality,
+      });
       
       // 3. Check for alerts (immediate)
       await this.checkAlerts(meetingId, userId, mergedMetrics);
       
-      // 4. Throttled broadcast to admin (2s interval)
-      await this.throttledBroadcast(meetingId, userId, mergedMetrics);
+      // 4. Throttled broadcast to admin (2s interval) - only if we have actual metrics
+      if (hasMetrics || isFullState) {
+        await this.throttledBroadcast(meetingId, userId, mergedMetrics);
+      }
       
     } catch (error) {
       this.logger.error('❌ Failed to handle metrics:', error);
@@ -137,11 +153,29 @@ export class MeetingMetricsGateway implements OnGatewayConnection, OnGatewayDisc
     
     // Only broadcast if 2 seconds passed
     if (now - lastTime > this.BROADCAST_THROTTLE) {
-      const adminRoom = this.server.sockets.adapter.rooms.get('admin-dashboard');
-      const adminCount = adminRoom ? adminRoom.size : 0;
+      // Try to get admin count (handle different Socket.IO adapter structures)
+      let adminCount = 0;
+      try {
+        const adapter = (this.server as any).sockets?.adapter || (this.server as any).adapter;
+        if (adapter && adapter.rooms) {
+          const adminRoom = adapter.rooms.get('admin-dashboard');
+          adminCount = adminRoom ? adminRoom.size : 0;
+        }
+      } catch (error) {
+        // If we can't get count, just broadcast anyway
+        this.logger.debug('Could not get admin count, broadcasting anyway');
+      }
       
-      this.logger.debug(`📡 Broadcasting to ${adminCount} admin(s) in admin-dashboard room`);
+      this.logger.log(`📡 Broadcasting to admin-dashboard room`, {
+        meetingId,
+        userId,
+        adminCount,
+        upload: metrics.uploadBitrate,
+        download: metrics.downloadBitrate,
+        quality: metrics.quality,
+      });
       
+      // Always emit - Socket.IO will handle if no one is listening
       this.server.to('admin-dashboard').emit('meeting:metrics:update', {
         meetingId,
         userId,
@@ -150,6 +184,8 @@ export class MeetingMetricsGateway implements OnGatewayConnection, OnGatewayDisc
       });
       
       this.lastBroadcast.set(key, now);
+    } else {
+      this.logger.debug(`⏸️ Throttled broadcast for ${key} (${now - lastTime}ms < ${this.BROADCAST_THROTTLE}ms)`);
     }
   }
   

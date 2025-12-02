@@ -34,28 +34,48 @@ export default function AdminMeetingsPage() {
   
   useEffect(() => {
     // Connect to meeting-metrics namespace
-    const socketUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 
+                      process.env.NEXT_PUBLIC_NESTJS_URL || 
+                      'http://localhost:3000';
+    
+    console.log('🔌 [ADMIN] Connecting to:', `${socketUrl}/meeting-metrics`);
+    
     const newSocket = io(`${socketUrl}/meeting-metrics`, {
       auth: {
         userId: 'admin',
       },
       transports: ['websocket', 'polling'],
+      reconnection: true,
     });
 
     newSocket.on('connect', () => {
-      console.log('✅ Admin connected to meeting-metrics', {
+      console.log('✅ [ADMIN] Connected to meeting-metrics', {
         socketId: newSocket.id,
         connected: newSocket.connected,
+        url: `${socketUrl}/meeting-metrics`,
       });
       newSocket.emit('admin:subscribe');
     });
 
     newSocket.on('connect_error', (error) => {
-      console.error('❌ Admin connection error:', error);
+      console.error('❌ [ADMIN] Connection error:', error);
+    });
+
+    newSocket.on('disconnect', (reason) => {
+      console.warn('⚠️ [ADMIN] Disconnected:', reason);
     });
 
     // Listen for metrics updates
     newSocket.on('meeting:metrics:update', ({ meetingId, userId, metrics, timestamp }: any) => {
+      console.log('📊 [ADMIN] Received metrics update:', {
+        meetingId,
+        userId,
+        upload: metrics.uploadBitrate,
+        download: metrics.downloadBitrate,
+        quality: metrics.quality,
+        timestamp: new Date(timestamp).toLocaleTimeString(),
+      });
+      
       setMeetings((prev) => {
         const meeting = prev.get(meetingId) || {
           meetingId,
