@@ -22,6 +22,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useMeetingSocket } from "@/hooks/use-meeting-socket";
 import { useWebRTC } from "@/hooks/use-webrtc";
+import { useWebRTCStatsWorker } from "@/hooks/useWebRTCStatsWorker";
+import { useThrottledMetrics } from "@/hooks/useThrottledMetrics";
+import { ConnectionQualityIndicator } from "@/components/meeting-room/ConnectionQualityIndicator";
+import { BandwidthDisplay } from "@/components/meeting-room/BandwidthDisplay";
 import { VideoGrid } from "./video-grid";
 import { MeetingChat } from "./meeting-chat";
 import { YouTubePlayer, YouTubePlayerHandle } from "./youtube-player";
@@ -349,6 +353,56 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     isOnline,
   });
 
+  // Phase 2: WebRTC Stats Collection
+  // Convert peers Map to RTCPeerConnection Map for stats worker
+  const peerConnectionsMap = useMemo(() => {
+    const connections = new Map<string, RTCPeerConnection>();
+    peers.forEach((peer, userId) => {
+      if (peer.connection) {
+        connections.set(userId, peer.connection);
+      }
+    });
+    return connections;
+  }, [peers]);
+
+  // Collect WebRTC stats using Web Worker
+  const { stats: webrtcStats, workerReady: statsWorkerReady } = useWebRTCStatsWorker(peerConnectionsMap);
+
+  // Calculate aggregated metrics
+  const aggregatedMetrics = useMemo(() => {
+    if (webrtcStats.length === 0) {
+      return {
+        uploadBitrate: 0,
+        downloadBitrate: 0,
+        latency: 0,
+        packetLoss: 0,
+        quality: 'good' as const,
+        usingRelay: false,
+      };
+    }
+
+    const totalUpload = webrtcStats.reduce((sum, s) => sum + s.uploadBitrate, 0);
+    const totalDownload = webrtcStats.reduce((sum, s) => sum + s.downloadBitrate, 0);
+    const avgLatency = webrtcStats.reduce((sum, s) => sum + s.latency, 0) / webrtcStats.length;
+    const avgPacketLoss = webrtcStats.reduce((sum, s) => sum + s.packetLoss, 0) / webrtcStats.length;
+    const usingRelay = webrtcStats.some(s => s.usingRelay);
+    
+    // Determine connection quality
+    const quality = getConnectionQuality(avgLatency, avgPacketLoss);
+    
+    return {
+      uploadBitrate: totalUpload,
+      downloadBitrate: totalDownload,
+      latency: Math.round(avgLatency),
+      packetLoss: Math.round(avgPacketLoss * 10) / 10,
+      quality,
+      usingRelay,
+    };
+  }, [webrtcStats]);
+
+  // Throttled metrics emission to backend
+  useThrottledMetrics(socket, meeting.id, aggregatedMetrics);
+
   // Bandwidth monitoring is now handled by backend middleware
   const isReporting = false;
   const isSimpleReporting = false;
@@ -372,6 +426,17 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   }, [isReporting, isOnline, peers.size, participants.length]);
 
   console.log(`📊 [MEETING-ROOM] Bandwidth reporter status - isReporting: ${isReporting}`);
+
+  // Helper function to determine connection quality
+  const getConnectionQuality = useCallback((
+    latency: number, 
+    packetLoss: number
+  ): 'excellent' | 'good' | 'fair' | 'poor' => {
+    if (latency < 100 && packetLoss < 1) return 'excellent';
+    if (latency < 200 && packetLoss < 3) return 'good';
+    if (latency < 400 && packetLoss < 5) return 'fair';
+    return 'poor';
+  }, []);
 
   // Spotlight self when starting/stopping local screen share
   useEffect(() => {
@@ -958,6 +1023,26 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
         <div className="bg-yellow-600 text-white px-4 py-2 text-sm flex items-center justify-between">
           <span>⚠️ Connection lost. Reconnecting...</span>
         </div>
+      )}
+
+      {/* Phase 2: Connection Quality Indicator */}
+      {statsWorkerReady && aggregatedMetrics.latency > 0 && (
+        <ConnectionQualityIndicator 
+          quality={aggregatedMetrics.quality}
+          latency={aggregatedMetrics.latency}
+          packetLoss={aggregatedMetrics.packetLoss}
+          usingRelay={aggregatedMetrics.usingRelay}
+        />
+      )}
+
+      {/* Phase 2: Bandwidth Display */}
+      {statsWorkerReady && webrtcStats.length > 0 && (
+        <BandwidthDisplay
+          upload={aggregatedMetrics.uploadBitrate}
+          download={aggregatedMetrics.downloadBitrate}
+          latency={aggregatedMetrics.latency}
+          peerStats={webrtcStats}
+        />
       )}
 
       {/* Main Content - Between header and controls */}

@@ -28,9 +28,26 @@ const nextConfig = {
         net: false,
         tls: false,
       };
+      // 🔥 FIX 3: Ensure workers are served correctly
+      config.output.globalObject = 'self';
     }
     
     return config;
+  },
+  
+  // 🔥 FIX 3: Allow worker files
+  async headers() {
+    return [
+      {
+        source: '/workers/:path*',
+        headers: [
+          {
+            key: 'Content-Type',
+            value: 'application/javascript',
+          },
+        ],
+      },
+    ];
   },
 }
 

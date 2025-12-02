@@ -23,6 +23,7 @@ import { DebugController } from './debug/debug.controller';
 import { DebugPublicController } from './debug/debug-public.controller';
 import { TypeOrmModule as DebugTypeOrmModule } from '@nestjs/typeorm';
 import { MetricsMiddleware } from './common/middleware/metrics.middleware';
+import { MeetingMetricsGateway } from './gateways/meeting-metrics.gateway';
 
 @Module({
     imports: [
@@ -106,7 +107,9 @@ import { MetricsMiddleware } from './common/middleware/metrics.middleware';
         ]),
     ],
     controllers: [AppController, DebugController, DebugPublicController],
-    providers: [AppService,
+    providers: [
+        AppService,
+        MeetingMetricsGateway,
         {
             provide: APP_PIPE,
             useValue: new ValidationPipe({
