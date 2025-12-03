@@ -22,7 +22,7 @@ import {
     Share2,
     MoreVertical
 } from 'lucide-react';
-import { getCourseByIdApi, Course } from '@/api/courses.rest';
+import { getCourseByIdApi, Course, publishCourseApi, unpublishCourseApi } from '@/api/courses.rest';
 import { enrollInCourseApi, purchaseSessionApi, checkSessionAccessApi, getMyEnrollmentsApi } from '@/api/enrollments.rest';
 import { useUser } from '@/store/user-store';
 import { LessonCard } from '@/components/courses/lesson-card';
@@ -90,21 +90,35 @@ export default function CourseDetailPage() {
                 });
                 setSessionAccess(accessMap);
             }
+
+            return data; // Return course data for immediate use
         } catch (error: any) {
             toast({
                 title: "Error",
                 description: error.response?.data?.message || "Failed to load course",
                 variant: "destructive",
             });
+            return null;
         } finally {
             setLoading(false);
         }
     };
 
-    const checkEnrollment = async () => {
+    const checkEnrollment = async (courseData?: Course) => {
         if (!user?.id) {
             setIsEnrolled(false);
             setHasPurchased(false);
+            return;
+        }
+
+        // Use provided courseData or fallback to state
+        const currentCourse = courseData || course;
+
+        // Check if user is the teacher (owner of the course)
+        if (currentCourse && currentCourse.teacher_id === user.id) {
+            console.log('User is the teacher, granting auto-access');
+            setIsEnrolled(true);
+            setHasPurchased(true);
             return;
         }
 
@@ -186,10 +200,16 @@ export default function CourseDetailPage() {
         }
     };
 
+
     useEffect(() => {
-        loadCourse();
-        checkEnrollment();
-        loadReviews();
+        const init = async () => {
+            const courseData = await loadCourse(); // Load course first
+            if (courseData) {
+                await checkEnrollment(courseData); // Pass course data directly
+            }
+            await loadReviews();
+        };
+        init();
     }, [courseId, user?.id]);
 
     const handleBuyFullCourse = () => {
@@ -279,12 +299,78 @@ export default function CourseDetailPage() {
                     {/* Left Content */}
                     <div className="md:w-2/3 space-y-4">
                         {/* Breadcrumbs */}
-                        <div className="flex items-center gap-2 text-sm text-slate-300 mb-4">
-                            <span className="cursor-pointer hover:text-white" onClick={() => router.push('/courses')}>Courses</span>
-                            <span>/</span>
-                            <span className="cursor-pointer hover:text-white">{course.category || 'General'}</span>
-                            <span>/</span>
-                            <span className="truncate max-w-[200px]">{course.title}</span>
+                        <div className="flex items-center justify-between gap-2 mb-4">
+                            <div className="flex items-center gap-2 text-sm text-slate-300">
+                                <span className="cursor-pointer hover:text-white" onClick={() => router.push('/courses')}>Courses</span>
+                                <span>/</span>
+                                <span className="cursor-pointer hover:text-white">{course.category || 'General'}</span>
+                                <span>/</span>
+                                <span className="truncate max-w-[200px]">{course.title}</span>
+                            </div>
+
+                            {/* Teacher Actions */}
+                            {isTeacherOrAdmin && (
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="bg-white text-gray-900 hover:bg-gray-100"
+                                        onClick={() => router.push(`/courses/${courseId}/edit`)}
+                                    >
+                                        <Edit className="w-4 h-4 mr-1" />
+                                        Edit
+                                    </Button>
+                                    {course.is_published ? (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="bg-yellow-500 text-white hover:bg-yellow-600 border-yellow-500"
+                                            onClick={async () => {
+                                                try {
+                                                    await unpublishCourseApi(courseId);
+                                                    toast({
+                                                        title: "Success",
+                                                        description: "Course unpublished successfully",
+                                                    });
+                                                    await loadCourse();
+                                                } catch (error: any) {
+                                                    toast({
+                                                        title: "Error",
+                                                        description: error.response?.data?.message || "Failed to unpublish course",
+                                                        variant: "destructive",
+                                                    });
+                                                }
+                                            }}
+                                        >
+                                            Unpublish
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="bg-green-500 text-white hover:bg-green-600 border-green-500"
+                                            onClick={async () => {
+                                                try {
+                                                    await publishCourseApi(courseId);
+                                                    toast({
+                                                        title: "Success",
+                                                        description: "Course published successfully! It will now appear in the browse tab.",
+                                                    });
+                                                    await loadCourse();
+                                                } catch (error: any) {
+                                                    toast({
+                                                        title: "Error",
+                                                        description: error.response?.data?.message || "Failed to publish course",
+                                                        variant: "destructive",
+                                                    });
+                                                }
+                                            }}
+                                        >
+                                            Publish
+                                        </Button>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         <h1 className="text-3xl md:text-4xl font-bold leading-tight">
@@ -369,11 +455,22 @@ export default function CourseDetailPage() {
                                     <div className="p-4 space-y-3">
                                         {session.lessons?.map(lesson => (
                                             <div key={lesson.id} className="flex justify-between items-center text-sm pl-8">
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex items-center gap-3 flex-1">
                                                     <FileText className="w-4 h-4 text-gray-400" />
                                                     <span className="text-blue-600 hover:underline cursor-pointer">
                                                         {lesson.title}
                                                     </span>
+                                                    {lesson.meeting_link && (hasPurchased || isTeacherOrAdmin) && (
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            className="ml-2 h-7 text-xs"
+                                                            onClick={() => window.open(lesson.meeting_link, '_blank')}
+                                                        >
+                                                            <PlayCircle className="w-3 h-3 mr-1" />
+                                                            Join Meeting
+                                                        </Button>
+                                                    )}
                                                 </div>
                                                 <span className="text-gray-500">{lesson.duration_minutes}m</span>
                                             </div>
@@ -493,8 +590,8 @@ export default function CourseDetailPage() {
                             <h3 className="text-xl font-semibold mb-4">
                                 All Reviews ({reviewStats?.total || 0})
                             </h3>
-                            <ReviewList 
-                                reviews={reviews} 
+                            <ReviewList
+                                reviews={reviews}
                                 loading={loadingReviews}
                                 courseId={courseId}
                                 isTeacher={user?.id === course?.teacher_id}
@@ -554,8 +651,8 @@ export default function CourseDetailPage() {
                                         <div className="bg-green-100 text-green-800 p-3 rounded-md text-center font-bold">
                                             You are enrolled!
                                         </div>
-                                        <Button className="w-full h-12 text-lg font-bold" onClick={() => router.push(`/courses/${courseId}/learn`)}>
-                                            Go to Course
+                                        <Button className="w-full h-12 text-lg font-bold" onClick={() => router.push(`/courses/${courseId}`)}>
+                                            View Course Content
                                         </Button>
                                     </div>
                                 )}

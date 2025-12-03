@@ -63,7 +63,8 @@ export default function CoursesPage() {
     const loadCourses = async () => {
         try {
             setLoading(true);
-            const response = await getCoursesApi();
+            // Only show published courses in Browse tab
+            const response = await getCoursesApi({ status: 'published' as any });
             const coursesData = response?.courses || (Array.isArray(response) ? response : []);
             setCourses(Array.isArray(coursesData) ? coursesData : []);
         } catch (error: any) {

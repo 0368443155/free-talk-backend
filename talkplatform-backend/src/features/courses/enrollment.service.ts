@@ -328,6 +328,11 @@ export class EnrollmentService {
 
         if (!session) return false;
 
+        // Check if user is the teacher (owner of the course)
+        if (session.course.teacher_id === userId) {
+            return true;
+        }
+
         // Check if enrolled in full course
         const enrollment = await this.enrollmentRepository.findOne({
             where: {
