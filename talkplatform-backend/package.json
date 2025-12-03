@@ -27,6 +27,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:metrics": "ts-node -r tsconfig-paths/register scripts/test-metrics-phase1.ts",
     "test:webrtc": "ts-node -r tsconfig-paths/register scripts/test-webrtc-metrics-phase2.ts",
+    "test:templates": "ts-node -r tsconfig-paths/register scripts/test-templates-phase2.ts",
     "check:metrics": "powershell -ExecutionPolicy Bypass -File scripts/check-metrics-status.ps1",
     "check:webrtc": "powershell -ExecutionPolicy Bypass -File scripts/check-webrtc-metrics.ps1"
   },

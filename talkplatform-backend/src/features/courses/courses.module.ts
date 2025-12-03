@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { CqrsModule } from '@nestjs/cqrs';
 import { CoursesController } from './courses.controller';
+import { CourseTemplatesController } from './course-templates.controller';
 import { CoursesService } from './courses.service';
 import { EnrollmentController } from './enrollment.controller';
 import { EnrollmentService } from './enrollment.service';
@@ -16,6 +17,9 @@ import { SessionPurchase } from './entities/session-purchase.entity';
 import { PaymentHold } from './entities/payment-hold.entity';
 import { AttendanceRecord } from './entities/attendance-record.entity';
 import { Review } from './entities/review.entity';
+import { CourseTemplate } from './entities/course-template.entity';
+import { TemplateRating } from './entities/template-rating.entity';
+import { TemplateUsage } from './entities/template-usage.entity';
 import { AttendanceService } from './attendance.service';
 import { ReviewService } from './services/review.service';
 import { ReviewController } from './review.controller';
@@ -42,6 +46,11 @@ import { AddLessonHandler } from './application/handlers/add-lesson.handler';
 import { UpdateLessonHandler } from './application/handlers/update-lesson.handler';
 import { DeleteLessonHandler } from './application/handlers/delete-lesson.handler';
 import { RegenerateQrCodeHandler } from './application/handlers/regenerate-qr-code.handler';
+import { CreateTemplateHandler } from './application/handlers/create-template.handler';
+import { UpdateTemplateHandler } from './application/handlers/update-template.handler';
+import { DeleteTemplateHandler } from './application/handlers/delete-template.handler';
+import { RateTemplateHandler } from './application/handlers/rate-template.handler';
+import { CreateCourseFromTemplateHandler } from './application/handlers/create-course-from-template.handler';
 
 // Query Handlers
 import { GetCoursesHandler } from './application/handlers/get-courses.handler';
@@ -55,6 +64,9 @@ import { GetLessonMaterialsHandler } from './application/handlers/get-lesson-mat
 import { GetLessonMaterialByIdHandler } from './application/handlers/get-lesson-material-by-id.handler';
 import { CheckLessonMaterialAccessHandler } from './application/handlers/check-lesson-material-access.handler';
 import { GetCourseMeetingsHandler } from './application/handlers/get-course-meetings.handler';
+import { GetTemplatesHandler } from './application/handlers/get-templates.handler';
+import { GetTemplateByIdHandler } from './application/handlers/get-template-by-id.handler';
+import { TypeOrmTemplateRepository } from './infrastructure/repositories/template.repository';
 
 @Module({
     imports: [
@@ -69,6 +81,9 @@ import { GetCourseMeetingsHandler } from './application/handlers/get-course-meet
             PaymentHold,
             AttendanceRecord,
             Review,
+            CourseTemplate,
+            TemplateRating,
+            TemplateUsage,
             User,
             Meeting,
         ]),
@@ -77,7 +92,13 @@ import { GetCourseMeetingsHandler } from './application/handlers/get-course-meet
         forwardRef(() => MeetingsModule),
         EventBusModule,
     ],
-    controllers: [CoursesController, EnrollmentController, ReviewController, CourseAttendanceWebhookController],
+    controllers: [
+        CoursesController,
+        CourseTemplatesController,
+        EnrollmentController,
+        ReviewController,
+        CourseAttendanceWebhookController,
+    ],
     providers: [
         CoursesService,
         EnrollmentService,
@@ -100,6 +121,11 @@ import { GetCourseMeetingsHandler } from './application/handlers/get-course-meet
         UpdateLessonHandler,
         DeleteLessonHandler,
         RegenerateQrCodeHandler,
+        CreateTemplateHandler,
+        UpdateTemplateHandler,
+        DeleteTemplateHandler,
+        RateTemplateHandler,
+        CreateCourseFromTemplateHandler,
         // Query Handlers
         GetCoursesHandler,
         GetCourseDetailsHandler,
@@ -112,6 +138,10 @@ import { GetCourseMeetingsHandler } from './application/handlers/get-course-meet
         GetLessonMaterialByIdHandler,
         CheckLessonMaterialAccessHandler,
         GetCourseMeetingsHandler,
+        GetTemplatesHandler,
+        GetTemplateByIdHandler,
+        // Repositories
+        TypeOrmTemplateRepository,
     ],
     exports: [CoursesService, EnrollmentService, AttendanceService],
 })

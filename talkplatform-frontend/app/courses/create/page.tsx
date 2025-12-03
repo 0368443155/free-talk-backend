@@ -15,6 +15,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/use-toast';
 import {
     BookOpen,
@@ -30,10 +31,14 @@ import {
     FileText,
     Video,
     Link as LinkIcon,
+    Sparkles,
 } from 'lucide-react';
 import { createCourseWithSessionsApi, MaterialType, CourseLevel, PriceType, CourseCategory } from '@/api/courses.rest';
 import apiClient from '@/api/axiosConfig';
 import { Badge } from '@/components/ui/badge';
+import { TemplateBrowser } from '@/components/courses/template-browser';
+import { UseTemplateModal } from '@/components/courses/use-template-modal';
+import { CourseTemplate } from '@/api/templates.rest';
 
 interface MaterialFile {
     id: string;
@@ -74,6 +79,9 @@ export default function CreateCoursePage() {
     const { toast } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [uploadingMaterials, setUploadingMaterials] = useState<Record<string, boolean>>({});
+    const [selectedTemplate, setSelectedTemplate] = useState<CourseTemplate | null>(null);
+    const [useTemplateModalOpen, setUseTemplateModalOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState<'template' | 'scratch'>('template');
 
     // Course basic info
     const [title, setTitle] = useState('');
@@ -417,11 +425,40 @@ export default function CreateCoursePage() {
                     </Button>
                     <h1 className="text-3xl font-bold text-gray-900">Create New Course</h1>
                     <p className="text-gray-600 mt-2">
-                        Create a course with sessions and materials
+                        Use a template or create from scratch
                     </p>
                 </div>
 
-                {/* Course Basic Info */}
+                {/* Template Selection Tabs */}
+                <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'template' | 'scratch')} className="mb-6">
+                    <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="template" className="flex items-center gap-2">
+                            <Sparkles className="w-4 h-4" />
+                            Use Template
+                        </TabsTrigger>
+                        <TabsTrigger value="scratch" className="flex items-center gap-2">
+                            <BookOpen className="w-4 h-4" />
+                            Create from Scratch
+                        </TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="template" className="mt-6">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Browse Templates</CardTitle>
+                                <CardDescription>
+                                    Select a template to quickly create a course with pre-configured sessions and structure
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <TemplateBrowser onSelectTemplate={(template) => {
+                                    setSelectedTemplate(template);
+                                    setUseTemplateModalOpen(true);
+                                }} />
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+                    <TabsContent value="scratch" className="mt-6">
+                        {/* Course Basic Info */}
                 <Card className="mb-6">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
@@ -1035,6 +1072,15 @@ export default function CreateCoursePage() {
                         )}
                     </Button>
                 </div>
+                    </TabsContent>
+                </Tabs>
+
+                {/* Use Template Modal */}
+                <UseTemplateModal
+                    template={selectedTemplate}
+                    open={useTemplateModalOpen}
+                    onOpenChange={setUseTemplateModalOpen}
+                />
             </div>
         </div>
     );

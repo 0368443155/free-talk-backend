@@ -35,6 +35,9 @@ import { TeacherAvailability } from './src/features/teachers/entities/teacher-av
 import { FeatureFlag } from './src/core/feature-flags/entities/feature-flag.entity';
 
 import { Review } from './src/features/courses/entities/review.entity';
+import { CourseTemplate } from './src/features/courses/entities/course-template.entity';
+import { TemplateRating } from './src/features/courses/entities/template-rating.entity';
+import { TemplateUsage } from './src/features/courses/entities/template-usage.entity';
 
 dotenv.config(); // Nạp .env
 
@@ -79,8 +82,14 @@ export const dataSourceOptions: DataSourceOptions = {
     TeacherAvailability,
     FeatureFlag,
     Review,
+    CourseTemplate,
+    TemplateRating,
+    TemplateUsage,
   ],
-  migrations: [path.join(__dirname, 'src', 'migrations', '**', '*{.ts,.js}')], // Tìm Migrations
+  migrations: [
+    path.join(__dirname, 'src', 'migrations', '**', '*{.ts,.js}'),
+    path.join(__dirname, 'src', 'database', 'migrations', '**', '*{.ts,.js}'),
+  ], // Tìm Migrations
   subscribers: [],
 };
 
