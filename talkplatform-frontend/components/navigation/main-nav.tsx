@@ -38,6 +38,7 @@ import {
     Activity
 } from 'lucide-react';
 import { useUser } from '@/store/user-store';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { useToast } from '@/components/ui/use-toast';
 
 type NavItem = {
@@ -158,7 +159,6 @@ export default function MainNav() {
     const { userInfo: user, isLoading, isAuthenticated, logout } = useUser();
 
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-    const [notifications, setNotifications] = useState(3); // Mock notification count
 
     const isActive = (href: string) => {
         if (href === '/dashboard') {
@@ -184,10 +184,6 @@ export default function MainNav() {
         }
     };
 
-    const handleNotificationClick = () => {
-        setNotifications(0);
-        router.push('/notifications');
-    };
 
     if (isLoading) {
         return (
@@ -332,19 +328,7 @@ export default function MainNav() {
                         </Link>
 
                         {/* Notifications */}
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={handleNotificationClick}
-                            className="relative"
-                        >
-                            <Bell className="w-5 h-5" />
-                            {notifications > 0 && (
-                                <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs">
-                                    {notifications}
-                                </Badge>
-                            )}
-                        </Button>
+                        <NotificationBell />
 
                         {/* User Menu */}
                         <DropdownMenu>

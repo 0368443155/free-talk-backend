@@ -117,6 +117,22 @@ export class Meeting {
   @Column({ type: 'timestamp', nullable: true })
   ended_at: Date;
 
+  /**
+   * State tracking fields (Phase 1)
+   * Track khi nào meeting được mở/đóng tự động
+   */
+  @Column({ type: 'timestamp', nullable: true })
+  opened_at: Date; // Thời gian meeting được mở
+
+  @Column({ type: 'timestamp', nullable: true })
+  closed_at: Date; // Thời gian meeting được đóng
+
+  @Column({ type: 'boolean', default: false })
+  auto_opened: boolean; // True nếu mở tự động
+
+  @Column({ type: 'boolean', default: false })
+  auto_closed: boolean; // True nếu đóng tự động
+
   @Column({ type: 'int', default: 100 })
   max_participants: number;
 

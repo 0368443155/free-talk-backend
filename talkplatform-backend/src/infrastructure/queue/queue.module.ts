@@ -24,6 +24,7 @@ import { AnalyticsProcessor } from './processors/analytics.processor';
       { name: 'email' },
       { name: 'recording' },
       { name: 'analytics' },
+      { name: 'notifications' },
     ),
   ],
   providers: [

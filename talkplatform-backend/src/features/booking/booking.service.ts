@@ -121,91 +121,116 @@ export class BookingService {
 
   /**
    * Hủy booking và hoàn tiền
+   * Sử dụng transaction để đảm bảo tính nhất quán
    */
   async cancelBooking(
     bookingId: string,
     userId: string,
     dto: CancelBookingDto,
   ): Promise<Booking> {
-    const booking = await this.bookingRepository.findOne({
-      where: { id: bookingId },
-      relations: ['meeting', 'student', 'teacher'],
-    });
-
-    if (!booking) {
-      throw new NotFoundException('Booking not found');
-    }
-
-    // Kiểm tra quyền (chỉ student hoặc teacher mới hủy được)
-    if (booking.student_id !== userId && booking.teacher_id !== userId) {
-      throw new BadRequestException('You do not have permission to cancel this booking');
-    }
-
-    // Kiểm tra trạng thái
-    if (booking.status === BookingStatus.CANCELLED) {
-      throw new BadRequestException('Booking is already cancelled');
-    }
-
-    if (booking.status === BookingStatus.COMPLETED) {
-      throw new BadRequestException('Cannot cancel completed booking');
-    }
-
-    // Tính toán refund dựa trên cancellation policy
-    const refundAmount = this.calculateRefund(booking);
-
-    // Cập nhật booking
-    booking.status = BookingStatus.CANCELLED;
-    booking.cancelled_at = new Date();
-    booking.cancellation_reason = dto.cancellation_reason;
-    booking.cancelled_by = userId;
-    booking.credits_refunded = refundAmount;
-
-    await this.bookingRepository.save(booking);
-
-    // Hoàn credits - cập nhật trực tiếp
-    if (refundAmount > 0) {
-      const student = await this.userRepository.findOne({
-        where: { id: booking.student_id },
+    return await this.dataSource.transaction(async (manager) => {
+      const booking = await manager.findOne(Booking, {
+        where: { id: bookingId },
+        relations: ['meeting', 'student', 'teacher'],
       });
-      if (student) {
-        student.credit_balance = (student.credit_balance || 0) + refundAmount;
-        await this.userRepository.save(student);
+
+      if (!booking) {
+        throw new NotFoundException('Booking not found');
       }
-    }
 
-    // Cập nhật slot
-    const slot = await this.slotRepository.findOne({
-      where: { booking_id: bookingId },
+      // Kiểm tra quyền (chỉ student hoặc teacher mới hủy được)
+      if (booking.student_id !== userId && booking.teacher_id !== userId) {
+        throw new BadRequestException('You do not have permission to cancel this booking');
+      }
+
+      // Kiểm tra trạng thái
+      if (booking.status === BookingStatus.CANCELLED) {
+        throw new BadRequestException('Booking is already cancelled');
+      }
+
+      if (booking.status === BookingStatus.COMPLETED) {
+        throw new BadRequestException('Cannot cancel completed booking');
+      }
+
+      // Tính toán refund dựa trên cancellation policy
+      const refundAmount = this.calculateRefund(booking, userId === booking.teacher_id);
+
+      // Cập nhật booking
+      booking.status = BookingStatus.CANCELLED;
+      booking.cancelled_at = new Date();
+      booking.cancellation_reason = dto.cancellation_reason || 'User cancelled';
+      booking.cancelled_by = userId;
+      booking.credits_refunded = refundAmount;
+
+      await manager.save(Booking, booking);
+
+      // Hoàn credits - sử dụng transaction
+      if (refundAmount > 0) {
+        const student = await manager.findOne(User, {
+          where: { id: booking.student_id },
+        });
+        if (student) {
+          student.credit_balance = (student.credit_balance || 0) + refundAmount;
+          await manager.save(User, student);
+        }
+      }
+
+      // Cập nhật slot
+      const slot = await manager.findOne(BookingSlot, {
+        where: { booking_id: bookingId },
+      });
+
+      if (slot) {
+        slot.is_booked = false;
+        slot.booking = null;
+        slot.student_id = null;
+        await manager.save(BookingSlot, slot);
+      }
+
+      this.logger.log(
+        `✅ Booking cancelled: ${bookingId}, refund: ${refundAmount} credits (${userId === booking.teacher_id ? 'teacher' : 'student'} cancelled)`,
+      );
+
+      return booking;
     });
-
-    if (slot) {
-      slot.is_booked = false;
-      slot.booking = null;
-      slot.student_id = null;
-      await this.slotRepository.save(slot);
-    }
-
-    this.logger.log(`✅ Booking cancelled: ${bookingId}, refund: ${refundAmount} credits`);
-
-    return booking;
   }
 
   /**
    * Tính toán số tiền hoàn lại dựa trên cancellation policy
+   * 
+   * Policy:
+   * - Teacher hủy: 100% refund (full refund)
+   * - Student hủy >24h trước: 100% refund
+   * - Student hủy <24h trước: 50% refund
+   * 
+   * Tất cả tính toán dựa trên UTC để đảm bảo chính xác
    */
-  private calculateRefund(booking: Booking): number {
-    const now = new Date();
-    const scheduledAt = new Date(booking.scheduled_at);
+  private calculateRefund(booking: Booking, isTeacherCancelling: boolean): number {
+    // Teacher hủy = full refund
+    if (isTeacherCancelling) {
+      this.logger.log(`Teacher cancelled booking ${booking.id}, full refund`);
+      return booking.credits_paid;
+    }
+
+    // Student hủy = theo policy
+    const now = new Date(); // Server time (UTC)
+    const scheduledAt = new Date(booking.scheduled_at); // DB stores UTC
+
+    // Tính khoảng cách giờ chính xác (có thể âm nếu đã qua giờ)
     const hoursUntilClass = (scheduledAt.getTime() - now.getTime()) / (1000 * 60 * 60);
 
-    // TODO: Lấy cancellation policy từ TeacherProfile
-    // Tạm thời: hoàn 100% nếu hủy trước 24h, 50% nếu trước 1h, 0% nếu sau đó
+    // Policy: > 24h = 100%, < 24h = 50%
+    // Edge case: Nếu đã qua giờ (hoursUntilClass < 0), vẫn tính là < 24h
     if (hoursUntilClass >= 24) {
+      this.logger.log(
+        `Student cancelled ${hoursUntilClass.toFixed(1)}h before class, 100% refund`,
+      );
       return booking.credits_paid; // 100% refund
-    } else if (hoursUntilClass >= 1) {
-      return Math.floor(booking.credits_paid * 0.5); // 50% refund
     } else {
-      return 0; // No refund
+      this.logger.log(
+        `Student cancelled ${hoursUntilClass.toFixed(1)}h before class, 50% refund`,
+      );
+      return Math.floor(booking.credits_paid * 0.5); // 50% refund
     }
   }
 

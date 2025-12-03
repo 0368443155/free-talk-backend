@@ -122,6 +122,18 @@ export class Booking {
   reminder_sent_1h: boolean;
 
   /**
+   * Đã gửi nhắc nhở 20 phút trước (Phase 1 requirement)
+   */
+  @Column({ type: 'boolean', default: false })
+  reminder_sent_20min: boolean;
+
+  /**
+   * Thời gian gửi reminder 20 phút
+   */
+  @Column({ type: 'timestamp', precision: 6, nullable: true })
+  reminder_sent_at: Date;
+
+  /**
    * Ghi chú từ học viên
    */
   @Column({ type: 'text', nullable: true })

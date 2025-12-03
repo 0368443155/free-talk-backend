@@ -17,6 +17,7 @@ import { MeetingSettings } from './entities/meeting-settings.entity';
 import { MeetingTag } from './entities/meeting-tag.entity';
 import { BlockedParticipant } from './entities/blocked-participant.entity';
 import { Lesson } from '../courses/entities/lesson.entity';
+import { Booking } from '../booking/entities/booking.entity';
 import { User } from '../../users/user.entity';
 import { LiveKitModule } from '../../livekit/livekit.module';
 import { CoursesModule } from '../courses/courses.module';
@@ -32,6 +33,7 @@ import { FeatureFlagModule } from '../../core/feature-flags/feature-flag.module'
       MeetingTag,
       BlockedParticipant,
       Lesson,
+      Booking,
       User,
     ]),
     ScheduleModule.forRoot(),

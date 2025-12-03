@@ -19,7 +19,8 @@ import {
   ArrowLeft,
   CheckCircle2,
   AlertCircle,
-  MessageSquare
+  MessageSquare,
+  Grid3x3,
 } from 'lucide-react';
 import {
   getTeacherProfileByIdApi,
@@ -262,8 +263,20 @@ export default function BookTeacherPage() {
         {/* Booking Form */}
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Book a Class</CardTitle>
-            <CardDescription>Select an available time slot</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Book a Class</CardTitle>
+                <CardDescription>Select an available time slot</CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`/teachers/${teacherId}/book-calendar`)}
+              >
+                <Grid3x3 className="w-4 h-4 mr-2" />
+                Calendar View
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Date Selection */}

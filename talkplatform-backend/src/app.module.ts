@@ -100,6 +100,8 @@ import { MeetingMetricsGateway } from './gateways/meeting-metrics.gateway';
         require('./features/booking/booking.module').BookingModule,
         require('./features/global-chat/global-chat.module').GlobalChatModule,
         require('./features/payments/payments.module').PaymentsModule,
+        require('./features/notifications/notifications.module').NotificationsModule,
+        require('./features/schedules/schedules.module').SchedulesModule,
 
         DebugTypeOrmModule.forFeature([
             require('./features/meeting/entities/meeting.entity').Meeting,

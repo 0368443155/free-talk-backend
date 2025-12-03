@@ -133,10 +133,12 @@ export function useThrottledMetrics(
       console.log('📤 [METRICS] Sending full state:', delta);
     } else {
       // Send only changed fields
-      for (const key in metrics) {
-        const k = key as keyof MetricsState;
-        if (metrics[k] !== lastSentMetrics.current[k]) {
-          delta[k] = metrics[k] as any;
+      if (lastSentMetrics.current) {
+        for (const key in metrics) {
+          const k = key as keyof MetricsState;
+          if (metrics[k] !== lastSentMetrics.current[k]) {
+            delta[k] = metrics[k] as any;
+          }
         }
       }
       

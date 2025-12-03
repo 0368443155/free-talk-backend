@@ -34,7 +34,8 @@ import {
   Loader2,
   AlertCircle,
   CheckCircle2,
-  XCircle
+  XCircle,
+  Calendar as CalendarIcon,
 } from 'lucide-react';
 import {
   createBookingSlotApi,
@@ -227,6 +228,13 @@ export default function TeacherAvailabilityPage() {
           <h1 className="text-3xl font-bold">My Availability</h1>
           <p className="text-gray-600 mt-2">Manage your teaching schedule</p>
         </div>
+        <Button
+          variant="outline"
+          onClick={() => router.push('/teacher/availability-calendar')}
+        >
+          <CalendarIcon className="w-4 h-4 mr-2" />
+          Calendar View
+        </Button>
         <Button onClick={() => setCreateDialogOpen(true)}>
           <Plus className="w-4 h-4 mr-2" />
           Add Slot
