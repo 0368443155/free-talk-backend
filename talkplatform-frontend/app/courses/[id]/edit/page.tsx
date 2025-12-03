@@ -150,6 +150,9 @@ export default function EditCoursePage() {
     const [priceFullCourse, setPriceFullCourse] = useState<number>(0);
     const [maxStudents, setMaxStudents] = useState<number>(30);
     const [durationHours, setDurationHours] = useState<number>(10);
+    const [thumbnailUrl, setThumbnailUrl] = useState('');
+    const [isFree, setIsFree] = useState(false);
+
 
     // Sessions
     const [sessions, setSessions] = useState<SessionData[]>([]);
@@ -188,6 +191,9 @@ export default function EditCoursePage() {
             setPriceFullCourse(course.price_full_course || 0);
             setMaxStudents(course.max_students || 30);
             setDurationHours(course.duration_hours || 10);
+            setThumbnailUrl(course.thumbnail_url || '');
+            setIsFree((course.price_per_session === 0 || !course.price_per_session) && (course.price_full_course === 0 || !course.price_full_course));
+
 
             // Convert sessions to SessionData format
             if (course.sessions && course.sessions.length > 0) {
@@ -248,10 +254,11 @@ export default function EditCoursePage() {
                 level: level as CourseLevel,
                 language,
                 price_type: priceType,
-                price_per_session: priceType === PriceType.PER_SESSION ? pricePerSession : undefined,
-                price_full_course: priceType === PriceType.FULL_COURSE ? priceFullCourse : undefined,
+                price_per_session: priceType === PriceType.PER_SESSION && !isFree ? pricePerSession : 0,
+                price_full_course: priceType === PriceType.FULL_COURSE && !isFree ? priceFullCourse : 0,
                 max_students: maxStudents,
                 duration_hours: durationHours,
+                thumbnail_url: thumbnailUrl || undefined,
             });
 
             toast({
@@ -310,7 +317,7 @@ export default function EditCoursePage() {
 
             // Reload course to get updated data
             await loadCourse();
-            
+
             // Keep the lessons tab active
             setActiveTab('lessons');
         } catch (error: any) {
@@ -337,7 +344,7 @@ export default function EditCoursePage() {
 
             // Reload course to get updated data
             await loadCourse();
-            
+
             // Keep the lessons tab active
             setActiveTab('lessons');
         } catch (error: any) {
@@ -375,7 +382,7 @@ export default function EditCoursePage() {
 
             // Reload course to get updated data
             await loadCourse();
-            
+
             // Keep the lessons tab active
             setActiveTab('lessons');
         } catch (error: any) {
@@ -479,21 +486,21 @@ export default function EditCoursePage() {
             // Update material in state
             setSessions(prevSessions =>
                 prevSessions.map(session =>
-                    ({
-                        ...session,
-                        lessons: session.lessons.map(lesson =>
-                            lesson.id === lessonId
-                                ? {
-                                    ...lesson,
-                                    materials: (lesson.materials || []).map(m =>
-                                        m.id === materialId
-                                            ? { ...m, file_url: fileUrl, file_name: file.name, uploaded: true }
-                                            : m
-                                    ),
-                                }
-                                : lesson
-                        ),
-                    })
+                ({
+                    ...session,
+                    lessons: session.lessons.map(lesson =>
+                        lesson.id === lessonId
+                            ? {
+                                ...lesson,
+                                materials: (lesson.materials || []).map(m =>
+                                    m.id === materialId
+                                        ? { ...m, file_url: fileUrl, file_name: file.name, uploaded: true }
+                                        : m
+                                ),
+                            }
+                            : lesson
+                    ),
+                })
                 )
             );
 
@@ -548,7 +555,10 @@ export default function EditCoursePage() {
                     <TabsContent value="basic">
                         <Card>
                             <CardHeader>
-                                <CardTitle>Course Information</CardTitle>
+                                <CardTitle className="flex items-center gap-2">
+                                    <BookOpen className="w-5 h-5" />
+                                    Course Information
+                                </CardTitle>
                                 <CardDescription>Update basic course details</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-6">
@@ -573,17 +583,70 @@ export default function EditCoursePage() {
                                     />
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
+                                {/* Thumbnail URL */}
+                                <div className="space-y-2">
+                                    <Label htmlFor="thumbnail">Course Thumbnail (URL)</Label>
+                                    <Input
+                                        id="thumbnail"
+                                        type="url"
+                                        placeholder="https://example.com/image.jpg"
+                                        value={thumbnailUrl}
+                                        onChange={(e) => setThumbnailUrl(e.target.value)}
+                                        className="mt-1"
+                                    />
+                                    {thumbnailUrl && (
+                                        <div className="mt-2">
+                                            <img
+                                                src={thumbnailUrl}
+                                                alt="Thumbnail preview"
+                                                className="w-32 h-32 object-cover rounded border"
+                                                onError={(e) => {
+                                                    e.currentTarget.style.display = 'none';
+                                                }}
+                                            />
+                                        </div>
+                                    )}
+                                    <p className="text-sm text-gray-500 mt-1">
+                                        Provide a URL to an image for your course thumbnail
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <Label htmlFor="language">Language</Label>
+                                        <Input
+                                            id="language"
+                                            value={language}
+                                            onChange={(e) => setLanguage(e.target.value)}
+                                            placeholder="e.g., English"
+                                            className="mt-1"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <Label htmlFor="level">Level</Label>
+                                        <Select value={level} onValueChange={(value) => setLevel(value as CourseLevel)}>
+                                            <SelectTrigger className="mt-1">
+                                                <SelectValue placeholder="Select level" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value={CourseLevel.BEGINNER}>Beginner</SelectItem>
+                                                <SelectItem value={CourseLevel.INTERMEDIATE}>Intermediate</SelectItem>
+                                                <SelectItem value={CourseLevel.ADVANCED}>Advanced</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div>
                                         <Label htmlFor="category">Category</Label>
-                                        <Select 
-                                            value={category} 
+                                        <Select
+                                            value={category}
                                             onValueChange={(value) => {
                                                 setCategory(value as CourseCategory);
                                                 setTags([]); // Clear tags when category changes
                                             }}
                                         >
-                                            <SelectTrigger>
+                                            <SelectTrigger className="mt-1">
                                                 <SelectValue placeholder="Select category" />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -595,185 +658,235 @@ export default function EditCoursePage() {
                                             </SelectContent>
                                         </Select>
                                     </div>
-                                    {category && (
-                                        <div className="space-y-2">
-                                            <Label htmlFor="tags">Tags</Label>
-                                            <div className="space-y-2">
-                                                <div className="flex flex-wrap gap-2 mb-2">
-                                                    {tags.map((tag) => (
-                                                        <Badge key={tag} variant="secondary" className="flex items-center gap-1">
-                                                            {tag}
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleRemoveTag(tag)}
-                                                                className="ml-1 hover:text-red-500"
-                                                            >
-                                                                <X className="w-3 h-3" />
-                                                            </button>
-                                                        </Badge>
-                                                    ))}
-                                                </div>
-                                                <div className="flex gap-2">
-                                                    <Input
-                                                        id="tags"
-                                                        placeholder="Type a tag and press Enter (max 20 chars)"
-                                                        value={tagInput}
-                                                        onChange={(e) => {
-                                                            const value = e.target.value;
-                                                            if (value.length <= 20) {
-                                                                setTagInput(value);
+                                </div>
+
+                                {/* Tags - show only if category selected */}
+                                {category && (
+                                    <div>
+                                        <Label htmlFor="tags">Tags</Label>
+                                        <div className="mt-1 space-y-2">
+                                            <div className="flex flex-wrap gap-2 mb-2">
+                                                {tags.map((tag) => (
+                                                    <Badge key={tag} variant="secondary" className="flex items-center gap-1">
+                                                        {tag}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleRemoveTag(tag)}
+                                                            className="ml-1 hover:text-red-500"
+                                                        >
+                                                            <X className="w-3 h-3" />
+                                                        </button>
+                                                    </Badge>
+                                                ))}
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <Input
+                                                    id="tags"
+                                                    placeholder="Type a tag and press Enter (max 20 chars)"
+                                                    value={tagInput}
+                                                    onChange={(e) => {
+                                                        const value = e.target.value;
+                                                        if (value.length <= 20) {
+                                                            setTagInput(value);
+                                                        }
+                                                    }}
+                                                    onKeyDown={handleTagInputKeyDown}
+                                                    maxLength={20}
+                                                />
+                                                {availableTags.length > 0 && (
+                                                    <Select
+                                                        value=""
+                                                        onValueChange={(value) => {
+                                                            if (value && !tags.includes(value)) {
+                                                                handleAddTag(value);
                                                             }
                                                         }}
-                                                        onKeyDown={handleTagInputKeyDown}
-                                                        maxLength={20}
-                                                    />
-                                                    {availableTags.length > 0 && (
-                                                        <Select
-                                                            value=""
-                                                            onValueChange={(value) => {
-                                                                if (value && !tags.includes(value)) {
-                                                                    handleAddTag(value);
-                                                                }
-                                                            }}
-                                                        >
-                                                            <SelectTrigger className="w-[200px]">
-                                                                <SelectValue placeholder="Select from list" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                {availableTags
-                                                                    .filter(tag => !tags.includes(tag))
-                                                                    .map((tag) => (
-                                                                        <SelectItem key={tag} value={tag}>
-                                                                            {tag}
-                                                                        </SelectItem>
-                                                                    ))}
-                                                            </SelectContent>
-                                                        </Select>
-                                                    )}
-                                                </div>
-                                                {tagInput.length > 0 && (
-                                                    <p className="text-xs text-gray-500">
-                                                        {tagInput.length}/20 characters
-                                                    </p>
+                                                    >
+                                                        <SelectTrigger className="w-[200px]">
+                                                            <SelectValue placeholder="Select from list" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {availableTags
+                                                                .filter(tag => !tags.includes(tag))
+                                                                .map((tag) => (
+                                                                    <SelectItem key={tag} value={tag}>
+                                                                        {tag}
+                                                                    </SelectItem>
+                                                                ))}
+                                                        </SelectContent>
+                                                    </Select>
                                                 )}
                                             </div>
+                                            {tagInput.length > 0 && (
+                                                <p className="text-xs text-gray-500">
+                                                    {tagInput.length}/20 characters
+                                                </p>
+                                            )}
                                         </div>
-                                    )}
-
-                                    <div className="space-y-2">
-                                        <Label htmlFor="language">Language</Label>
-                                        <Input
-                                            id="language"
-                                            value={language}
-                                            onChange={(e) => setLanguage(e.target.value)}
-                                            placeholder="e.g., English"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="level">Level</Label>
-                                        <Select value={level} onValueChange={(value) => setLevel(value as CourseLevel)}>
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select level" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value={CourseLevel.BEGINNER}>Beginner</SelectItem>
-                                                <SelectItem value={CourseLevel.INTERMEDIATE}>Intermediate</SelectItem>
-                                                <SelectItem value={CourseLevel.ADVANCED}>Advanced</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <Label htmlFor="maxStudents">Max Students</Label>
-                                        <Input
-                                            id="maxStudents"
-                                            type="number"
-                                            value={maxStudents}
-                                            onChange={(e) => setMaxStudents(Number(e.target.value))}
-                                            min={1}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label>Pricing Type</Label>
-                                    <RadioGroup value={priceType} onValueChange={(value) => setPriceType(value as PriceType)}>
-                                        <div className="flex items-center space-x-2">
-                                            <RadioGroupItem value={PriceType.PER_SESSION} id="per-session" />
-                                            <Label htmlFor="per-session">Per Session</Label>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                            <RadioGroupItem value={PriceType.FULL_COURSE} id="full-course" />
-                                            <Label htmlFor="full-course">Full Course</Label>
-                                        </div>
-                                    </RadioGroup>
-                                </div>
-
-                                {priceType === PriceType.PER_SESSION ? (
-                                    <div className="space-y-2">
-                                        <Label htmlFor="pricePerSession">Price per Session ($)</Label>
-                                        <Input
-                                            id="pricePerSession"
-                                            type="number"
-                                            value={pricePerSession}
-                                            onChange={(e) => {
-                                                const value = Number(e.target.value);
-                                                setPricePerSession(isNaN(value) ? 0 : value);
-                                            }}
-                                            min={1}
-                                            step="0.01"
-                                        />
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2">
-                                        <Label htmlFor="priceFullCourse">Full Course Price ($)</Label>
-                                        <Input
-                                            id="priceFullCourse"
-                                            type="number"
-                                            value={priceFullCourse}
-                                            onChange={(e) => {
-                                                const value = Number(e.target.value);
-                                                setPriceFullCourse(isNaN(value) ? 0 : value);
-                                            }}
-                                            min={1}
-                                            step="0.01"
-                                        />
                                     </div>
                                 )}
 
-                                <div className="space-y-2">
-                                    <Label htmlFor="durationHours">Duration (Hours)</Label>
-                                    <Input
-                                        id="durationHours"
-                                        type="number"
-                                        value={durationHours}
-                                        onChange={(e) => setDurationHours(Number(e.target.value))}
-                                        min={1}
-                                    />
-                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <Label htmlFor="duration">
+                                            <Clock className="w-4 h-4 inline mr-1" />
+                                            Total Duration (hours) *
+                                        </Label>
+                                        <Input
+                                            id="duration"
+                                            type="number"
+                                            min="1"
+                                            value={durationHours}
+                                            onChange={(e) => setDurationHours(Number(e.target.value))}
+                                            className="mt-1"
+                                        />
+                                    </div>
 
-                                <Button
-                                    onClick={handleUpdateCourse}
-                                    disabled={isSubmitting}
-                                    className="w-full"
-                                >
-                                    {isSubmitting ? (
-                                        <>
-                                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                            Updating...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Save className="w-4 h-4 mr-2" />
-                                            Save Changes
-                                        </>
-                                    )}
-                                </Button>
+                                    <div>
+                                        <Label htmlFor="maxStudents">
+                                            <Users className="w-4 h-4 inline mr-1" />
+                                            Max Students
+                                        </Label>
+                                        <Input
+                                            id="maxStudents"
+                                            type="number"
+                                            min="1"
+                                            max="100"
+                                            value={maxStudents}
+                                            onChange={(e) => setMaxStudents(Number(e.target.value))}
+                                            className="mt-1"
+                                        />
+                                    </div>
+                                </div>
                             </CardContent>
                         </Card>
+
+                        {/* Pricing Card */}
+                        <Card className="mb-6">
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <DollarSign className="w-5 h-5" />
+                                    Pricing
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                {/* Free Course Toggle */}
+                                <div className="flex items-center space-x-2 p-4 bg-green-50 rounded-lg border border-green-200">
+                                    <input
+                                        type="checkbox"
+                                        id="is-free"
+                                        checked={isFree}
+                                        onChange={(e) => {
+                                            setIsFree(e.target.checked);
+                                            if (e.target.checked) {
+                                                setPricePerSession(0);
+                                                setPriceFullCourse(0);
+                                            } else {
+                                                setPricePerSession(10);
+                                            }
+                                        }}
+                                        className="w-4 h-4 text-green-600"
+                                    />
+                                    <Label htmlFor="is-free" className="font-medium cursor-pointer">
+                                        This is a FREE course
+                                    </Label>
+                                </div>
+
+                                {!isFree && (
+                                    <>
+                                        <div>
+                                            <Label>Pricing Model *</Label>
+                                            <RadioGroup
+                                                value={priceType}
+                                                onValueChange={(v) => setPriceType(v as PriceType)}
+                                                className="mt-2"
+                                            >
+                                                <div className="flex items-center space-x-2">
+                                                    <RadioGroupItem value={PriceType.PER_SESSION} id="per-session" />
+                                                    <Label htmlFor="per-session" className="font-normal cursor-pointer">
+                                                        Per Session - Students can buy individual sessions
+                                                    </Label>
+                                                </div>
+                                                <div className="flex items-center space-x-2">
+                                                    <RadioGroupItem value={PriceType.FULL_COURSE} id="full-course" />
+                                                    <Label htmlFor="full-course" className="font-normal cursor-pointer">
+                                                        Full Course - Students must buy the entire course
+                                                    </Label>
+                                                </div>
+                                            </RadioGroup>
+                                        </div>
+
+                                        {priceType === PriceType.PER_SESSION ? (
+                                            <div>
+                                                <Label htmlFor="pricePerSession">Price per Session (USD) *</Label>
+                                                <Input
+                                                    id="pricePerSession"
+                                                    type="number"
+                                                    min="1"
+                                                    step="0.01"
+                                                    value={pricePerSession}
+                                                    onChange={(e) => {
+                                                        const value = parseFloat(e.target.value);
+                                                        setPricePerSession(isNaN(value) ? 0 : value);
+                                                    }}
+                                                    className="mt-1"
+                                                />
+                                                <p className="text-sm text-gray-500 mt-1">
+                                                    Minimum price is $1.00 per session
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <div>
+                                                <Label htmlFor="priceFullCourse">Full Course Price (USD) *</Label>
+                                                <Input
+                                                    id="priceFullCourse"
+                                                    type="number"
+                                                    min="1"
+                                                    step="0.01"
+                                                    value={priceFullCourse || ''}
+                                                    onChange={(e) => {
+                                                        const value = parseFloat(e.target.value);
+                                                        setPriceFullCourse(isNaN(value) ? 0 : value);
+                                                    }}
+                                                    className="mt-1"
+                                                />
+                                                <p className="text-sm text-gray-500 mt-1">
+                                                    Minimum price is $1.00 for the full course
+                                                </p>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </CardContent>
+                        </Card>
+
+                        {/* Save Button */}
+                        <div className="flex justify-end gap-4">
+                            <Button
+                                variant="outline"
+                                onClick={() => router.push(`/courses/${courseId}`)}
+                                disabled={isSubmitting}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                onClick={handleUpdateCourse}
+                                disabled={isSubmitting}
+                                className="min-w-[150px]"
+                            >
+                                {isSubmitting ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                        Updating...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Save className="w-4 h-4 mr-2" />
+                                        Save Changes
+                                    </>
+                                )}
+                            </Button>
+                        </div>
                     </TabsContent>
 
                     {/* Lessons Tab */}

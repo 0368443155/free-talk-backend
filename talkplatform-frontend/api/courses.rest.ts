@@ -266,6 +266,7 @@ export interface UpdateCourseDto {
     category?: CourseCategory;
     tags?: string[];
     max_students?: number;
+    thumbnail_url?: string;
 }
 
 export interface CreateSessionMaterialDto {
