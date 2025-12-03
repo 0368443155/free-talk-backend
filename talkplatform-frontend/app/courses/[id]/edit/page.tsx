@@ -32,6 +32,8 @@ import {
     Link as LinkIcon,
     Edit,
     Save,
+    Copy,
+    Check,
 } from 'lucide-react';
 import {
     getCourseByIdApi,
@@ -154,6 +156,8 @@ export default function EditCoursePage() {
     const [isFree, setIsFree] = useState(false);
     const [thumbnailMode, setThumbnailMode] = useState<'url' | 'upload'>('url');
     const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
+    const [affiliateCode, setAffiliateCode] = useState('');
+    const [copiedAffiliateCode, setCopiedAffiliateCode] = useState(false);
 
 
     // Sessions
@@ -195,6 +199,7 @@ export default function EditCoursePage() {
             setDurationHours(course.duration_hours || 10);
             setThumbnailUrl(course.thumbnail_url || '');
             setIsFree((course.price_per_session === 0 || !course.price_per_session) && (course.price_full_course === 0 || !course.price_full_course));
+            setAffiliateCode(course.affiliate_code || '');
 
 
             // Convert sessions to SessionData format
@@ -469,6 +474,26 @@ export default function EditCoursePage() {
         );
     };
 
+    const handleCopyAffiliateCode = async () => {
+        if (!affiliateCode) return;
+        
+        try {
+            await navigator.clipboard.writeText(affiliateCode);
+            setCopiedAffiliateCode(true);
+            toast({
+                title: "Copied!",
+                description: "Affiliate code copied to clipboard",
+            });
+            setTimeout(() => setCopiedAffiliateCode(false), 2000);
+        } catch (error) {
+            toast({
+                title: "Error",
+                description: "Failed to copy affiliate code",
+                variant: "destructive",
+            });
+        }
+    };
+
     const handleThumbnailUpload = async (file: File) => {
         setUploadingThumbnail(true);
         try {
@@ -736,6 +761,43 @@ export default function EditCoursePage() {
                                         </>
                                     )}
                                 </div>
+
+                                {/* Affiliate Code */}
+                                {affiliateCode && (
+                                    <div className="space-y-2">
+                                        <Label htmlFor="affiliate-code">Affiliate Code</Label>
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                id="affiliate-code"
+                                                value={affiliateCode}
+                                                readOnly
+                                                className="mt-1 font-mono bg-gray-50"
+                                            />
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={handleCopyAffiliateCode}
+                                                className="mt-1"
+                                            >
+                                                {copiedAffiliateCode ? (
+                                                    <>
+                                                        <Check className="w-4 h-4 mr-2 text-green-600" />
+                                                        Copied
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Copy className="w-4 h-4 mr-2" />
+                                                        Copy
+                                                    </>
+                                                )}
+                                            </Button>
+                                        </div>
+                                        <p className="text-sm text-gray-500 mt-1">
+                                            Share this code to track referrals and earn commissions
+                                        </p>
+                                    </div>
+                                )}
 
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div>

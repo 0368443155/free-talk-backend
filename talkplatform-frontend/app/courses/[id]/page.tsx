@@ -5,6 +5,8 @@ import { useRouter, useParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/use-toast';
 import {
@@ -20,7 +22,9 @@ import {
     Award,
     FileText,
     Share2,
-    MoreVertical
+    MoreVertical,
+    Copy,
+    Check,
 } from 'lucide-react';
 import { getCourseByIdApi, Course, publishCourseApi, unpublishCourseApi } from '@/api/courses.rest';
 import { enrollInCourseApi, purchaseSessionApi, checkSessionAccessApi, getMyEnrollmentsApi } from '@/api/enrollments.rest';
@@ -65,6 +69,7 @@ export default function CourseDetailPage() {
     const [myReview, setMyReview] = useState<Review | null>(null);
     const [loadingReviews, setLoadingReviews] = useState(false);
     const [showReviewForm, setShowReviewForm] = useState(false);
+    const [copiedAffiliateCode, setCopiedAffiliateCode] = useState(false);
 
     const loadCourse = async () => {
         try {
@@ -195,6 +200,26 @@ export default function CourseDetailPage() {
             toast({
                 title: "Error",
                 description: error.response?.data?.message || "Failed to delete review",
+                variant: "destructive",
+            });
+        }
+    };
+
+    const handleCopyAffiliateCode = async () => {
+        if (!course?.affiliate_code) return;
+        
+        try {
+            await navigator.clipboard.writeText(course.affiliate_code);
+            setCopiedAffiliateCode(true);
+            toast({
+                title: "Copied!",
+                description: "Affiliate code copied to clipboard",
+            });
+            setTimeout(() => setCopiedAffiliateCode(false), 2000);
+        } catch (error) {
+            toast({
+                title: "Error",
+                description: "Failed to copy affiliate code",
                 variant: "destructive",
             });
         }
@@ -654,6 +679,45 @@ export default function CourseDetailPage() {
                                         <Button className="w-full h-12 text-lg font-bold" onClick={() => router.push(`/courses/${courseId}`)}>
                                             View Course Content
                                         </Button>
+                                        
+                                        {/* Affiliate Code - Only show for teacher/admin */}
+                                        {isTeacherOrAdmin && course.affiliate_code && (
+                                            <div className="pt-3 border-t space-y-2">
+                                                <Label htmlFor="affiliate-code" className="text-sm font-semibold text-gray-700">
+                                                    Affiliate Code
+                                                </Label>
+                                                <div className="flex items-center gap-2">
+                                                    <Input
+                                                        id="affiliate-code"
+                                                        value={course.affiliate_code}
+                                                        readOnly
+                                                        className="font-mono bg-gray-50 text-sm"
+                                                    />
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={handleCopyAffiliateCode}
+                                                        className="shrink-0"
+                                                    >
+                                                        {copiedAffiliateCode ? (
+                                                            <>
+                                                                <Check className="w-4 h-4 mr-1 text-green-600" />
+                                                                Copied
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Copy className="w-4 h-4 mr-1" />
+                                                                Copy
+                                                            </>
+                                                        )}
+                                                    </Button>
+                                                </div>
+                                                <p className="text-xs text-gray-500">
+                                                    Share this code to track referrals and earn commissions
+                                                </p>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
