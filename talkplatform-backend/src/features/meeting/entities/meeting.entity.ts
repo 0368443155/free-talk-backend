@@ -55,6 +55,14 @@ export enum PricingType {
   SUBSCRIPTION = 'subscription',
 }
 
+export enum MeetingState {
+  SCHEDULED = 'scheduled',
+  OPEN = 'open',
+  IN_PROGRESS = 'in_progress',
+  CLOSED = 'closed',
+  CANCELLED = 'cancelled',
+}
+
 @Entity('meetings')
 @Index(['lesson_id'])
 @Index(['course_id'])
@@ -132,6 +140,15 @@ export class Meeting {
 
   @Column({ type: 'boolean', default: false })
   auto_closed: boolean; // True nếu đóng tự động
+
+  @Column({ type: 'varchar', length: 50, default: 'scheduled' })
+  state: string; // State của meeting (scheduled, open, in_progress, closed, cancelled)
+
+  @Column({ type: 'boolean', default: false })
+  requires_manual_review: boolean; // True nếu cần admin review
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  review_reason: string; // Lý do cần review (e.g., "Teacher did not attend")
 
   @Column({ type: 'int', default: 100 })
   max_participants: number;

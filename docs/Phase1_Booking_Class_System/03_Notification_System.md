@@ -274,6 +274,53 @@ export class NotificationProcessor extends WorkerHost {
   }
 }
 
+// ============================================================================
+// NOTIFICATION SERVICE - Additional Methods
+// ============================================================================
+
+@Injectable()
+export class NotificationService {
+  private readonly logger = new Logger(NotificationService.name);
+
+  constructor(
+    @InjectRepository(Notification)
+    private readonly notificationRepository: Repository<Notification>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+    @InjectQueue('notifications') 
+    private readonly notificationQueue: Queue,
+  ) {}
+
+  // ... (send method defined above in NotificationProcessor section)
+
+  /**
+   * Gửi notification đến tất cả admins
+   */
+  async sendToAdmins(dto: {
+    type: string;
+    title: string;
+    message: string;
+    data?: any;
+  }): Promise<void> {
+    // Get all admin users
+    const admins = await this.userRepository.find({
+      where: { role: UserRole.ADMIN },
+    });
+
+    this.logger.log(`Sending notification to ${admins.length} admins`);
+
+    // Send notification to each admin
+    for (const admin of admins) {
+      await this.send({
+        userId: admin.id,
+        type: NotificationType.IN_APP,
+        title: dto.title,
+        message: dto.message,
+        data: dto.data,
+      });
+    }
+  }
+
   /**
    * Lấy notifications của user
    */

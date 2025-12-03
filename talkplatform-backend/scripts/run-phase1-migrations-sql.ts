@@ -19,11 +19,12 @@ async function runPhase1MigrationsSQL() {
     try {
       // Check which migrations have already run
       const migrationsTable = await queryRunner.query(
-        `SELECT name FROM migrations WHERE name IN (?, ?, ?)`,
+        `SELECT name FROM migrations WHERE name IN (?, ?, ?, ?)`,
         [
           'Phase1PerformanceImprovements1767000000000',
           'AddMeetingStateTracking1767000000001',
           'AddBookingNotes1767000000002',
+          'AddNotificationStatusFields1767000000003',
         ],
       );
 
@@ -34,8 +35,9 @@ async function runPhase1MigrationsSQL() {
       const shouldRunMigration1 = !executedMigrations.includes('Phase1PerformanceImprovements1767000000000');
       const shouldRunMigration2 = !executedMigrations.includes('AddMeetingStateTracking1767000000001');
       const shouldRunMigration3 = !executedMigrations.includes('AddBookingNotes1767000000002');
+      const shouldRunMigration4 = !executedMigrations.includes('AddNotificationStatusFields1767000000003');
 
-      if (!shouldRunMigration1 && !shouldRunMigration2 && !shouldRunMigration3) {
+      if (!shouldRunMigration1 && !shouldRunMigration2 && !shouldRunMigration3 && !shouldRunMigration4) {
         console.log('✅ All Phase 1 migrations already executed. Skipping...');
         return;
       }
@@ -304,6 +306,88 @@ async function runPhase1MigrationsSQL() {
         console.log('  ✓ Recorded migration: AddBookingNotes1767000000002');
       } else {
         console.log('3. Skipping AddBookingNotes (already executed)');
+      }
+
+      // Migration 4: AddNotificationStatusFields
+      if (shouldRunMigration4) {
+        console.log('4. Adding status and sent_at fields to notifications...');
+        
+        const notificationColumns = await queryRunner.query(`
+          SELECT COLUMN_NAME 
+          FROM INFORMATION_SCHEMA.COLUMNS 
+          WHERE TABLE_SCHEMA = DATABASE() 
+          AND TABLE_NAME = 'notifications' 
+          AND COLUMN_NAME IN ('status', 'sent_at')
+        `);
+
+        const existingNotificationColumns = notificationColumns.map((row: any) => row.COLUMN_NAME);
+
+        if (!existingNotificationColumns.includes('status')) {
+          await queryRunner.query(`
+            ALTER TABLE notifications 
+            ADD COLUMN status ENUM('pending', 'sent', 'failed') DEFAULT 'pending'
+          `);
+          console.log('  ✓ Added status column');
+        } else {
+          console.log('  - Column status already exists');
+        }
+
+        if (!existingNotificationColumns.includes('sent_at')) {
+          await queryRunner.query(`
+            ALTER TABLE notifications 
+            ADD COLUMN sent_at TIMESTAMP(6) NULL
+          `);
+          console.log('  ✓ Added sent_at column');
+        } else {
+          console.log('  - Column sent_at already exists');
+        }
+
+        // Update type column from varchar to enum if needed
+        const typeColumnInfo = await queryRunner.query(`
+          SELECT COLUMN_TYPE 
+          FROM INFORMATION_SCHEMA.COLUMNS 
+          WHERE TABLE_SCHEMA = DATABASE() 
+          AND TABLE_NAME = 'notifications' 
+          AND COLUMN_NAME = 'type'
+        `);
+
+        if (typeColumnInfo.length > 0 && !typeColumnInfo[0].COLUMN_TYPE.includes('enum')) {
+          // Check if there's existing data
+          const existingData = await queryRunner.query(`
+            SELECT DISTINCT type FROM notifications WHERE type IS NOT NULL LIMIT 10
+          `);
+          
+          // Update type column to enum
+          await queryRunner.query(`
+            ALTER TABLE notifications 
+            MODIFY COLUMN type ENUM('email', 'in_app', 'push') NOT NULL
+          `);
+          console.log('  ✓ Updated type column to enum');
+        } else {
+          console.log('  - Column type is already enum or doesn\'t exist');
+        }
+
+        try {
+          await queryRunner.query(`
+            CREATE INDEX idx_notifications_status 
+            ON notifications(status)
+          `);
+          console.log('  ✓ Created idx_notifications_status');
+        } catch (e: any) {
+          if (e.code !== 'ER_DUP_KEYNAME') {
+            throw e;
+          }
+          console.log('  - Index idx_notifications_status already exists');
+        }
+
+        // Record migration 4
+        await queryRunner.query(
+          `INSERT INTO migrations (timestamp, name) VALUES (?, ?)`,
+          [1767000000003, 'AddNotificationStatusFields1767000000003'],
+        );
+        console.log('  ✓ Recorded migration: AddNotificationStatusFields1767000000003');
+      } else {
+        console.log('4. Skipping AddNotificationStatusFields (already executed)');
       }
 
       console.log('\n✅ Phase 1 migrations completed successfully!');

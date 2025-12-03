@@ -80,6 +80,12 @@ export class Meeting {
   
   @Column({ type: 'boolean', default: false })
   auto_closed: boolean; // True nếu đóng tự động
+  
+  @Column({ type: 'boolean', default: false })
+  requires_manual_review: boolean; // True nếu cần admin review
+  
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  review_reason: string; // Lý do cần review (e.g., "Teacher did not attend")
 }
 ```
 
@@ -98,7 +104,9 @@ export class AddMeetingStateTracking implements MigrationInterface {
       ADD COLUMN opened_at TIMESTAMP NULL,
       ADD COLUMN closed_at TIMESTAMP NULL,
       ADD COLUMN auto_opened BOOLEAN DEFAULT false,
-      ADD COLUMN auto_closed BOOLEAN DEFAULT false
+      ADD COLUMN auto_closed BOOLEAN DEFAULT false,
+      ADD COLUMN requires_manual_review BOOLEAN DEFAULT false,
+      ADD COLUMN review_reason VARCHAR(500) NULL
     `);
     
     await queryRunner.query(`
@@ -115,7 +123,9 @@ export class AddMeetingStateTracking implements MigrationInterface {
       DROP COLUMN opened_at,
       DROP COLUMN closed_at,
       DROP COLUMN auto_opened,
-      DROP COLUMN auto_closed
+      DROP COLUMN auto_closed,
+      DROP COLUMN requires_manual_review,
+      DROP COLUMN review_reason
     `);
   }
 }
@@ -136,6 +146,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan, MoreThan, Between } from 'typeorm';
 import { Meeting, MeetingState } from '../meeting/entities/meeting.entity';
 import { Booking, BookingStatus } from '../booking/entities/booking.entity';
+import { MeetingParticipant } from '../meeting/entities/meeting-participant.entity';
+import { LiveKitService } from '../../infrastructure/livekit/livekit.service';
+import { RevenueSharingService } from '../payments/revenue-sharing.service';
+import { NotificationService } from '../notifications/notification.service';
 
 @Injectable()
 export class ScheduleAutomationService {
@@ -146,8 +160,11 @@ export class ScheduleAutomationService {
     private readonly meetingRepository: Repository<Meeting>,
     @InjectRepository(Booking)
     private readonly bookingRepository: Repository<Booking>,
+    @InjectRepository(MeetingParticipant)
+    private readonly meetingParticipantRepository: Repository<MeetingParticipant>,
     private readonly revenueSharingService: RevenueSharingService,
     private readonly notificationService: NotificationService,
+    private readonly livekitService: LiveKitService,
   ) {}
 
   /**
@@ -317,6 +334,16 @@ export class ScheduleAutomationService {
    */
   private async verifyTeacherAttendance(meetingId: string): Promise<boolean> {
     try {
+      // ✅ FIX: Fetch meeting object first
+      const meeting = await this.meetingRepository.findOne({
+        where: { id: meetingId },
+      });
+
+      if (!meeting) {
+        this.logger.warn(`Meeting ${meetingId} not found`);
+        return false;
+      }
+
       // Option 1: Check via LiveKit API (Recommended)
       const livekitRoom = await this.livekitService.getRoomInfo(meetingId);
       
@@ -325,9 +352,9 @@ export class ScheduleAutomationService {
         return false;
       }
 
-      // Check if teacher participated
+      // Check if teacher participated (at least 5 minutes)
       const teacherParticipated = livekitRoom.participants.some(
-        p => p.identity === meeting.teacher_id && p.duration > 300 // At least 5 minutes
+        p => p.identity === meeting.teacher_id && p.duration > 300
       );
 
       if (teacherParticipated) {
