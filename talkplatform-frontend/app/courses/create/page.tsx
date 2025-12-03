@@ -98,6 +98,8 @@ export default function CreateCoursePage() {
     const [durationHours, setDurationHours] = useState<number>(10);
     const [thumbnailUrl, setThumbnailUrl] = useState('');
     const [isFree, setIsFree] = useState(false);
+    const [thumbnailMode, setThumbnailMode] = useState<'url' | 'upload'>('url');
+    const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
 
     // Tags by category
     const tagsByCategory: Record<CourseCategory, string[]> = {
@@ -245,6 +247,37 @@ export default function CreateCoursePage() {
                 m.id === materialId ? { ...m, ...updates } : m
             ),
         });
+    };
+
+    const handleThumbnailUpload = async (file: File) => {
+        setUploadingThumbnail(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await apiClient.post('/storage/upload?folder=course-thumbnails', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+            });
+
+            const fileUrl = response.data.url;
+            setThumbnailUrl(fileUrl);
+
+            toast({
+                title: 'Success!',
+                description: 'Thumbnail uploaded successfully',
+            });
+        } catch (error: any) {
+            console.error('Failed to upload thumbnail:', error);
+            toast({
+                title: 'Error',
+                description: error.response?.data?.message || 'Failed to upload thumbnail',
+                variant: 'destructive',
+            });
+        } finally {
+            setUploadingThumbnail(false);
+        }
     };
 
     const handleFileUpload = async (sessionId: string, lessonId: string, materialId: string, file: File) => {
@@ -493,30 +526,123 @@ export default function CreateCoursePage() {
                         </div>
 
                         <div>
-                            <Label htmlFor="thumbnail">Course Thumbnail (URL)</Label>
-                            <Input
-                                id="thumbnail"
-                                type="url"
-                                placeholder="https://example.com/image.jpg"
-                                value={thumbnailUrl}
-                                onChange={(e) => setThumbnailUrl(e.target.value)}
-                                className="mt-1"
-                            />
-                            {thumbnailUrl && (
-                                <div className="mt-2">
-                                    <img
-                                        src={thumbnailUrl}
-                                        alt="Thumbnail preview"
-                                        className="w-32 h-32 object-cover rounded border"
-                                        onError={(e) => {
-                                            e.currentTarget.style.display = 'none';
-                                        }}
-                                    />
+                            <Label htmlFor="thumbnail">Course Thumbnail</Label>
+                            <RadioGroup
+                                value={thumbnailMode}
+                                onValueChange={(value) => {
+                                    setThumbnailMode(value as 'url' | 'upload');
+                                    if (value === 'upload') {
+                                        setThumbnailUrl('');
+                                    }
+                                }}
+                                className="mt-2"
+                            >
+                                <div className="flex items-center space-x-2">
+                                    <RadioGroupItem value="url" id="thumbnail-url" />
+                                    <Label htmlFor="thumbnail-url" className="font-normal cursor-pointer">
+                                        Use Image URL
+                                    </Label>
                                 </div>
+                                <div className="flex items-center space-x-2">
+                                    <RadioGroupItem value="upload" id="thumbnail-upload" />
+                                    <Label htmlFor="thumbnail-upload" className="font-normal cursor-pointer">
+                                        Upload Image
+                                    </Label>
+                                </div>
+                            </RadioGroup>
+
+                            {thumbnailMode === 'url' ? (
+                                <>
+                                    <Input
+                                        id="thumbnail"
+                                        type="url"
+                                        placeholder="https://example.com/image.jpg"
+                                        value={thumbnailUrl}
+                                        onChange={(e) => setThumbnailUrl(e.target.value)}
+                                        className="mt-2"
+                                    />
+                                    {thumbnailUrl && (
+                                        <div className="mt-2">
+                                            <img
+                                                src={thumbnailUrl}
+                                                alt="Thumbnail preview"
+                                                className="w-32 h-32 object-cover rounded border"
+                                                onError={(e) => {
+                                                    e.currentTarget.style.display = 'none';
+                                                }}
+                                            />
+                                        </div>
+                                    )}
+                                    <p className="text-sm text-gray-500 mt-1">
+                                        Provide a URL to an image for your course thumbnail
+                                    </p>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="mt-2 border-2 border-dashed rounded-lg p-4 text-center hover:bg-gray-50 transition-colors cursor-pointer relative">
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) {
+                                                    // Validate file type
+                                                    if (!file.type.startsWith('image/')) {
+                                                        toast({
+                                                            title: 'Error',
+                                                            description: 'Please select an image file',
+                                                            variant: 'destructive',
+                                                        });
+                                                        return;
+                                                    }
+                                                    // Validate file size (max 5MB)
+                                                    if (file.size > 5 * 1024 * 1024) {
+                                                        toast({
+                                                            title: 'Error',
+                                                            description: 'Image size must be less than 5MB',
+                                                            variant: 'destructive',
+                                                        });
+                                                        return;
+                                                    }
+                                                    handleThumbnailUpload(file);
+                                                }
+                                            }}
+                                            disabled={uploadingThumbnail}
+                                        />
+                                        <div className="flex flex-col items-center gap-2">
+                                            {uploadingThumbnail ? (
+                                                <>
+                                                    <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
+                                                    <span className="text-sm text-gray-600">Uploading...</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Upload className="w-6 h-6 text-gray-400" />
+                                                    <span className="text-sm text-gray-600">
+                                                        Click to upload or drag and drop
+                                                    </span>
+                                                    <span className="text-xs text-gray-500">
+                                                        PNG, JPG, GIF up to 5MB
+                                                    </span>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {thumbnailUrl && (
+                                        <div className="mt-2">
+                                            <img
+                                                src={thumbnailUrl}
+                                                alt="Thumbnail preview"
+                                                className="w-32 h-32 object-cover rounded border"
+                                                onError={(e) => {
+                                                    e.currentTarget.style.display = 'none';
+                                                }}
+                                            />
+                                        </div>
+                                    )}
+                                </>
                             )}
-                            <p className="text-sm text-gray-500 mt-1">
-                                Provide a URL to an image for your course thumbnail
-                            </p>
                         </div>
 
                         {/* Tags */}
