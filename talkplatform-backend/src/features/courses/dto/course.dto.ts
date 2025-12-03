@@ -12,6 +12,7 @@ import {
     IsArray,
     ValidateNested,
     MaxLength,
+    IsUrl,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -400,6 +401,12 @@ export class CreateCourseWithSessionsDto {
     @Min(1)
     @IsOptional()
     duration_hours?: number;
+
+    @ApiPropertyOptional({ example: 'https://example.com/thumbnail.jpg', description: 'Course thumbnail URL' })
+    @IsString()
+    @IsUrl()
+    @IsOptional()
+    thumbnail_url?: string;
 
     // Sessions with lessons
     @ApiProperty({ type: [CreateSessionWithLessonsDto], description: 'Sessions with lessons' })

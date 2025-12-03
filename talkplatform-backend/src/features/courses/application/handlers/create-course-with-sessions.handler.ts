@@ -87,6 +87,7 @@ export class CreateCourseWithSessionsHandler
         max_students: command.dto.max_students || 30,
         duration_hours: command.dto.duration_hours,
         total_sessions: command.dto.sessions.length,
+        thumbnail_url: command.dto.thumbnail_url,
         status: CourseStatus.DRAFT,
         is_published: false,
         affiliate_code: affiliateCode,
