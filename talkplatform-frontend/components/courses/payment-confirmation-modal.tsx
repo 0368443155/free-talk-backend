@@ -43,39 +43,41 @@ export function PaymentConfirmationModal({
           <AlertDialogTitle className="text-2xl font-bold">
             {title}
           </AlertDialogTitle>
-          <AlertDialogDescription className="text-base space-y-3">
-            <div>{description}</div>
-            
-            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600 dark:text-gray-400">Amount:</span>
-                <span className="text-lg font-semibold text-gray-900 dark:text-white">
-                  ${amount}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600 dark:text-gray-400">Current Balance:</span>
-                <span className="text-sm font-medium text-gray-900 dark:text-white">
-                  ${currentBalance}
-                </span>
-              </div>
-              <div className="border-t pt-2 mt-2">
+          <AlertDialogDescription asChild>
+            <div className="text-base space-y-3">
+              <div>{description}</div>
+
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">Remaining Balance:</span>
-                  <span className={`text-sm font-semibold ${hasEnoughCredits ? 'text-green-600' : 'text-red-600'}`}>
-                    ${remainingBalance.toFixed(2)}
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Amount:</span>
+                  <span className="text-lg font-semibold text-gray-900 dark:text-white">
+                    ${amount}
                   </span>
                 </div>
-              </div>
-            </div>
-
-            {!hasEnoughCredits && (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
-                <div className="text-sm text-red-800 dark:text-red-200">
-                  Insufficient credits. You need ${(amount - currentBalance).toFixed(2)} more credits to complete this purchase.
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Current Balance:</span>
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">
+                    ${currentBalance}
+                  </span>
+                </div>
+                <div className="border-t pt-2 mt-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Remaining Balance:</span>
+                    <span className={`text-sm font-semibold ${hasEnoughCredits ? 'text-green-600' : 'text-red-600'}`}>
+                      ${remainingBalance.toFixed(2)}
+                    </span>
+                  </div>
                 </div>
               </div>
-            )}
+
+              {!hasEnoughCredits && (
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                  <div className="text-sm text-red-800 dark:text-red-200">
+                    Insufficient credits. You need ${(amount - currentBalance).toFixed(2)} more credits to complete this purchase.
+                  </div>
+                </div>
+              )}
+            </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

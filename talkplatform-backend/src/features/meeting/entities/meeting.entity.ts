@@ -126,23 +126,18 @@ export class Meeting {
   ended_at: Date;
 
   /**
-   * State tracking fields (Phase 1)
-   * Track khi nào meeting được mở/đóng tự động
+  /**
+   * Phase 1: Auto Schedule State Tracking
+   * Tracks when meetings are automatically opened/closed
    */
-  @Column({ type: 'timestamp', nullable: true })
-  opened_at: Date; // Thời gian meeting được mở
-
-  @Column({ type: 'timestamp', nullable: true })
-  closed_at: Date; // Thời gian meeting được đóng
-
-  @Column({ type: 'boolean', default: false })
-  auto_opened: boolean; // True nếu mở tự động
-
-  @Column({ type: 'boolean', default: false })
-  auto_closed: boolean; // True nếu đóng tự động
-
   @Column({ type: 'varchar', length: 50, default: 'scheduled' })
-  state: string; // State của meeting (scheduled, open, in_progress, closed, cancelled)
+  meeting_state: string; // scheduled, open, in_progress, closed, cancelled
+
+  @Column({ type: 'timestamp', nullable: true })
+  auto_opened_at: Date; // When meeting was auto-opened
+
+  @Column({ type: 'timestamp', nullable: true })
+  auto_closed_at: Date; // When meeting was auto-closed
 
   @Column({ type: 'boolean', default: false })
   requires_manual_review: boolean; // True nếu cần admin review

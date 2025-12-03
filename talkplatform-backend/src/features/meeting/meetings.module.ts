@@ -23,6 +23,8 @@ import { LiveKitModule } from '../../livekit/livekit.module';
 import { CoursesModule } from '../courses/courses.module';
 import { FeatureFlagModule } from '../../core/feature-flags/feature-flag.module';
 
+import { ScheduleAutomationService } from './services/schedule-automation.service';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -42,8 +44,15 @@ import { FeatureFlagModule } from '../../core/feature-flags/feature-flag.module'
     FeatureFlagModule,
   ],
   controllers: [PublicMeetingsController, MeetingsGeneralController, WaitingRoomController],
-  providers: [MeetingsService, MeetingsGateway, EnhancedMeetingsGateway, WaitingRoomService, MeetingSchedulerService],
-  exports: [MeetingsService, WaitingRoomService, LiveKitModule],
+  providers: [
+    MeetingsService,
+    MeetingsGateway,
+    EnhancedMeetingsGateway,
+    WaitingRoomService,
+    MeetingSchedulerService,
+    ScheduleAutomationService
+  ],
+  exports: [MeetingsService, WaitingRoomService, LiveKitModule, ScheduleAutomationService],
 })
-export class MeetingsModule {}
+export class MeetingsModule { }
 

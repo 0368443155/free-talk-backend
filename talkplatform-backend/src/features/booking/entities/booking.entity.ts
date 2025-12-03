@@ -122,7 +122,8 @@ export class Booking {
   reminder_sent_1h: boolean;
 
   /**
-   * Đã gửi nhắc nhở 20 phút trước (Phase 1 requirement)
+  /**
+   * Phase 1: Đã gửi nhắc nhở 20 phút trước
    */
   @Column({ type: 'boolean', default: false })
   reminder_sent_20min: boolean;
