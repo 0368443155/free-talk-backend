@@ -20,11 +20,12 @@ import { CreateMeetingDto } from './dto/create-meeting.dto';
 import { UpdateMeetingDto } from './dto/update-meeting.dto';
 import { PaginationDto } from '../../core/common/dto/pagination.dto';
 import { EnrollmentService } from '../courses/enrollment.service';
+import { RefundService } from '../booking/refund.service';
 
 @Injectable()
 export class MeetingsService {
   private readonly logger = new Logger(MeetingsService.name);
-  
+
   constructor(
     @InjectRepository(Meeting)
     private readonly meetingRepository: Repository<Meeting>,
@@ -43,16 +44,38 @@ export class MeetingsService {
     @InjectDataSource()
     private readonly dataSource: DataSource,
     private readonly enrollmentService: EnrollmentService,
+    private readonly refundService: RefundService,
   ) { }
+
+  async cancelMeeting(meetingId: string, user: User, reason: string) {
+    const meeting = await this.findOne(meetingId, user);
+
+    if (meeting.host.id !== user.id && user.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Only the host can cancel the meeting');
+    }
+
+    if (meeting.status === MeetingStatus.CANCELLED) {
+      throw new ConflictException('Meeting is already cancelled');
+    }
+
+    // Update status
+    meeting.status = MeetingStatus.CANCELLED;
+    await this.meetingRepository.save(meeting);
+
+    // Refund all bookings
+    await this.refundService.refundAllBookings(meetingId, user.id, reason);
+
+    return { message: 'Meeting cancelled and refunds processed' };
+  }
 
 
   async createPublicMeeting(createMeetingDto: CreateMeetingDto, user: User) {
     // Set defaults based on meeting type
     const meetingType = createMeetingDto.meeting_type || MeetingType.FREE_TALK;
-    
+
     // Apply meeting type specific defaults
     const meetingDefaults = this.getMeetingTypeDefaults(meetingType);
-    
+
     // Create meeting without classroom
     const { settings: settingsDto, tags: tagsDto, ...meetingData } = createMeetingDto;
     const meeting = this.meetingRepository.create({
@@ -474,14 +497,14 @@ export class MeetingsService {
         joined_at: new Date(),
         is_online: true,
         // Use deviceSettings if provided, otherwise use meeting default
-        is_muted: deviceSettings 
-          ? !deviceSettings.audioEnabled 
+        is_muted: deviceSettings
+          ? !deviceSettings.audioEnabled
           : (meeting.settings?.mute_on_join || false),
-        is_video_off: deviceSettings 
-          ? !deviceSettings.videoEnabled 
+        is_video_off: deviceSettings
+          ? !deviceSettings.videoEnabled
           : false,
       });
-      
+
       if (deviceSettings) {
         console.log('🔄 Created participant with deviceSettings:', {
           is_muted: participant.is_muted,

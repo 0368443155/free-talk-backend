@@ -24,6 +24,8 @@ import { CoursesModule } from '../courses/courses.module';
 import { FeatureFlagModule } from '../../core/feature-flags/feature-flag.module';
 
 import { ScheduleAutomationService } from './services/schedule-automation.service';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { BookingModule } from '../booking/booking.module';
 
 @Module({
   imports: [
@@ -42,6 +44,8 @@ import { ScheduleAutomationService } from './services/schedule-automation.servic
     forwardRef(() => LiveKitModule),
     forwardRef(() => CoursesModule),
     FeatureFlagModule,
+    NotificationsModule,
+    BookingModule,
   ],
   controllers: [PublicMeetingsController, MeetingsGeneralController, WaitingRoomController],
   providers: [

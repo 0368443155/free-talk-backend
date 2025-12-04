@@ -4,6 +4,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThanOrEqual, IsNull, Not, In } from 'typeorm';
 import { Meeting, MeetingStatus, MeetingType } from '../entities/meeting.entity';
 import { Lesson } from '../../courses/entities/lesson.entity';
+import { NotificationService } from '../../notifications/notification.service';
+import { NotificationType } from '../../notifications/entities/notification.entity';
 
 @Injectable()
 export class ScheduleAutomationService {
@@ -14,6 +16,7 @@ export class ScheduleAutomationService {
         private readonly meetingRepository: Repository<Meeting>,
         @InjectRepository(Lesson)
         private readonly lessonRepository: Repository<Lesson>,
+        private readonly notificationService: NotificationService,
     ) { }
 
     /**
@@ -52,13 +55,19 @@ export class ScheduleAutomationService {
                 meeting.meeting_state = 'open';
                 meeting.auto_opened_at = new Date();
 
-                // If it's a lesson meeting, we might want to check lesson details too
-                // But for now, rely on meeting.scheduled_at
-
                 await this.meetingRepository.save(meeting);
                 this.logger.log(`Auto-opened meeting ${meeting.id} (${meeting.title})`);
 
-                // TODO: Send notification to host and participants
+                // Send notification to host
+                if (meeting.host) {
+                    await this.notificationService.send({
+                        userId: meeting.host.id,
+                        type: NotificationType.IN_APP,
+                        title: 'Class Started',
+                        message: `Your class "${meeting.title}" has started automatically.`,
+                        data: { meetingId: meeting.id },
+                    });
+                }
             } catch (error) {
                 this.logger.error(`Failed to auto-open meeting ${meeting.id}: ${error.message}`);
             }
@@ -76,15 +85,13 @@ export class ScheduleAutomationService {
         const now = new Date();
 
         // Find LIVE meetings that might need closing
-        // This is tricky because we need to know the duration
-        // For Phase 1, we focus on Lesson meetings which have defined end times
-
         const liveMeetings = await this.meetingRepository.find({
             where: {
                 status: MeetingStatus.LIVE,
                 meeting_state: In(['open', 'in_progress']),
                 lesson_id: Not(IsNull()), // Only close lesson meetings automatically for now
             },
+            relations: ['host'],
         });
 
         for (const meeting of liveMeetings) {
@@ -96,19 +103,39 @@ export class ScheduleAutomationService {
 
                 if (!lesson) continue;
 
-                // Calculate end datetime
-                // lesson.scheduled_date + lesson.end_time
-                // This requires parsing date/time strings or using a helper
-                // Assuming lesson has a proper datetime field or we construct it
+                // Calculate end time based on lesson duration
+                // Assuming lesson.duration_minutes is in minutes
+                // If we don't have duration, default to 60 mins
+                const durationMinutes = lesson.duration_minutes || 60;
 
-                // Simplified logic: If meeting has ended_at set (manual end) or past duration
-                // For now, let's assume we use meeting.scheduled_at + duration (if we had it)
+                // Calculate expected end time
+                const startTime = meeting.scheduled_at || meeting.created_at;
+                const expectedEndTime = new Date(startTime.getTime() + durationMinutes * 60000);
 
-                // If we don't have duration, we can't auto-close safely without more info
-                // So we'll skip for now unless we find a clear rule
+                // Add 10 mins grace period
+                const closeThreshold = new Date(expectedEndTime.getTime() + 10 * 60000);
 
-                // Alternative: Close if empty for X minutes?
-                // That's a different logic (idle timeout)
+                if (now > closeThreshold) {
+                    // Close the meeting
+                    meeting.status = MeetingStatus.ENDED;
+                    meeting.meeting_state = 'closed';
+                    meeting.auto_closed_at = new Date();
+                    meeting.ended_at = new Date();
+
+                    await this.meetingRepository.save(meeting);
+                    this.logger.log(`Auto-closed meeting ${meeting.id} (${meeting.title})`);
+
+                    // Notify host
+                    if (meeting.host) {
+                        await this.notificationService.send({
+                            userId: meeting.host.id,
+                            type: NotificationType.IN_APP,
+                            title: 'Class Ended',
+                            message: `Your class "${meeting.title}" has ended automatically.`,
+                            data: { meetingId: meeting.id },
+                        });
+                    }
+                }
 
             } catch (error) {
                 this.logger.error(`Failed to process auto-close for meeting ${meeting.id}: ${error.message}`);

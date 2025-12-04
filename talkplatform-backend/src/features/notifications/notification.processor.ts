@@ -6,6 +6,8 @@ import { Repository } from 'typeorm';
 import { Notification, NotificationType, NotificationStatus } from './entities/notification.entity';
 import { User } from '../../users/user.entity';
 
+import { NotificationGateway } from './notification.gateway';
+
 /**
  * Notification Processor
  * 
@@ -21,7 +23,8 @@ export class NotificationProcessor {
     private readonly notificationRepository: Repository<Notification>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
-  ) {}
+    private readonly notificationGateway: NotificationGateway,
+  ) { }
 
   @Process('send-notification')
   async handleSendNotification(job: Job<any>) {
@@ -43,21 +46,32 @@ export class NotificationProcessor {
         const user = await this.userRepository.findOne({
           where: { id: userId },
         });
-        
+
         if (!user) {
           throw new Error('User not found');
         }
-        
+
         notification.user = user;
       }
+
+      // Push real-time notification via Socket.IO
+      this.notificationGateway.sendNotification(userId, {
+        id: notification.id,
+        type: notification.type,
+        title: notification.title,
+        message: notification.message,
+        data: notification.data,
+        action_url: notification.action_url,
+        created_at: notification.created_at,
+        is_read: notification.is_read,
+      });
 
       switch (type) {
         case NotificationType.EMAIL:
           await this.sendEmail(notification);
           break;
         case NotificationType.IN_APP:
-          // In-app handled via socket elsewhere or just DB record is enough
-          // No additional action needed
+          // In-app handled via socket above
           break;
         case NotificationType.PUSH:
           await this.sendPush(notification);
@@ -87,7 +101,7 @@ export class NotificationProcessor {
    */
   private async sendEmail(notification: Notification) {
     this.logger.log(`Sending email to ${notification.user.email}: ${notification.title}`);
-    
+
     // TODO: Implement email sending
     // Example:
     // await this.mailService.send({

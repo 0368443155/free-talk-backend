@@ -12,6 +12,7 @@ import { BookingSlot } from './entities/booking-slot.entity';
 import { User } from '../../users/user.entity';
 import { Meeting } from '../meeting/entities/meeting.entity';
 import { CreateBookingDto, CancelBookingDto } from './dto/create-booking.dto';
+import { RefundService } from './refund.service';
 
 /**
  * Booking Service
@@ -34,6 +35,7 @@ export class BookingService {
     private readonly userRepository: Repository<User>,
     @InjectDataSource()
     private readonly dataSource: DataSource,
+    private readonly refundService: RefundService,
   ) { }
 
   /**
@@ -121,78 +123,39 @@ export class BookingService {
 
   /**
    * Hủy booking và hoàn tiền
-   * Sử dụng transaction để đảm bảo tính nhất quán
+   * Sử dụng RefundService để xử lý logic hoàn tiền và ledger
    */
   async cancelBooking(
     bookingId: string,
     userId: string,
     dto: CancelBookingDto,
   ): Promise<Booking> {
-    return await this.dataSource.transaction(async (manager) => {
-      const booking = await manager.findOne(Booking, {
-        where: { id: bookingId },
-        relations: ['meeting', 'student', 'teacher'],
-      });
-
-      if (!booking) {
-        throw new NotFoundException('Booking not found');
-      }
-
-      // Kiểm tra quyền (chỉ student hoặc teacher mới hủy được)
-      if (booking.student_id !== userId && booking.teacher_id !== userId) {
-        throw new BadRequestException('You do not have permission to cancel this booking');
-      }
-
-      // Kiểm tra trạng thái
-      if (booking.status === BookingStatus.CANCELLED) {
-        throw new BadRequestException('Booking is already cancelled');
-      }
-
-      if (booking.status === BookingStatus.COMPLETED) {
-        throw new BadRequestException('Cannot cancel completed booking');
-      }
-
-      // Tính toán refund dựa trên cancellation policy
-      const refundAmount = this.calculateRefund(booking, userId === booking.teacher_id);
-
-      // Cập nhật booking
-      booking.status = BookingStatus.CANCELLED;
-      booking.cancelled_at = new Date();
-      booking.cancellation_reason = dto.cancellation_reason || 'User cancelled';
-      booking.cancelled_by = userId;
-      booking.credits_refunded = refundAmount;
-
-      await manager.save(Booking, booking);
-
-      // Hoàn credits - sử dụng transaction
-      if (refundAmount > 0) {
-        const student = await manager.findOne(User, {
-          where: { id: booking.student_id },
-        });
-        if (student) {
-          student.credit_balance = (student.credit_balance || 0) + refundAmount;
-          await manager.save(User, student);
-        }
-      }
-
-      // Cập nhật slot
-      const slot = await manager.findOne(BookingSlot, {
-        where: { booking_id: bookingId },
-      });
-
-      if (slot) {
-        slot.is_booked = false;
-        slot.booking = null;
-        slot.student_id = null;
-        await manager.save(BookingSlot, slot);
-      }
-
-      this.logger.log(
-        `✅ Booking cancelled: ${bookingId}, refund: ${refundAmount} credits (${userId === booking.teacher_id ? 'teacher' : 'student'} cancelled)`,
-      );
-
-      return booking;
+    const booking = await this.bookingRepository.findOne({
+      where: { id: bookingId },
     });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    // Kiểm tra quyền (chỉ student hoặc teacher mới hủy được)
+    if (booking.student_id !== userId && booking.teacher_id !== userId) {
+      throw new BadRequestException('You do not have permission to cancel this booking');
+    }
+
+    // Delegate to RefundService
+    await this.refundService.refundBooking(
+      bookingId,
+      userId,
+      dto.cancellation_reason || 'User cancelled'
+    );
+
+    // Return updated booking
+    const updatedBooking = await this.bookingRepository.findOne({ where: { id: bookingId } });
+    if (!updatedBooking) {
+      throw new NotFoundException('Booking not found after cancellation');
+    }
+    return updatedBooking;
   }
 
   /**

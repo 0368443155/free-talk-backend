@@ -21,14 +21,14 @@ export class MetricsService {
     private liveKitMetricsRepo: Repository<LiveKitMetric>,
     private connection: Connection, // Inject Connection để dùng QueryBuilder
     private readonly bandwidthRedisService: BandwidthRedisService, // Inject Redis service
-  ) {}
+  ) { }
 
   // Kỹ thuật 1: KHÔNG TỐT cho metrics
   // Dùng cho logic nghiệp vụ (ví dụ: cập nhật User Profile)
   async badSaveMethod(metricData: CreateMetricDto) {
     const metric = this.metricsRepo.create(metricData);
     // Chạy 1 SELECT (để kiểm tra) + 1 INSERT 
-    return this.metricsRepo.save(metric); 
+    return this.metricsRepo.save(metric);
   }
 
   // Kỹ thuật 2: TỐT HƠN cho 1 record metric mới
@@ -36,12 +36,12 @@ export class MetricsService {
   async goodInsertMethod(metricData: CreateMetricDto) {
     // Store in Redis first (for real-time access)
     await this.bandwidthRedisService.storeMetric(metricData);
-    
+
     // Then store in MySQL (for persistence)
     return this.metricsRepo.insert({
       ...metricData,
       timestamp: new Date()
-    }); 
+    });
   }
 
   // Kỹ thuật 3: TỐI ƯU cho ghi hàng loạt (bulk ingestion)
@@ -59,18 +59,18 @@ export class MetricsService {
     }));
 
     return this.connection.createQueryBuilder()
-     .insert()
-     .into(BandwidthMetric)
-     .values(dataWithTimestamp)
-     .execute();
+      .insert()
+      .into(BandwidthMetric)
+      .values(dataWithTimestamp)
+      .execute();
   }
 
   // Lấy dữ liệu đã tổng hợp theo giờ
   async getHourlyMetrics(hours: number = 24) {
     return this.connection.query(`
       SELECT * FROM metrics_hourly 
-      WHERE timestamp >= NOW() - INTERVAL ? HOUR
-      ORDER BY timestamp DESC
+      WHERE hour_start >= NOW() - INTERVAL ? HOUR
+      ORDER BY hour_start DESC
     `, [hours]);
   }
 

@@ -10,32 +10,34 @@ import { ConfigService } from '@nestjs/config';
 @Injectable()
 export class TasksService {
   private readonly logger = new Logger(TasksService.name);
-  
+
   constructor(
     private readonly httpService: HttpService,
     private readonly appService: AppService,
     private readonly connection: Connection,
     private readonly configService: ConfigService
-  ) {}
+  ) { }
 
   @Interval(3600000) // Chạy mỗi giờ
   async handleDataAggregation() {
     this.logger.log('Running hourly data aggregation task...');
-    
+
     // Kỹ thuật: Chạy một truy vấn SQL tổng hợp (aggregate query)
     // và lưu vào một bảng khác (ví dụ: 'metrics_hourly')
     try {
       await this.connection.query(`
-        INSERT INTO metrics_hourly (endpoint, avgResponseTime, totalInboundBytes, totalOutboundBytes, requestCount, maxActiveConnections, avgBandwidthUsage, timestamp)
+        INSERT INTO metrics_hourly (id, endpoint, method, protocol, hour_start, total_requests, total_inbound, total_outbound, avg_response_time, max_response_time)
         SELECT 
+          UUID(),
           endpoint, 
-          AVG(responseTimeMs) as avgResponseTime,
-          SUM(inboundBytes) as totalInboundBytes,
-          SUM(outboundBytes) as totalOutboundBytes,
-          COUNT(*) as requestCount,
-          MAX(activeConnections) as maxActiveConnections,
-          AVG(inboundBytes + outboundBytes) as avgBandwidthUsage,
-          NOW() as timestamp
+          'GET',
+          'http',
+          DATE_FORMAT(NOW(), '%Y-%m-%d %H:00:00'),
+          COUNT(*) as total_requests,
+          SUM(inboundBytes) as total_inbound,
+          SUM(outboundBytes) as total_outbound,
+          AVG(responseTimeMs) as avg_response_time,
+          MAX(responseTimeMs) as max_response_time
         FROM bandwidth_metrics
         WHERE timestamp >= NOW() - INTERVAL 1 HOUR
         GROUP BY endpoint
@@ -74,10 +76,10 @@ export class TasksService {
       `);
 
       const systemStats = realtimeMetrics[0];
-      
+
       if (systemStats) {
         this.logger.debug(`System metrics: ${JSON.stringify(systemStats)}`);
-        
+
         // Phát sự kiện qua Event Bus
         this.appService.addEvent('system-metrics', {
           totalBandwidth: systemStats.totalBandwidth || 0,
@@ -98,14 +100,14 @@ export class TasksService {
   @Cron('0 0 * * *') // Chạy mỗi ngày lúc 00:00
   async cleanOldMetrics() {
     this.logger.log('Cleaning old metrics...');
-    
+
     try {
       // Xóa metrics cũ hơn 7 ngày
       const result = await this.connection.query(`
         DELETE FROM bandwidth_metrics 
         WHERE timestamp < NOW() - INTERVAL 7 DAY
       `);
-      
+
       this.logger.log(`Cleaned ${result.affectedRows} old metric records`);
     } catch (e) {
       this.logger.error('Failed to clean old metrics', e.stack);

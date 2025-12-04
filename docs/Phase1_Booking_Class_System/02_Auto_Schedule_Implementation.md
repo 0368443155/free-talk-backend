@@ -62,24 +62,14 @@ export enum MeetingState {
 export class Meeting {
   // ... existing fields
   
-  @Column({
-    type: 'enum',
-    enum: MeetingState,
-    default: MeetingState.SCHEDULED
-  })
-  state: MeetingState;
+  @Column({ type: 'varchar', length: 50, default: 'scheduled' })
+  meeting_state: string; // scheduled, open, in_progress, closed, cancelled
   
   @Column({ type: 'timestamp', nullable: true })
-  opened_at: Date;
+  auto_opened_at: Date; // When meeting was auto-opened
   
   @Column({ type: 'timestamp', nullable: true })
-  closed_at: Date;
-  
-  @Column({ type: 'boolean', default: false })
-  auto_opened: boolean; // True nếu mở tự động
-  
-  @Column({ type: 'boolean', default: false })
-  auto_closed: boolean; // True nếu đóng tự động
+  auto_closed_at: Date; // When meeting was auto-closed
   
   @Column({ type: 'boolean', default: false })
   requires_manual_review: boolean; // True nếu cần admin review
@@ -92,38 +82,32 @@ export class Meeting {
 ### Migration
 
 ```typescript
-// File: src/database/migrations/XXXXXX-AddMeetingStateTracking.ts
+// File: src/database/migrations/XXXXXX-Phase1AutoScheduleFields.ts
 
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddMeetingStateTracking implements MigrationInterface {
+export class Phase1AutoScheduleFields implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TABLE meetings 
-      ADD COLUMN state VARCHAR(50) DEFAULT 'scheduled',
-      ADD COLUMN opened_at TIMESTAMP NULL,
-      ADD COLUMN closed_at TIMESTAMP NULL,
-      ADD COLUMN auto_opened BOOLEAN DEFAULT false,
-      ADD COLUMN auto_closed BOOLEAN DEFAULT false,
+      ADD COLUMN meeting_state VARCHAR(50) DEFAULT 'scheduled',
+      ADD COLUMN auto_opened_at TIMESTAMP NULL,
+      ADD COLUMN auto_closed_at TIMESTAMP NULL,
       ADD COLUMN requires_manual_review BOOLEAN DEFAULT false,
       ADD COLUMN review_reason VARCHAR(500) NULL
     `);
     
     await queryRunner.query(`
-      CREATE INDEX idx_meetings_state ON meetings(state);
-      CREATE INDEX idx_meetings_start_time ON meetings(start_time);
-      CREATE INDEX idx_meetings_end_time ON meetings(end_time);
+      CREATE INDEX idx_meetings_meeting_state ON meetings(meeting_state);
     `);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TABLE meetings 
-      DROP COLUMN state,
-      DROP COLUMN opened_at,
-      DROP COLUMN closed_at,
-      DROP COLUMN auto_opened,
-      DROP COLUMN auto_closed,
+      DROP COLUMN meeting_state,
+      DROP COLUMN auto_opened_at,
+      DROP COLUMN auto_closed_at,
       DROP COLUMN requires_manual_review,
       DROP COLUMN review_reason
     `);

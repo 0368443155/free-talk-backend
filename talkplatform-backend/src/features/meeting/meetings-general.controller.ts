@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Body,
   Param,
   UseGuards,
@@ -20,7 +21,7 @@ import { PaginationDto } from '../../core/common/dto/pagination.dto';
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class MeetingsGeneralController {
-  constructor(private readonly meetingsService: MeetingsService) {}
+  constructor(private readonly meetingsService: MeetingsService) { }
 
   @Post()
   @ApiOperation({ summary: 'Create a new public meeting' })
@@ -46,5 +47,16 @@ export class MeetingsGeneralController {
   @ApiResponse({ status: 404, description: 'Meeting not found' })
   async findOne(@Param('meetingId') meetingId: string, @Account() user: User) {
     return this.meetingsService.findOne(meetingId, user);
+  }
+
+  @Patch(':meetingId/cancel')
+  @ApiOperation({ summary: 'Cancel meeting' })
+  @ApiResponse({ status: 200, description: 'Meeting cancelled successfully' })
+  async cancel(
+    @Param('meetingId') meetingId: string,
+    @Body('reason') reason: string,
+    @Account() user: User,
+  ) {
+    return this.meetingsService.cancelMeeting(meetingId, user, reason);
   }
 }

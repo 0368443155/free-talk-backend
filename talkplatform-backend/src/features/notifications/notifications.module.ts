@@ -4,8 +4,9 @@ import { BullModule } from '@nestjs/bull';
 import { Notification } from './entities/notification.entity';
 import { NotificationService } from './notification.service';
 import { NotificationProcessor } from './notification.processor';
-import { NotificationsController } from './notifications.controller';
 import { User } from '../../users/user.entity';
+import { NotificationGateway } from './notification.gateway';
+import { AuthModule } from '../../auth/auth.module';
 
 @Module({
   imports: [
@@ -13,10 +14,9 @@ import { User } from '../../users/user.entity';
     BullModule.registerQueue({
       name: 'notifications',
     }),
+    AuthModule,
   ],
-  controllers: [NotificationsController],
-  providers: [NotificationService, NotificationProcessor],
-  exports: [NotificationService],
+  providers: [NotificationService, NotificationProcessor, NotificationGateway],
+  exports: [NotificationService, NotificationGateway],
 })
-export class NotificationsModule {}
-
+export class NotificationsModule { }

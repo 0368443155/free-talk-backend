@@ -25,7 +25,7 @@ export class MeetingSchedulerService {
     private meetingRepository: Repository<Meeting>,
     @InjectRepository(Booking)
     private bookingRepository: Repository<Booking>,
-  ) {}
+  ) { }
 
   /**
    * Auto-open meetings mỗi phút
@@ -115,7 +115,7 @@ export class MeetingSchedulerService {
           // Kiểm tra nếu đã qua end_time + grace period
           const endTime = new Date(lesson.scheduled_datetime);
           endTime.setMinutes(endTime.getMinutes() + (lesson.duration_minutes || 60));
-          
+
           if (endTime <= gracePeriod) {
             await this.closeMeeting(lesson.meeting, 'lesson', lesson.id);
           }
@@ -168,8 +168,8 @@ export class MeetingSchedulerService {
     await this.meetingRepository.update(meeting.id, {
       status: MeetingStatus.LIVE,
       started_at: now,
-      opened_at: now,
-      auto_opened: isAuto,
+      auto_opened_at: now,
+      meeting_state: 'open',
     });
 
     this.logger.log(`Meeting ${meeting.id} opened successfully (auto: ${isAuto})`);
@@ -191,8 +191,8 @@ export class MeetingSchedulerService {
     await this.meetingRepository.update(meeting.id, {
       status: MeetingStatus.ENDED,
       ended_at: now,
-      closed_at: now,
-      auto_closed: isAuto,
+      auto_closed_at: now,
+      meeting_state: 'closed',
     });
 
     // Update booking status nếu là booking

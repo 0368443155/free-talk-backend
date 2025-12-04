@@ -2,6 +2,7 @@ import { Module, ValidationPipe, ClassSerializerInterceptor, NestModule, Middlew
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { RedisModule } from '@nestjs-modules/ioredis';
+import { BullModule } from '@nestjs/bull';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import { AuthModule } from './auth/auth.module';
@@ -78,6 +79,18 @@ import { MeetingMetricsGateway } from './gateways/meeting-metrics.gateway';
             }),
         }),
 
+        BullModule.forRootAsync({
+            imports: [ConfigModule],
+            inject: [ConfigService],
+            useFactory: (configService: ConfigService) => ({
+                redis: {
+                    host: configService.get('REDIS_HOST'),
+                    port: configService.get('REDIS_PORT'),
+                    password: configService.get('REDIS_PASSWORD'),
+                },
+            }),
+        }),
+
         AuthModule,
         UsersModule,
         TeachersModule,
@@ -131,9 +144,9 @@ import { MeetingMetricsGateway } from './gateways/meeting-metrics.gateway';
     ],
 })
 export class AppModule implements NestModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer
-      .apply(MetricsMiddleware)
-      .forRoutes('*'); // Apply to all routes
-  }
+    configure(consumer: MiddlewareConsumer) {
+        consumer
+            .apply(MetricsMiddleware)
+            .forRoutes('*'); // Apply to all routes
+    }
 }

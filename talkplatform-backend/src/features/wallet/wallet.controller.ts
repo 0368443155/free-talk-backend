@@ -14,7 +14,7 @@ import { WalletService } from './wallet.service';
 @Controller('wallet')
 @UseGuards(JwtAuthGuard)
 export class WalletController {
-  constructor(private readonly walletService: WalletService) {}
+  constructor(private readonly walletService: WalletService) { }
 
   /**
    * Lấy số dư hiện tại
@@ -52,6 +52,23 @@ export class WalletController {
   async getAccountBalance(@Param('accountId') accountId: string) {
     const balance = await this.walletService.getAccountBalance(accountId);
     return { account_id: accountId, balance };
+  }
+
+  /**
+   * Nạp tiền (Dev/Admin only)
+   * POST /api/v1/wallet/deposit
+   */
+  @Post('deposit')
+  async deposit(@Request() req, @Body() body: { amount: number; description?: string }) {
+    // TODO: Add admin check or dev environment check
+    // For now, allow any authenticated user to deposit (for testing Phase 1)
+
+    return await this.walletService.addCredits(
+      req.user.id,
+      body.amount,
+      body.description || 'Manual deposit',
+      'manual_deposit',
+    );
   }
 }
 
