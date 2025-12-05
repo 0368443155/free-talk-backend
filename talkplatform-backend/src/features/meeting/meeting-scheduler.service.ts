@@ -5,6 +5,8 @@ import { Repository, Between, LessThan } from 'typeorm';
 import { Lesson, LessonStatus } from '../courses/entities/lesson.entity';
 import { Meeting, MeetingStatus } from './entities/meeting.entity';
 import { Booking, BookingStatus } from '../booking/entities/booking.entity';
+import { NotificationService } from '../notifications/notification.service';
+import { NotificationType } from '../notifications/entities/notification.entity';
 
 /**
  * Meeting Scheduler Service
@@ -13,6 +15,7 @@ import { Booking, BookingStatus } from '../booking/entities/booking.entity';
  * - Auto mở phòng đúng giờ start_time (cho phép join sớm 10 phút)
  * - Auto đóng phòng sau end_time (grace period 5 phút)
  * - Xử lý cả lessons và bookings
+ * - Gửi notifications cho host
  */
 @Injectable()
 export class MeetingSchedulerService {
@@ -25,6 +28,7 @@ export class MeetingSchedulerService {
     private meetingRepository: Repository<Meeting>,
     @InjectRepository(Booking)
     private bookingRepository: Repository<Booking>,
+    private readonly notificationService: NotificationService,
   ) { }
 
   /**
@@ -80,6 +84,19 @@ export class MeetingSchedulerService {
         if (scheduledAt >= gracePeriod && scheduledAt <= now) {
           await this.openMeeting(booking.meeting, 'booking');
         }
+      }
+
+      // 3. Xử lý standalone meetings (không có lesson hoặc booking)
+      const standaloneMeetings = await this.meetingRepository
+        .createQueryBuilder('meeting')
+        .where('meeting.status = :status', { status: MeetingStatus.SCHEDULED })
+        .andWhere('meeting.scheduled_at IS NOT NULL')
+        .andWhere('meeting.scheduled_at >= :gracePeriod', { gracePeriod })
+        .andWhere('meeting.scheduled_at <= :now', { now })
+        .getMany();
+
+      for (const meeting of standaloneMeetings) {
+        await this.openMeeting(meeting, 'manual');
       }
 
       this.logger.log('Meeting open check completed');
@@ -146,6 +163,24 @@ export class MeetingSchedulerService {
         }
       }
 
+      // 3. Xử lý standalone meetings (không có lesson hoặc booking)
+      // Đóng meetings đã LIVE và đã qua 60 phút + 5 phút grace period
+      const standaloneMeetings = await this.meetingRepository
+        .createQueryBuilder('meeting')
+        .where('meeting.status = :status', { status: MeetingStatus.LIVE })
+        .andWhere('meeting.scheduled_at IS NOT NULL')
+        .getMany();
+
+      for (const meeting of standaloneMeetings) {
+        const scheduledAt = new Date(meeting.scheduled_at);
+        const endTime = new Date(scheduledAt.getTime() + 60 * 60 * 1000); // 60 phút
+
+        // Nếu đã qua end_time + grace period
+        if (endTime <= gracePeriod) {
+          await this.closeMeeting(meeting, 'manual');
+        }
+      }
+
       this.logger.log('Meeting close check completed');
     } catch (error) {
       this.logger.error('Error checking meetings to close:', error);
@@ -173,6 +208,27 @@ export class MeetingSchedulerService {
     });
 
     this.logger.log(`Meeting ${meeting.id} opened successfully (auto: ${isAuto})`);
+
+    // Send notification to host
+    const meetingWithHost = await this.meetingRepository.findOne({
+      where: { id: meeting.id },
+      relations: ['host'],
+    });
+
+    if (meetingWithHost?.host) {
+      try {
+        await this.notificationService.send({
+          userId: meetingWithHost.host.id,
+          type: NotificationType.IN_APP,
+          title: 'Class Started',
+          message: `Your class "${meeting.title}" has started automatically.`,
+          data: { meetingId: meeting.id },
+        });
+        this.logger.log(`Notification sent to host ${meetingWithHost.host.id} for meeting ${meeting.id}`);
+      } catch (error) {
+        this.logger.error(`Failed to send notification for meeting ${meeting.id}:`, error);
+      }
+    }
   }
 
   /**
@@ -211,6 +267,27 @@ export class MeetingSchedulerService {
     }
 
     this.logger.log(`Meeting ${meeting.id} closed successfully (auto: ${isAuto})`);
+
+    // Send notification to host
+    const meetingWithHost = await this.meetingRepository.findOne({
+      where: { id: meeting.id },
+      relations: ['host'],
+    });
+
+    if (meetingWithHost?.host) {
+      try {
+        await this.notificationService.send({
+          userId: meetingWithHost.host.id,
+          type: NotificationType.IN_APP,
+          title: 'Class Ended',
+          message: `Your class "${meeting.title}" has ended automatically.`,
+          data: { meetingId: meeting.id },
+        });
+        this.logger.log(`Notification sent to host ${meetingWithHost.host.id} for meeting ${meeting.id}`);
+      } catch (error) {
+        this.logger.error(`Failed to send notification for meeting ${meeting.id}:`, error);
+      }
+    }
   }
 
   /**

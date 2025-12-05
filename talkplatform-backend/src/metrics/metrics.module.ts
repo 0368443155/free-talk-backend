@@ -3,7 +3,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { HttpModule } from '@nestjs/axios';
 import { RedisModule } from '@nestjs-modules/ioredis';
 import { BullModule } from '@nestjs/bull';
-import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MetricsService } from './metrics.service';
 import { MetricsController } from './metrics.controller';
@@ -21,15 +20,14 @@ import { LiveKitMetric } from './livekit-metric.entity';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      BandwidthMetric, 
-      MetricsHourly, 
+      BandwidthMetric,
+      MetricsHourly,
       MetricsDaily,
       BandwidthAlert,
       LiveKitMetric
     ]),
     RedisModule, // Add Redis for bandwidth monitoring
     HttpModule,
-    ScheduleModule.forRoot(),
     BullModule.registerQueueAsync({
       name: 'metrics',
       imports: [ConfigModule],
@@ -58,16 +56,16 @@ import { LiveKitMetric } from './livekit-metric.entity';
   ],
   controllers: [MetricsController, MeetingMetricsController],
   providers: [
-    MetricsService, 
+    MetricsService,
     BandwidthRedisService,
     MetricsCollector,
     MetricsProcessor,
     MetricsScheduler,
   ],
   exports: [
-    MetricsService, 
+    MetricsService,
     BandwidthRedisService,
     MetricsCollector, // Export for middleware
   ]
 })
-export class MetricsModule {}
+export class MetricsModule { }

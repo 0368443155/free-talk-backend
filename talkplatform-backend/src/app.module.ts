@@ -25,6 +25,7 @@ import { DebugPublicController } from './debug/debug-public.controller';
 import { TypeOrmModule as DebugTypeOrmModule } from '@nestjs/typeorm';
 import { MetricsMiddleware } from './common/middleware/metrics.middleware';
 import { MeetingMetricsGateway } from './gateways/meeting-metrics.gateway';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
     imports: [
@@ -90,6 +91,9 @@ import { MeetingMetricsGateway } from './gateways/meeting-metrics.gateway';
                 },
             }),
         }),
+
+        // Schedule Module - ONLY ONCE for entire app
+        ScheduleModule.forRoot(),
 
         AuthModule,
         UsersModule,

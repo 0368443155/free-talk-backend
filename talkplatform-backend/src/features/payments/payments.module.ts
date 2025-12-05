@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ScheduleModule } from '@nestjs/schedule';
 import { PaymentReleaseService } from './payment-release.service';
 import { WithdrawalService } from './withdrawal.service';
 import { RevenueService } from './revenue.service';
@@ -25,11 +24,10 @@ import { User } from '../../users/user.entity';
       AttendanceRecord,
       User,
     ]),
-    ScheduleModule.forRoot(),
   ],
   controllers: [WithdrawalController, RevenueController],
   providers: [PaymentReleaseService, WithdrawalService, RevenueService],
   exports: [PaymentReleaseService, WithdrawalService, RevenueService],
 })
-export class PaymentsModule {}
+export class PaymentsModule { }
 

@@ -39,6 +39,44 @@ import { CourseTemplate } from './src/features/courses/entities/course-template.
 import { TemplateRating } from './src/features/courses/entities/template-rating.entity';
 import { TemplateUsage } from './src/features/courses/entities/template-usage.entity';
 
+// ===== PHASE 1 CORE ENTITIES (CRITICAL!) =====
+import { Booking } from './src/features/booking/entities/booking.entity';
+import { BookingSlot } from './src/features/booking/entities/booking-slot.entity';
+import { Schedule } from './src/features/schedules/entities/schedule.entity';
+import { Notification } from './src/features/notifications/entities/notification.entity';
+
+// ===== WALLET ENTITIES (for Refund) =====
+import { LedgerEntry } from './src/features/wallet/entities/ledger-entry.entity';
+import { LedgerTransaction } from './src/features/wallet/entities/ledger-transaction.entity';
+
+// ===== CREDITS ENTITIES =====
+import { CreditPackage } from './src/features/credits/entities/credit-package.entity';
+import { CreditTransaction } from './src/features/credits/entities/credit-transaction.entity';
+
+// ===== ROOM FEATURES =====
+import { Recording } from './src/features/room-features/recording/entities/recording.entity';
+import { AnalyticsEvent } from './src/features/room-features/analytics/entities/analytics-event.entity';
+import { EngagementMetric } from './src/features/room-features/analytics/entities/engagement-metric.entity';
+
+// ===== LIVEKIT ENTITIES =====
+import { WebhookEvent } from './src/livekit/entities/webhook-event.entity';
+import { LiveKitEventDetail } from './src/livekit/entities/livekit-event-detail.entity';
+
+// ===== MARKETPLACE ENTITIES =====
+import { Material } from './src/features/marketplace/entities/material.entity';
+import { MaterialCategory } from './src/features/marketplace/entities/material-category.entity';
+import { MaterialPurchase } from './src/features/marketplace/entities/material-purchase.entity';
+import { MaterialReview } from './src/features/marketplace/entities/material-review.entity';
+
+// ===== GLOBAL CHAT =====
+import { GlobalChatMessage } from './src/features/global-chat/entities/global-chat-message.entity';
+
+// ===== TEACHER VERIFICATION =====
+import { TeacherVerification } from './src/features/teachers/entities/teacher-verification.entity';
+import { TeacherVerificationDegreeCertificate } from './src/features/teachers/entities/teacher-verification-degree-certificate.entity';
+import { TeacherVerificationTeachingCertificate } from './src/features/teachers/entities/teacher-verification-teaching-certificate.entity';
+import { TeacherVerificationReference } from './src/features/teachers/entities/teacher-verification-reference.entity';
+
 dotenv.config(); // Nạp .env
 
 export const dataSourceOptions: DataSourceOptions = {
@@ -54,19 +92,28 @@ export const dataSourceOptions: DataSourceOptions = {
   // *** SỬA LẠI 2 DÒNG SAU ĐÂY (SỬ DỤNG path.join) ***
   //entities: [path.join(__dirname, 'src', '**', '*.entity{.ts,.js}')], // Tìm Entities
   entities: [
+    // ===== CORE ENTITIES =====
     User,
     TeacherProfile,
+
+    // ===== MEETING ENTITIES =====
     Meeting,
     MeetingParticipant,
     MeetingChatMessage,
     MeetingSettings,
     MeetingTag,
     BlockedParticipant,
+
+    // ===== CLASSROOM ENTITIES =====
     Classroom,
     ClassroomMember,
+
+    // ===== METRICS ENTITIES =====
     BandwidthMetric,
     MetricsHourly,
     LiveKitMetric,
+
+    // ===== COURSE ENTITIES =====
     Course,
     CourseSession,
     SessionMaterial,
@@ -76,15 +123,57 @@ export const dataSourceOptions: DataSourceOptions = {
     SessionPurchase,
     PaymentHold,
     AttendanceRecord,
-    Transaction,
-    Withdrawal,
-    TeacherReview,
-    TeacherAvailability,
-    FeatureFlag,
     Review,
     CourseTemplate,
     TemplateRating,
     TemplateUsage,
+
+    // ===== PAYMENT ENTITIES =====
+    Transaction,
+    Withdrawal,
+
+    // ===== TEACHER ENTITIES =====
+    TeacherReview,
+    TeacherAvailability,
+    TeacherVerification,
+    TeacherVerificationDegreeCertificate,
+    TeacherVerificationTeachingCertificate,
+    TeacherVerificationReference,
+
+    // ===== FEATURE FLAGS =====
+    FeatureFlag,
+
+    // ===== PHASE 1 CORE ENTITIES (CRITICAL!) =====
+    Booking,
+    BookingSlot,
+    Schedule,
+    Notification,
+
+    // ===== WALLET ENTITIES (for Refund) =====
+    LedgerEntry,
+    LedgerTransaction,
+
+    // ===== CREDITS ENTITIES =====
+    CreditPackage,
+    CreditTransaction,
+
+    // ===== ROOM FEATURES =====
+    Recording,
+    AnalyticsEvent,
+    EngagementMetric,
+
+    // ===== LIVEKIT ENTITIES =====
+    WebhookEvent,
+    LiveKitEventDetail,
+
+    // ===== MARKETPLACE ENTITIES =====
+    Material,
+    MaterialCategory,
+    MaterialPurchase,
+    MaterialReview,
+
+    // ===== GLOBAL CHAT =====
+    GlobalChatMessage,
   ],
   migrations: [
     path.join(__dirname, 'src', 'migrations', '**', '*{.ts,.js}'),

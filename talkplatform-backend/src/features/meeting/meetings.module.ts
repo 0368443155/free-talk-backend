@@ -1,6 +1,5 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ScheduleModule } from '@nestjs/schedule';
 // import { MeetingsController } from './meetings.controller'; // REMOVED: Duplicate with ClassroomsController
 import { PublicMeetingsController } from './public-meetings.controller';
 import { MeetingsGeneralController } from './meetings-general.controller';
@@ -23,7 +22,6 @@ import { LiveKitModule } from '../../livekit/livekit.module';
 import { CoursesModule } from '../courses/courses.module';
 import { FeatureFlagModule } from '../../core/feature-flags/feature-flag.module';
 
-import { ScheduleAutomationService } from './services/schedule-automation.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { BookingModule } from '../booking/booking.module';
 
@@ -40,7 +38,6 @@ import { BookingModule } from '../booking/booking.module';
       Booking,
       User,
     ]),
-    ScheduleModule.forRoot(),
     forwardRef(() => LiveKitModule),
     forwardRef(() => CoursesModule),
     FeatureFlagModule,
@@ -54,9 +51,8 @@ import { BookingModule } from '../booking/booking.module';
     EnhancedMeetingsGateway,
     WaitingRoomService,
     MeetingSchedulerService,
-    ScheduleAutomationService
   ],
-  exports: [MeetingsService, WaitingRoomService, LiveKitModule, ScheduleAutomationService],
+  exports: [MeetingsService, WaitingRoomService, LiveKitModule],
 })
 export class MeetingsModule { }
 
