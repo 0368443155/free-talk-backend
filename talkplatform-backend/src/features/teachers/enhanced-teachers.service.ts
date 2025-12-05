@@ -24,7 +24,7 @@ export class EnhancedTeachersService {
     private userRepository: Repository<User>,
     @InjectRepository(Meeting)
     private meetingRepository: Repository<Meeting>
-  ) {}
+  ) { }
 
   // Teacher Profile Management
   async createTeacherProfile(dto: CreateTeacherProfileDto, user: User) {
@@ -113,7 +113,7 @@ export class EnhancedTeachersService {
   async getPublicTeacherProfile(teacherId: string) {
     const profile = await this.teacherProfileRepository.findOne({
       where: { user_id: teacherId, status: TeacherStatus.APPROVED },
-      relations: ['user', 'reviews']
+      relations: ['user']
     });
 
     if (!profile) {
@@ -183,12 +183,12 @@ export class EnhancedTeachersService {
 
     // Apply filters
     if (filters.language) {
-      queryBuilder.andWhere('JSON_CONTAINS(profile.languages_taught, :language)', 
+      queryBuilder.andWhere('JSON_CONTAINS(profile.languages_taught, :language)',
         { language: JSON.stringify(filters.language) });
     }
 
     if (filters.specialty) {
-      queryBuilder.andWhere('JSON_CONTAINS(profile.specialties, :specialty)', 
+      queryBuilder.andWhere('JSON_CONTAINS(profile.specialties, :specialty)',
         { specialty: JSON.stringify(filters.specialty) });
     }
 
@@ -207,7 +207,7 @@ export class EnhancedTeachersService {
         'expert': [5, 50]
       };
       const [min, max] = experienceMap[filters.experience] || [0, 50];
-      queryBuilder.andWhere('profile.years_experience >= :minExp AND profile.years_experience <= :maxExp', 
+      queryBuilder.andWhere('profile.years_experience >= :minExp AND profile.years_experience <= :maxExp',
         { minExp: min, maxExp: max });
     }
 
@@ -227,7 +227,7 @@ export class EnhancedTeachersService {
         break;
       default:
         queryBuilder.orderBy('profile.average_rating', 'DESC')
-                  .addOrderBy('profile.total_students', 'DESC');
+          .addOrderBy('profile.total_students', 'DESC');
     }
 
     const [teachers, total] = await queryBuilder
@@ -288,7 +288,7 @@ export class EnhancedTeachersService {
       .andWhere('profile.total_reviews >= :minReviews', { minReviews: 10 });
 
     if (language) {
-      queryBuilder.andWhere('JSON_CONTAINS(profile.languages_taught, :language)', 
+      queryBuilder.andWhere('JSON_CONTAINS(profile.languages_taught, :language)',
         { language: JSON.stringify(language) });
     }
 
@@ -530,7 +530,7 @@ export class EnhancedTeachersService {
   }
 
   private async getPublicTeacherStats(teacherId: string) {
-    const profile = await this.teacherProfileRepository.findOne({ where: { id: teacherId } });
+    const profile = await this.teacherProfileRepository.findOne({ where: { user_id: teacherId } });
     return {
       total_students: profile?.total_students || 0,
       total_hours: profile?.total_hours_taught || 0,

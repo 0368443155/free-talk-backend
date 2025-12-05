@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 import { TeacherProfile } from './teacher-profile.entity';
 import { User } from '../../../users/user.entity';
 import { Meeting } from '../../meeting/entities/meeting.entity';
@@ -11,18 +11,21 @@ export class TeacherReview {
   id: string;
 
   @ManyToOne(() => TeacherProfile, { nullable: false })
+  @JoinColumn({ name: 'teacher_id' })
   teacher: TeacherProfile;
 
   @Column({ type: 'uuid' })
   teacher_id: string;
 
   @ManyToOne(() => User, { nullable: false })
+  @JoinColumn({ name: 'student_id' })
   student: User;
 
   @Column({ type: 'uuid' })
   student_id: string;
 
   @ManyToOne(() => Meeting, { nullable: true })
+  @JoinColumn({ name: 'meeting_id' })
   meeting: Meeting;
 
   @Column({ type: 'uuid', nullable: true })

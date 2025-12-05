@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { EnhancedTeachersController } from './enhanced-teachers.controller';
+import { TeachersController } from './teachers.controller';
 import { EnhancedTeachersService } from './enhanced-teachers.service';
 import { TeacherProfile } from './entities/teacher-profile.entity';
 import { TeacherReview } from './entities/teacher-review.entity';
@@ -12,14 +13,14 @@ import { Meeting } from '../meeting/entities/meeting.entity';
   imports: [
     TypeOrmModule.forFeature([
       TeacherProfile,
-      TeacherReview, 
+      TeacherReview,
       TeacherAvailability,
       User,
       Meeting
     ])
   ],
-  controllers: [EnhancedTeachersController],
+  controllers: [EnhancedTeachersController, TeachersController],
   providers: [EnhancedTeachersService],
   exports: [EnhancedTeachersService]
 })
-export class EnhancedTeachersModule {}
+export class EnhancedTeachersModule { }
