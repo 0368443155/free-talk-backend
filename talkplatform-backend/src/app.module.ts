@@ -19,6 +19,7 @@ import { TasksModule } from './tasks/tasks.module';
 import { LiveKitModule } from './livekit/livekit.module';
 import { MarketplaceModule } from './features/marketplace/marketplace.module';
 import { CoursesModule } from './features/courses/courses.module';
+import { AffiliateModule } from './features/affiliate/affiliate.module';
 import { APP_PIPE, APP_INTERCEPTOR, Reflector } from '@nestjs/core';
 import { DebugController } from './debug/debug.controller';
 import { DebugPublicController } from './debug/debug-public.controller';
@@ -107,6 +108,7 @@ import { ScheduleModule } from '@nestjs/schedule';
         LiveKitModule,
         MarketplaceModule,
         CoursesModule, // ✅ Added Courses Module
+        AffiliateModule, // ✅ Added Affiliate Module
 
         require('./features/livekit-rooms/livekit-rooms.module').LiveKitRoomsModule,
         require('./features/credits/credits.module').CreditsModule,

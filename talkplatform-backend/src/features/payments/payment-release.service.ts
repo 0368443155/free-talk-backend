@@ -136,8 +136,8 @@ export class PaymentReleaseService {
       });
 
       // Commission: 30% if referred, 0% otherwise
-      // Note: User entity has 'refferrer_id' field (with 2 'r')
-      const commissionRate = teacher?.refferrer_id ? 0.3 : 0;
+      // Note: User entity has 'referrer_id' field
+      const commissionRate = teacher?.referrer_id ? 0.3 : 0;
       const platformFee = hold.amount * commissionRate;
       const teacherAmount = hold.amount - platformFee;
 

@@ -48,7 +48,7 @@ export class UsersService {
             password, //sẽ được hash
             role: UserRole.STUDENT, //role mặc định
             affiliate_code: affiliateCode,
-            referrer_id: referrer ? referrer.id : null,
+            referrer_id: referrer ? referrer.id : undefined,
         });
 
         //dùng @BeforeInsert tự động hash Password

@@ -275,7 +275,14 @@ export class CreditsService {
   // Process meeting payment and revenue share
   async processClassPayment(meeting: Meeting, student: User) {
     if (meeting.price_credits === 0) {
-      return { success: true, amount: 0 };
+      // Return consistent structure for free classes (all zeros)
+      return {
+        success: true,
+        amount_paid: 0,
+        teacher_earning: 0,
+        platform_fee: 0,
+        revenue_share: '0% platform / 0% teacher'
+      };
     }
 
     if (student.credit_balance < meeting.price_credits) {
