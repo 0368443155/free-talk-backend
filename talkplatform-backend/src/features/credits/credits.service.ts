@@ -283,11 +283,12 @@ export class CreditsService {
     }
 
     // Determine revenue share based on student source
+    // Platform fee: 10% for affiliate (teacher referral), 30% for organic (platform source)
     const isAffiliateStudent = await this.isAffiliateStudent(student, meeting.host);
-    const platformPercentage = isAffiliateStudent ? 30 : 70;
-    const teacherPercentage = 100 - platformPercentage;
+    const platformFeePercentage = isAffiliateStudent ? 10 : 30;
+    const teacherPercentage = 100 - platformFeePercentage;
 
-    const platformFee = (meeting.price_credits * platformPercentage) / 100;
+    const platformFee = (meeting.price_credits * platformFeePercentage) / 100;
     const teacherEarning = meeting.price_credits - platformFee;
 
     // Student payment transaction
@@ -303,7 +304,7 @@ export class CreditsService {
       teacher: meeting.host,
       teacher_id: meeting.host.id,
       affiliate_code: meeting.affiliate_code,
-      platform_fee_percentage: platformPercentage,
+      platform_fee_percentage: platformFeePercentage,
       platform_fee_amount: platformFee,
       teacher_amount: teacherEarning,
       balance_before: student.credit_balance,
@@ -323,7 +324,7 @@ export class CreditsService {
       meeting,
       meeting_id: meeting.id,
       affiliate_code: meeting.affiliate_code,
-      platform_fee_percentage: platformPercentage,
+      platform_fee_percentage: platformFeePercentage,
       platform_fee_amount: platformFee,
       balance_before: meeting.host.credit_balance,
       balance_after: meeting.host.credit_balance + teacherEarning,
@@ -350,13 +351,13 @@ export class CreditsService {
       amount_paid: meeting.price_credits,
       teacher_earning: teacherEarning,
       platform_fee: platformFee,
-      revenue_share: `${platformPercentage}% platform / ${teacherPercentage}% teacher`
+      revenue_share: `${platformFeePercentage}% platform / ${teacherPercentage}% teacher`
     };
   }
 
   // Check if student is from teacher's affiliate program
   private async isAffiliateStudent(student: User, teacher: User): Promise<boolean> {
-    return student.refferrer_id === teacher.id || 
+    return student.referrer_id === teacher.id || 
            (student.affiliate_code && student.affiliate_code === teacher.affiliate_code) || false;
   }
 

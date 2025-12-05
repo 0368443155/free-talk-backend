@@ -138,3 +138,4 @@ checkAndRunMigrations()
     process.exit(1);
   });
 
+

@@ -11,10 +11,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Eye, EyeOff, UserPlus } from "lucide-react";
 import { registerApi } from "@/api/user.rest";
 import { useToast } from "@/components/ui/use-toast";
+import { useReferral } from "@/hooks/useReferral";
 
 export default function RegisterPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { getReferralCode } = useReferral();
 
   const [formData, setFormData] = useState({
     email: "",
@@ -79,10 +81,14 @@ export default function RegisterPage() {
     setError("");
 
     try {
+      // Get referral code from hook (if exists)
+      const referralCode = getReferralCode();
+      
       await registerApi({
         email: formData.email.trim().toLowerCase(),
         username: formData.username.trim(),
         password: formData.password,
+        referralCode: referralCode || undefined, // Include referral code if exists
       });
 
       toast({

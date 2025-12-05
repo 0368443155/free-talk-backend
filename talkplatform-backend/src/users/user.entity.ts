@@ -6,6 +6,8 @@ import {
     UpdateDateColumn,
     OneToMany,
     OneToOne,
+    ManyToOne,
+    JoinColumn,
     BeforeInsert,
     Index,
 } from 'typeorm';
@@ -65,8 +67,9 @@ export class User {
     @Column({ type: 'char', length: 20, nullable: true, unique: true })
     affiliate_code: string;
 
-    @Column({ type: 'char', length: 36, nullable: true }) //id nguoi gioi thieu
-    refferrer_id: string;
+    @Column({ type: 'char', length: 36, nullable: true })
+    @Index('IDX_USERS_REFERRER_ID')
+    referrer_id: string;
 
     @CreateDateColumn({ type: 'timestamp', precision: 6, default: () => 'CURRENT_TIMESTAMP(6)' })
     created_at: Date;
@@ -81,6 +84,14 @@ export class User {
     // 3. THÊM CODE DƯỚI ĐÂY
     @OneToMany(() => MeetingParticipant, (participant) => participant.user)
     participants: MeetingParticipant[];
+
+    // Self-referencing relation for referrer
+    @ManyToOne(() => User, { nullable: true })
+    @JoinColumn({ name: 'referrer_id' })
+    referrer: User;
+
+    @OneToMany(() => User, (user) => user.referrer)
+    referred_users: User[];
 
     //hook hash mật khẩu - chỉ hash nếu có password (OAuth users không có password)
     @BeforeInsert()

@@ -63,6 +63,14 @@ export enum MeetingState {
   CANCELLED = 'cancelled',
 }
 
+export enum PaymentStatus {
+  PENDING = 'pending',
+  PROCESSING = 'processing',
+  COMPLETED = 'completed',
+  FAILED = 'failed',
+  PARTIAL = 'partial',
+}
+
 @Entity('meetings')
 @Index(['lesson_id'])
 @Index(['course_id'])
@@ -199,6 +207,24 @@ export class Meeting {
     default: PricingType.FREE,
   })
   pricing_type: PricingType;
+
+  /**
+   * Phase 2: Payment Status Tracking
+   * Tracks payment processing status for revenue sharing
+   */
+  @Column({
+    type: 'enum',
+    enum: PaymentStatus,
+    default: PaymentStatus.PENDING,
+    nullable: true,
+  })
+  payment_status: PaymentStatus;
+
+  @Column({ type: 'timestamp', nullable: true })
+  payment_processed_at: Date;
+
+  @Column({ type: 'json', nullable: true })
+  payment_metadata: any;
 
   @Column({ type: 'varchar', length: 100, nullable: true })
   region: string;

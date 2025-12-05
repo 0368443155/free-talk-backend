@@ -1,6 +1,6 @@
 // // src/users/users.service.ts
 
-import { ConflictException, Injectable, InternalServerErrorException } from '@nestjs/common';
+import { ConflictException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User, UserRole } from './user.entity';
@@ -9,6 +9,8 @@ import { CreateStudentDto } from '../auth/dto/create-student.dto';
 
 @Injectable()
 export class UsersService {
+    private readonly logger = new Logger(UsersService.name);
+
     constructor(
         @InjectRepository(User)
         private usersRepository: Repository<User>,
@@ -16,7 +18,7 @@ export class UsersService {
 
     // 1. create new student
     async createStudent(createStudentDto: CreateStudentDto): Promise<User> {
-        const { email, username, password } = createStudentDto;
+        const { email, username, password, referralCode } = createStudentDto;
         
         //check existed email
         const existingUser = await this.findByEmail(email);
@@ -24,11 +26,29 @@ export class UsersService {
             throw new ConflictException('Email already exists');
         }
 
+        // Handle referral code (affiliate tracking)
+        let referrer: User | null = null;
+        if (referralCode) {
+            referrer = await this.usersRepository.findOne({
+                where: { affiliate_code: referralCode }
+            });
+            
+            // Optional: Log warning if invalid code, but don't block registration
+            if (!referrer) {
+                this.logger.warn(`Invalid affiliate code used during registration: ${referralCode}`);
+            }
+        }
+
+        // Generate affiliate code for new user
+        const affiliateCode = await this.generateUniqueAffiliateCode(username);
+
         const user = this.usersRepository.create({
             email,
             username,
             password, //sẽ được hash
-            role: UserRole.STUDENT, //role mặcđịnh
+            role: UserRole.STUDENT, //role mặc định
+            affiliate_code: affiliateCode,
+            referrer_id: referrer ? referrer.id : null,
         });
 
         //dùng @BeforeInsert tự động hash Password
@@ -46,6 +66,40 @@ export class UsersService {
             console.error("Error saving user:", error); // Log lỗi chi tiết
             throw new InternalServerErrorException('Error registering user'); // Lỗi không xác định
         }
+    }
+
+    // Helper to generate unique affiliate code
+    private async generateUniqueAffiliateCode(username: string): Promise<string> {
+        // Remove special chars, take first 5 chars, uppercase + random 3 numbers
+        const prefix = username.replace(/[^a-zA-Z0-9]/g, '').substring(0, 5).toUpperCase();
+        let code: string;
+        let isUnique = false;
+        let attempts = 0;
+        const maxAttempts = 10;
+
+        // Keep generating until we get a unique code
+        while (!isUnique && attempts < maxAttempts) {
+            const suffix = Math.floor(100 + Math.random() * 900); // 3 digit random (100-999)
+            code = `${prefix}${suffix}`;
+            
+            const existing = await this.usersRepository.findOne({
+                where: { affiliate_code: code }
+            });
+            
+            if (!existing) {
+                isUnique = true;
+            } else {
+                attempts++;
+            }
+        }
+
+        if (!isUnique) {
+            // Fallback: use timestamp if can't generate unique code
+            const timestamp = Date.now().toString().slice(-6);
+            code = `${prefix}${timestamp}`;
+        }
+
+        return code!;
     }
 
     // 2. Dùng khi đăng nhập và validate (AuthService)
