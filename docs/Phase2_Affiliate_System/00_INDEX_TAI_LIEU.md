@@ -48,6 +48,15 @@
 | `06_Testing_Guide.md` | Hướng dẫn testing (manual) | ✅ Ready |
 | `12_MIGRATION_GUIDE_DETAILED.md` | **MỚI** - Hướng dẫn migration chi tiết | ✅ Ready |
 | `13_UNIT_TEST_REVENUE_SHARING.md` | **MỚI** - Unit test specification | ✅ Ready |
+
+### 5. TESTING DOCUMENTATION ⭐ NEW
+
+| File | Mô tả | Status |
+|------|-------|--------|
+| `25_MANUAL_TESTING_GUIDE_CHI_TIET.md` | ⭐ **Hướng dẫn test chi tiết từng bước** | ✅ Complete |
+| `26_TEST_CHECKLIST_NHANH.md` | Checklist nhanh để track tiến độ test | ✅ Complete |
+| `27_TEST_SCRIPTS_SQL.md` | SQL queries để verify test results | ✅ Complete |
+| `28_TESTING_INDEX.md` | Index tất cả tài liệu testing | ✅ Complete |
 | `15_ACTION_PLAN_CHI_TIET.md` | **MỚI** - Action plan chi tiết | ✅ Ready |
 
 ---
@@ -241,9 +250,13 @@
 
 ### QA / Tester:
 
-1. `06_Testing_Guide.md` - Test cases
-2. `13_UNIT_TEST_REVENUE_SHARING.md` - Unit test spec
-3. `09_CRITICAL_ISSUES_AND_FIXES.md` - Know what to test
+1. `28_TESTING_INDEX.md` - ⭐ **BẮT ĐẦU TỪ ĐÂY** - Index tất cả testing docs
+2. `25_MANUAL_TESTING_GUIDE_CHI_TIET.md` - Hướng dẫn test chi tiết từng bước
+3. `26_TEST_CHECKLIST_NHANH.md` - Checklist nhanh để track tiến độ
+4. `27_TEST_SCRIPTS_SQL.md` - SQL queries để verify results
+5. `06_Testing_Guide.md` - Test cases (legacy)
+6. `13_UNIT_TEST_REVENUE_SHARING.md` - Unit test spec
+7. `09_CRITICAL_ISSUES_AND_FIXES.md` - Know what to test
 
 ---
 

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { EnhancedTeachersController } from './enhanced-teachers.controller';
 import { TeachersController } from './teachers.controller';
@@ -8,6 +8,7 @@ import { TeacherReview } from './entities/teacher-review.entity';
 import { TeacherAvailability } from './entities/teacher-availability.entity';
 import { User } from '../../users/user.entity';
 import { Meeting } from '../meeting/entities/meeting.entity';
+import { AffiliateModule } from '../affiliate/affiliate.module';
 
 @Module({
   imports: [
@@ -17,7 +18,8 @@ import { Meeting } from '../meeting/entities/meeting.entity';
       TeacherAvailability,
       User,
       Meeting
-    ])
+    ]),
+    forwardRef(() => AffiliateModule),
   ],
   controllers: [EnhancedTeachersController, TeachersController],
   providers: [EnhancedTeachersService],

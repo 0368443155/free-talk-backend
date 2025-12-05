@@ -1,10 +1,11 @@
-import { Controller, Get, Post, Put, Body, Param, Query, UseGuards, Request, UploadedFile, UseInterceptors, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, UseGuards, Request, UploadedFile, UseInterceptors, Logger, Inject, forwardRef } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
 import { EnhancedTeachersService } from './enhanced-teachers.service';
 import { CreateTeacherProfileDto, UpdateTeacherProfileDto, CreateAvailabilityDto, CreateReviewDto } from './dto/teacher.dto';
 import { PaginationDto } from '../../core/common/dto/pagination.dto';
+import { AffiliateService } from '../affiliate/affiliate.service';
 
 @ApiTags('Enhanced Teachers')
 @Controller('teachers/enhanced')
@@ -13,7 +14,11 @@ import { PaginationDto } from '../../core/common/dto/pagination.dto';
 export class EnhancedTeachersController {
   private readonly logger = new Logger(EnhancedTeachersController.name);
 
-  constructor(private readonly teachersService: EnhancedTeachersService) {}
+  constructor(
+    private readonly teachersService: EnhancedTeachersService,
+    @Inject(forwardRef(() => AffiliateService))
+    private readonly affiliateService: AffiliateService,
+  ) {}
 
   // Teacher Profile Management
   @Post('profile')
@@ -237,20 +242,32 @@ export class EnhancedTeachersController {
   }
 
   @Get('affiliate/stats')
-  @ApiOperation({ summary: 'Get affiliate program statistics' })
+  @ApiOperation({ 
+    summary: 'Get affiliate program statistics',
+    deprecated: true,
+    description: 'DEPRECATED: Use GET /affiliate/dashboard instead. This endpoint is maintained for backward compatibility and proxies to the new affiliate service.'
+  })
   @ApiResponse({ status: 200, description: 'Affiliate stats retrieved successfully' })
   async getAffiliateStats(@Request() req: any) {
-    return this.teachersService.getAffiliateStats(req.user.id);
+    // Proxy to new AffiliateService for backward compatibility
+    return this.affiliateService.getStats(req.user.id);
   }
 
   @Get('affiliate/referrals')
-  @ApiOperation({ summary: 'Get referred students' })
+  @ApiOperation({ 
+    summary: 'Get referred students',
+    deprecated: true,
+    description: 'DEPRECATED: Use GET /affiliate/referrals instead. This endpoint is maintained for backward compatibility and proxies to the new affiliate service.'
+  })
   @ApiResponse({ status: 200, description: 'Referral list retrieved successfully' })
   async getAffiliateReferrals(
     @Query() paginationDto: PaginationDto,
     @Request() req?: any
   ) {
-    return this.teachersService.getAffiliateReferrals(req.user.id, paginationDto);
+    // Proxy to new AffiliateService for backward compatibility
+    const page = paginationDto.page || 1;
+    const limit = paginationDto.limit || 20;
+    return this.affiliateService.getReferrals(req.user.id, page, limit);
   }
 
   // Search and Recommendations

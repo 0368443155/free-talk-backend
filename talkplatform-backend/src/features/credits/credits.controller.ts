@@ -1,9 +1,10 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards, Request, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseGuards, Request, Logger, Inject, forwardRef } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
 import { CreditsService } from './credits.service';
 import { PurchaseCreditsDto, DonateCreditsDto } from './dto/credits.dto';
 import { PaginationDto } from '../../core/common/dto/pagination.dto';
+import { AffiliateService } from '../affiliate/affiliate.service';
 
 @ApiTags('Credits & Payments')
 @Controller('credits')
@@ -12,7 +13,11 @@ import { PaginationDto } from '../../core/common/dto/pagination.dto';
 export class CreditsController {
   private readonly logger = new Logger(CreditsController.name);
 
-  constructor(private readonly creditsService: CreditsService) {}
+  constructor(
+    private readonly creditsService: CreditsService,
+    @Inject(forwardRef(() => AffiliateService))
+    private readonly affiliateService: AffiliateService,
+  ) {}
 
   @Get('balance')
   @ApiOperation({ summary: 'Get user credit balance and recent transactions' })
@@ -98,10 +103,15 @@ export class CreditsController {
   }
 
   @Get('affiliate/stats')
-  @ApiOperation({ summary: 'Get affiliate program statistics' })
+  @ApiOperation({ 
+    summary: 'Get affiliate program statistics',
+    deprecated: true,
+    description: 'DEPRECATED: Use GET /affiliate/dashboard instead. This endpoint is maintained for backward compatibility and proxies to the new affiliate service.'
+  })
   @ApiResponse({ status: 200, description: 'Affiliate stats retrieved successfully' })
   async getAffiliateStats(@Request() req: any) {
-    return this.creditsService.getAffiliateStats(req.user.id);
+    // Proxy to new AffiliateService for backward compatibility
+    return this.affiliateService.getStats(req.user.id);
   }
 
   @Get('revenue-share/:meetingId')

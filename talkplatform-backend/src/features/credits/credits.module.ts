@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CreditsController } from './credits.controller';
 import { CreditsService } from './credits.service';
@@ -6,10 +6,12 @@ import { CreditTransaction } from './entities/credit-transaction.entity';
 import { CreditPackage } from './entities/credit-package.entity';
 import { User } from '../../users/user.entity';
 import { Meeting } from '../meeting/entities/meeting.entity';
+import { AffiliateModule } from '../affiliate/affiliate.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([CreditTransaction, CreditPackage, User, Meeting])
+    TypeOrmModule.forFeature([CreditTransaction, CreditPackage, User, Meeting]),
+    forwardRef(() => AffiliateModule),
   ],
   controllers: [CreditsController],
   providers: [CreditsService],
