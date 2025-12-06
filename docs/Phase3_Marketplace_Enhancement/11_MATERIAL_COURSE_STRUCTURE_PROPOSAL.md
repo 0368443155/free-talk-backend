@@ -935,32 +935,457 @@ GET /api/v1/marketplace/teacher/materials/discontinued
     └── Note: "Material này đã ngừng bán, nhưng bạn vẫn có quyền truy cập"
 ```
 
-### Cleanup Strategy
+### Storage Policy & Cleanup Strategy
 
-**Cleanup Job:** Tự động xóa materials đã discontinued sau 1 năm (sau khi thông báo cho purchasers).
+#### Vấn đề cần cân nhắc
+
+**Rủi ro:** Nếu cam kết với người học là "Sở hữu trọn đời" (Lifetime Access), việc xóa materials sau một khoảng thời gian có thể vi phạm cam kết này.
+
+**Giải pháp:** Chính sách lưu trữ linh hoạt dựa trên loại nội dung và cam kết với người học.
+
+#### Chính sách lưu trữ (Storage Policy)
+
+##### Option 1: Lifetime Storage (Khuyến nghị cho PDF/Tài liệu nhẹ) ⭐
+
+**Áp dụng cho:**
+- PDF files
+- Documents (Word, Excel, PowerPoint)
+- Audio files
+- Images
+- Text-based content
+
+**Chính sách:**
+- ✅ **Giữ lại mãi mãi** cho materials đã có người mua
+- ✅ Không có cleanup job
+- ✅ Đảm bảo "Lifetime Access" cho người học
+
+**Lý do:**
+- Dung lượng nhỏ (PDF thường < 50MB)
+- Chi phí lưu trữ thấp
+- Tăng niềm tin của người học
+
+##### Option 2: Time-Limited Storage (Cho Video nặng)
+
+**Áp dụng cho:**
+- Video files (MP4, MOV, etc.)
+- Large media files (> 100MB)
+
+**Chính sách:**
+- ⚠️ **Giữ lại trong 1-2 năm** sau khi discontinued
+- ⚠️ Thông báo trước 30-60 ngày trước khi xóa
+- ⚠️ Cho phép download trước khi xóa
+
+**Lý do:**
+- Video files rất nặng (có thể > 1GB)
+- Chi phí lưu trữ cao
+- Cần ghi rõ trong Terms of Service
+
+##### Option 3: Hybrid Approach (Linh hoạt nhất) ⭐⭐⭐
+
+**Áp dụng:**
+- Phân loại theo `content_type` và `file_size`
+- Cấu hình qua Admin Panel
+
+**Chính sách:**
+```typescript
+enum StoragePolicy {
+  LIFETIME = 'lifetime',        // Giữ mãi mãi
+  ONE_YEAR = 'one_year',         // 1 năm sau discontinued
+  TWO_YEARS = 'two_years',       // 2 năm sau discontinued
+  NEVER_DELETE = 'never_delete', // Không bao giờ xóa (quan trọng)
+}
+
+// Database schema
+ALTER TABLE materials ADD COLUMN storage_policy ENUM('lifetime', 'one_year', 'two_years', 'never_delete') DEFAULT 'lifetime';
+ALTER TABLE material_lessons ADD COLUMN storage_policy ENUM('lifetime', 'one_year', 'two_years', 'never_delete') DEFAULT 'lifetime';
+```
+
+**Logic tự động:**
+```typescript
+function determineStoragePolicy(material: Material): StoragePolicy {
+  // Rule 1: Nếu có tag "never_delete" → Không bao giờ xóa
+  if (material.tags?.includes('never_delete')) {
+    return StoragePolicy.NEVER_DELETE;
+  }
+  
+  // Rule 2: Phân loại theo content type
+  if (material.content_type === 'video') {
+    // Video > 500MB → 1 năm, < 500MB → 2 năm
+    return material.file_size > 500 * 1024 * 1024 
+      ? StoragePolicy.ONE_YEAR 
+      : StoragePolicy.TWO_YEARS;
+  }
+  
+  // Rule 3: PDF, Documents, Audio → Lifetime
+  if (['pdf', 'document', 'audio', 'image'].includes(material.content_type)) {
+    return StoragePolicy.LIFETIME;
+  }
+  
+  // Default: Lifetime
+  return StoragePolicy.LIFETIME;
+}
+```
+
+#### Cleanup Job Implementation
 
 ```typescript
 // Cron job: Chạy mỗi tháng
 async function cleanupOldDiscontinuedMaterials(): Promise<void> {
-  const oneYearAgo = new Date();
-  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+  const now = new Date();
   
-  const oldMaterials = await this.repository.find({
-    where: {
-      status: MaterialStatus.DISCONTINUED,
-      deleted_at: LessThan(oneYearAgo)
+  // 1. Tìm materials cần cleanup (theo storage_policy)
+  const materialsToCleanup = await this.repository
+    .createQueryBuilder('material')
+    .where('material.status = :status', { status: MaterialStatus.DISCONTINUED })
+    .andWhere('material.deleted_at IS NOT NULL')
+    .andWhere('material.storage_policy != :lifetime', { lifetime: StoragePolicy.LIFETIME })
+    .andWhere('material.storage_policy != :never', { never: StoragePolicy.NEVER_DELETE })
+    .getMany();
+  
+  for (const material of materialsToCleanup) {
+    const deletedAt = material.deleted_at;
+    const retentionPeriod = this.getRetentionPeriod(material.storage_policy);
+    const cleanupDate = new Date(deletedAt);
+    cleanupDate.setFullYear(cleanupDate.getFullYear() + retentionPeriod);
+    
+    // 2. Kiểm tra xem đã đến thời điểm cleanup chưa
+    if (now >= cleanupDate) {
+      const daysUntilCleanup = Math.ceil((cleanupDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (daysUntilCleanup <= 30 && daysUntilCleanup > 0) {
+        // 3. Thông báo cho purchasers (30 ngày trước)
+        await this.notifyPurchasers(
+          material.id, 
+          `Material "${material.title}" will be removed in ${daysUntilCleanup} days. Please download before then.`
+        );
+      } else if (daysUntilCleanup <= 0) {
+        // 4. Thực hiện cleanup
+        await this.performCleanup(material);
+      }
     }
+  }
+}
+
+function getRetentionPeriod(policy: StoragePolicy): number {
+  switch (policy) {
+    case StoragePolicy.ONE_YEAR: return 1;
+    case StoragePolicy.TWO_YEARS: return 2;
+    default: return 0; // Lifetime
+  }
+}
+
+async function performCleanup(material: Material): Promise<void> {
+  // 1. Final notification
+  await this.notifyPurchasers(
+    material.id,
+    `Material "${material.title}" has been removed from our servers.`
+  );
+  
+  // 2. Xóa files từ storage
+  await this.storageService.deleteFiles(material);
+  
+  // 3. Update status (không xóa database record để giữ lịch sử)
+  await this.repository.update(material.id, {
+    status: MaterialStatus.DELETED,
+    // Giữ lại deleted_at để tracking
   });
   
-  for (const material of oldMaterials) {
-    // 1. Thông báo cho tất cả purchasers (email/notification)
-    await this.notifyPurchasers(material.id, 'Material will be removed in 30 days');
-    
-    // 2. Đợi 30 ngày, sau đó hard delete
-    // (Hoặc chuyển sang status DELETED và xóa file sau khi đảm bảo không còn ai truy cập)
+  this.logger.log(`Material ${material.id} cleaned up after retention period`);
+}
+```
+
+### User Notification Before Purchase
+
+#### Thông báo trước khi thanh toán
+
+**Mục đích:** Người học cần biết rõ chính sách lưu trữ trước khi quyết định mua.
+
+#### UI/UX: Purchase Confirmation Dialog
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 📦 Xác nhận mua Material                                     │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│ Material: "Advanced Python Course"                          │
+│ Price: 500 Credits                                          │
+│                                                              │
+│ ┌────────────────────────────────────────────────────────┐ │
+│ │ ℹ️ Chính sách lưu trữ                                   │ │
+│ │                                                          │ │
+│ │ 📄 Tài liệu PDF: Lưu trữ trọn đời                       │ │
+│ │ 🎥 Video: Lưu trữ 2 năm sau khi ngừng bán              │ │
+│ │                                                          │ │
+│ │ ✅ Bạn sẽ có quyền truy cập ngay sau khi mua           │ │
+│ │ ✅ Có thể tải xuống để lưu trữ cá nhân                 │ │
+│ │ ⚠️ Video sẽ bị xóa sau 2 năm nếu material ngừng bán    │ │
+│ └────────────────────────────────────────────────────────┘ │
+│                                                              │
+│ [Hủy]  [Xác nhận mua - 500 Credits]                        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Implementation
+
+```typescript
+// API: GET /marketplace/materials/:id/purchase-info
+async function getPurchaseInfo(materialId: string, userId?: string): Promise<PurchaseInfo> {
+  const material = await this.getOne(materialId);
+  
+  return {
+    material_id: material.id,
+    title: material.title,
+    price_credits: material.price_credits,
+    storage_policy: material.storage_policy,
+    content_types: await this.getContentTypes(materialId),
+    storage_info: {
+      lifetime_access: material.storage_policy === StoragePolicy.LIFETIME,
+      retention_period: this.getRetentionPeriod(material.storage_policy),
+      downloadable: true,
+      warning_message: this.getWarningMessage(material.storage_policy, material.content_types)
+    }
+  };
+}
+
+function getWarningMessage(policy: StoragePolicy, contentTypes: string[]): string | null {
+  if (policy === StoragePolicy.LIFETIME) {
+    return null; // Không cần warning
+  }
+  
+  if (contentTypes.includes('video')) {
+    return `Video content will be available for ${this.getRetentionPeriod(policy)} year(s) after the material is discontinued. You can download videos for offline viewing.`;
+  }
+  
+  return `This material will be available for ${this.getRetentionPeriod(policy)} year(s) after it is discontinued.`;
+}
+```
+
+#### Frontend Component
+
+```typescript
+// components/marketplace/purchase-confirmation-dialog.tsx
+export function PurchaseConfirmationDialog({ material, onConfirm, onCancel }) {
+  const [purchaseInfo, setPurchaseInfo] = useState(null);
+  
+  useEffect(() => {
+    // Fetch purchase info with storage policy
+    fetch(`/api/v1/marketplace/materials/${material.id}/purchase-info`)
+      .then(res => res.json())
+      .then(setPurchaseInfo);
+  }, [material.id]);
+  
+  return (
+    <Dialog>
+      <DialogHeader>
+        <DialogTitle>Xác nhận mua Material</DialogTitle>
+      </DialogHeader>
+      
+      <DialogContent>
+        <div className="space-y-4">
+          <div>
+            <h3>{material.title}</h3>
+            <p className="text-2xl font-bold">{material.price_credits} Credits</p>
+          </div>
+          
+          {purchaseInfo?.storage_info && (
+            <Alert>
+              <InfoIcon />
+              <AlertTitle>Chính sách lưu trữ</AlertTitle>
+              <AlertDescription>
+                <StoragePolicyInfo info={purchaseInfo.storage_info} />
+              </AlertDescription>
+            </Alert>
+          )}
+          
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onCancel}>Hủy</Button>
+            <Button onClick={onConfirm}>
+              Xác nhận mua - {material.price_credits} Credits
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+```
+
+### Chiến lược tối ưu dung lượng lưu trữ
+
+#### 1. Compression & Optimization
+
+##### PDF Optimization
+```typescript
+// Tự động optimize PDF khi upload
+async function optimizePdf(file: Buffer): Promise<Buffer> {
+  // Sử dụng pdf-lib hoặc ghostscript
+  // - Compress images trong PDF
+  // - Remove metadata không cần thiết
+  // - Optimize fonts
+  // Giảm 30-50% dung lượng
+}
+```
+
+##### Video Compression
+```typescript
+// Tự động transcode video khi upload
+async function optimizeVideo(file: Buffer): Promise<Buffer> {
+  // Sử dụng FFmpeg
+  // - Convert sang H.264/H.265
+  // - Giảm bitrate (720p/1080p)
+  // - Tạo multiple quality levels (360p, 720p, 1080p)
+  // Giảm 50-70% dung lượng
+}
+```
+
+##### Image Optimization
+```typescript
+// Tự động optimize images
+async function optimizeImage(file: Buffer): Promise<Buffer> {
+  // Sử dụng sharp hoặc imagemin
+  // - Convert sang WebP
+  // - Compress với quality 80-85%
+  // - Resize nếu quá lớn
+  // Giảm 60-80% dung lượng
+}
+```
+
+#### 2. CDN & Cloud Storage
+
+##### Sử dụng CDN
+- **Cloudflare R2** hoặc **AWS S3 + CloudFront**
+- Giảm chi phí bandwidth
+- Tăng tốc độ tải
+- Tự động cache
+
+##### Tiered Storage
+```typescript
+// Hot storage: Materials đang active
+// Cold storage: Materials discontinued > 6 tháng
+// Archive storage: Materials discontinued > 1 năm
+
+enum StorageTier {
+  HOT = 'hot',        // S3 Standard
+  COLD = 'cold',      // S3 Glacier
+  ARCHIVE = 'archive' // S3 Deep Archive (rẻ nhất)
+}
+
+async function moveToColdStorage(materialId: string): Promise<void> {
+  const material = await this.getOne(materialId);
+  if (material.storage_tier === StorageTier.HOT) {
+    // Move files to Glacier
+    await this.storageService.moveToColdStorage(material);
+    await this.repository.update(materialId, { storage_tier: StorageTier.COLD });
   }
 }
 ```
+
+#### 3. Lazy Loading & Streaming
+
+##### Video Streaming
+- Không tải toàn bộ video
+- Sử dụng HLS (HTTP Live Streaming) hoặc DASH
+- Adaptive bitrate streaming
+
+##### PDF Progressive Loading
+- Chỉ tải trang đầu tiên
+- Tải các trang tiếp theo khi user scroll
+- Cache pages đã tải
+
+#### 4. Deduplication
+
+##### File Deduplication
+```typescript
+// Kiểm tra file hash trước khi upload
+async function checkDuplicate(fileHash: string): Promise<Material | null> {
+  // Nếu file đã tồn tại, reuse thay vì upload lại
+  return await this.repository.findOne({
+    where: { file_hash: fileHash }
+  });
+}
+```
+
+#### 5. Cleanup Unused Files
+
+##### Cleanup Draft Materials
+```typescript
+// Tự động xóa draft materials sau 90 ngày không chỉnh sửa
+async function cleanupDraftMaterials(): Promise<void> {
+  const ninetyDaysAgo = new Date();
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+  
+  const drafts = await this.repository.find({
+    where: {
+      status: MaterialStatus.DRAFT,
+      updated_at: LessThan(ninetyDaysAgo),
+      // Chưa có ai mua
+      total_sales: 0
+    }
+  });
+  
+  for (const draft of drafts) {
+    await this.storageService.deleteFiles(draft);
+    await this.repository.delete(draft.id);
+  }
+}
+```
+
+#### 6. Database Optimization
+
+##### Archive Old Purchase Records
+```typescript
+// Archive purchase records > 2 năm (không xóa, chỉ move sang archive table)
+// Giữ lại materials nhưng giảm kích thước database
+```
+
+### Terms of Service Integration
+
+#### Cập nhật Terms of Service
+
+**Section cần thêm:**
+```
+## Material Storage Policy
+
+1. **Lifetime Access Materials:**
+   - PDF, Documents, Audio files: Lưu trữ trọn đời
+   - Bạn có quyền truy cập mãi mãi sau khi mua
+
+2. **Time-Limited Materials:**
+   - Video content: Lưu trữ 1-2 năm sau khi material ngừng bán
+   - Bạn sẽ được thông báo 30 ngày trước khi content bị xóa
+   - Bạn có thể tải xuống để lưu trữ cá nhân
+
+3. **Download Rights:**
+   - Bạn có quyền tải xuống materials đã mua
+   - Khuyến khích tải xuống để backup cá nhân
+
+4. **Discontinued Materials:**
+   - Nếu material bị ngừng bán, bạn vẫn có quyền truy cập
+   - Quyền truy cập tuân theo Storage Policy ở trên
+```
+
+### Summary: Recommended Approach
+
+**Khuyến nghị: Hybrid Approach với Auto-Optimization**
+
+1. **Storage Policy:**
+   - PDF/Documents: **Lifetime** (không cleanup)
+   - Video: **2 years** (có thể config)
+   - Có thể set "never_delete" cho materials quan trọng
+
+2. **Optimization:**
+   - Tự động compress khi upload
+   - Sử dụng CDN cho delivery
+   - Tiered storage cho materials cũ
+
+3. **User Notification:**
+   - Hiển thị storage policy trước khi mua
+   - Thông báo 30 ngày trước khi cleanup
+   - Cho phép download để backup
+
+4. **Terms of Service:**
+   - Ghi rõ chính sách lưu trữ
+   - Tránh khiếu nại từ người học
 
 ---
 
@@ -1105,15 +1530,23 @@ components/marketplace/
 - [ ] Implement soft delete for materials with purchases
 - [ ] Add archive functionality
 - [ ] Create restore endpoint
-- [ ] Add cleanup job for old soft-deleted materials
+- [ ] Implement storage policy system (lifetime/time-limited)
+- [ ] Add cleanup job for old discontinued materials (configurable)
+- [ ] Implement file optimization (compression, transcoding)
+- [ ] Add purchase confirmation dialog with storage policy info
 - [ ] Update UI for publish/edit/delete actions
+- [ ] Update Terms of Service with storage policy
 
 #### Implementation Details
-- [ ] Add `deleted_at` and `status` columns to materials table
+- [ ] Add `deleted_at`, `status`, and `storage_policy` columns to materials table
+- [ ] Add `storage_policy` to material_lessons table
 - [ ] Update `MaterialService` with lifecycle methods
 - [ ] Add validation for publish/edit operations
 - [ ] Implement access control for purchased materials
-- [ ] Create cleanup cron job
+- [ ] Create cleanup cron job (configurable retention period)
+- [ ] Implement file optimization service (PDF, Video, Image)
+- [ ] Create purchase info API endpoint
+- [ ] Add storage policy notification system
 
 ### Phase 8: Testing & Polish (Week 7)
 
@@ -1173,10 +1606,18 @@ class MaterialService {
    ALTER TABLE materials ADD COLUMN cover_image_url VARCHAR(500) NULL;
    ALTER TABLE materials ADD COLUMN deleted_at TIMESTAMP NULL;
    ALTER TABLE materials ADD COLUMN status ENUM('draft', 'published', 'archived', 'discontinued', 'deleted') DEFAULT 'draft';
+   ALTER TABLE materials ADD COLUMN storage_policy ENUM('lifetime', 'one_year', 'two_years', 'never_delete') DEFAULT 'lifetime';
+   ALTER TABLE materials ADD COLUMN storage_tier ENUM('hot', 'cold', 'archive') DEFAULT 'hot';
+   ALTER TABLE materials ADD COLUMN file_hash VARCHAR(64) NULL; -- For deduplication
    
    -- Thêm is_disabled cho lessons và sessions (để disable thay vì delete)
    ALTER TABLE material_lessons ADD COLUMN is_disabled BOOLEAN DEFAULT FALSE;
+   ALTER TABLE material_lessons ADD COLUMN storage_policy ENUM('lifetime', 'one_year', 'two_years', 'never_delete') DEFAULT 'lifetime';
    ALTER TABLE material_sessions ADD COLUMN is_disabled BOOLEAN DEFAULT FALSE;
+   
+   -- Indexes for cleanup job
+   ALTER TABLE materials ADD INDEX idx_storage_cleanup (status, deleted_at, storage_policy);
+   ALTER TABLE materials ADD INDEX idx_file_hash (file_hash);
    ```
 
 2. **Phase 2: Create new tables**
@@ -1362,13 +1803,25 @@ describe('Material Creation Flow', () => {
 
 ---
 
-**Document Version**: 1.2  
+**Document Version**: 1.3  
 **Created**: 2025-12-06  
 **Last Updated**: 2025-12-06  
 **Author**: AI Assistant  
 **Status**: Proposal (Approved - Ready for Implementation)
 
 ### Changelog
+
+**v1.3 (2025-12-06)**
+- ✅ **MAJOR UPDATE:** Storage Policy & Optimization Strategy
+- ✅ Added flexible storage policy system (Lifetime/Time-Limited)
+- ✅ Implemented Hybrid Approach for storage cleanup
+- ✅ Added purchase confirmation dialog with storage policy notification
+- ✅ Added file optimization strategies (PDF, Video, Image compression)
+- ✅ Added CDN & Tiered Storage recommendations
+- ✅ Added deduplication strategy
+- ✅ Added Terms of Service integration guidelines
+- ✅ Updated cleanup job with configurable retention periods
+- ✅ Added storage_policy and storage_tier columns to database schema
 
 **v1.2 (2025-12-06)**
 - ✅ **MAJOR UPDATE:** Implemented "The 3-State Strategy" for Material Lifecycle
