@@ -6,12 +6,23 @@ import { AffiliateStatsDto, ReferralDto, EarningsHistoryDto, ValidateAffiliateCo
 
 @ApiTags('Affiliate')
 @Controller('affiliate')
-@ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
 export class AffiliateController {
   constructor(private readonly affiliateService: AffiliateService) {}
 
+  @Get('validate-code/:code')
+  @ApiOperation({ summary: 'Validate referral code (public endpoint - for registration)' })
+  @ApiResponse({ status: 200, description: 'Referral code validation result' })
+  async validateReferralCodePublic(@Param('code') code: string): Promise<{
+    valid: boolean;
+    message?: string;
+    referrer_name?: string;
+  }> {
+    return this.affiliateService.validateReferralCodePublic(code);
+  }
+
   @Get('dashboard')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get affiliate dashboard statistics' })
   @ApiResponse({ status: 200, description: 'Dashboard stats retrieved successfully', type: AffiliateStatsDto })
   async getDashboardStats(@Request() req: any): Promise<AffiliateStatsDto> {
@@ -19,6 +30,8 @@ export class AffiliateController {
   }
 
   @Get('referrals')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get list of referrals' })
   @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default: 1)' })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default: 20)' })
@@ -34,6 +47,8 @@ export class AffiliateController {
   }
 
   @Get('earnings-history')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get earnings history' })
   @ApiQuery({ name: 'period', required: false, enum: ['week', 'month', 'year'], description: 'Time period (default: month)' })
   @ApiResponse({ status: 200, description: 'Earnings history retrieved successfully', type: [EarningsHistoryDto] })
@@ -45,7 +60,9 @@ export class AffiliateController {
   }
 
   @Get('validate/:code')
-  @ApiOperation({ summary: 'Validate affiliate code' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Validate affiliate code (internal)' })
   @ApiResponse({ status: 200, description: 'Affiliate code validation result', type: ValidateAffiliateCodeDto })
   async validateAffiliateCode(@Param('code') code: string): Promise<ValidateAffiliateCodeDto> {
     return this.affiliateService.validateAffiliateCode(code);

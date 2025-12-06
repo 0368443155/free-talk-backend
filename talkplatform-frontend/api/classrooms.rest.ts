@@ -1,6 +1,4 @@
-import axios from 'axios';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+import axiosConfig from './axiosConfig';
 
 // ==================== TYPES ====================
 
@@ -98,29 +96,21 @@ export const getClassroomsApi = async (
   page: number = 1,
   limit: number = 10
 ): Promise<IClassroomListResponse> => {
-  const token = localStorage.getItem('accessToken');
-  const response = await axios.get(`${API_URL}/classrooms`, {
+  const response = await axiosConfig.get('/classrooms', {
     params: { page, limit },
-    headers: { Authorization: `Bearer ${token}` },
   });
   return response.data;
 };
 
 export const getClassroomApi = async (id: string): Promise<IClassroom> => {
-  const token = localStorage.getItem('accessToken');
-  const response = await axios.get(`${API_URL}/classrooms/${id}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await axiosConfig.get(`/classrooms/${id}`);
   return response.data;
 };
 
 export const createClassroomApi = async (
   data: ICreateClassroom
 ): Promise<IClassroom> => {
-  const token = localStorage.getItem('accessToken');
-  const response = await axios.post(`${API_URL}/classrooms`, data, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await axiosConfig.post('/classrooms', data);
   return response.data;
 };
 
@@ -129,10 +119,8 @@ export const getClassroomMeetingsApi = async (
   page: number = 1,
   limit: number = 10
 ): Promise<IClassroomMeetingListResponse> => {
-  const token = localStorage.getItem('accessToken');
-  const response = await axios.get(`${API_URL}/classrooms/${classroomId}/meetings`, {
+  const response = await axiosConfig.get(`/classrooms/${classroomId}/meetings`, {
     params: { page, limit },
-    headers: { Authorization: `Bearer ${token}` },
   });
   return response.data;
 };
@@ -141,12 +129,8 @@ export const getClassroomMeetingApi = async (
   classroomId: string,
   meetingId: string
 ): Promise<IClassroomMeeting> => {
-  const token = localStorage.getItem('accessToken');
-  const response = await axios.get(
-    `${API_URL}/classrooms/${classroomId}/meetings/${meetingId}`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    }
+  const response = await axiosConfig.get(
+    `/classrooms/${classroomId}/meetings/${meetingId}`
   );
   return response.data;
 };
@@ -155,13 +139,9 @@ export const createClassroomMeetingApi = async (
   classroomId: string,
   data: ICreateClassroomMeeting
 ): Promise<IClassroomMeeting> => {
-  const token = localStorage.getItem('accessToken');
-  const response = await axios.post(
-    `${API_URL}/classrooms/${classroomId}/meetings`,
-    data,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    }
+  const response = await axiosConfig.post(
+    `/classrooms/${classroomId}/meetings`,
+    data
   );
   return response.data;
 };

@@ -48,6 +48,7 @@
 | `06_Testing_Guide.md` | Hướng dẫn testing (manual) | ✅ Ready |
 | `12_MIGRATION_GUIDE_DETAILED.md` | **MỚI** - Hướng dẫn migration chi tiết | ✅ Ready |
 | `13_UNIT_TEST_REVENUE_SHARING.md` | **MỚI** - Unit test specification | ✅ Ready |
+| `29_REFERRAL_CODE_REFACTORING.md` | **MỚI** - Refactoring: Referral code chỉ cho giáo viên verified | 📋 Review |
 
 ### 5. TESTING DOCUMENTATION ⭐ NEW
 

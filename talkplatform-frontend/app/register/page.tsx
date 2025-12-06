@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +12,8 @@ import { Loader2, Eye, EyeOff, UserPlus } from "lucide-react";
 import { registerApi } from "@/api/user.rest";
 import { useToast } from "@/components/ui/use-toast";
 import { useReferral } from "@/hooks/useReferral";
+import { validateReferralCodeApi } from "@/api/affiliate.rest";
+import { CheckCircle2, XCircle } from "lucide-react";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -23,11 +25,18 @@ export default function RegisterPage() {
     username: "",
     password: "",
     confirmPassword: "",
+    referralCode: "",
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [referralCodeValidation, setReferralCodeValidation] = useState<{
+    valid: boolean;
+    message?: string;
+    referrer_name?: string;
+  } | null>(null);
+  const [validatingReferralCode, setValidatingReferralCode] = useState(false);
 
   const validateForm = () => {
     const errors: string[] = [];
@@ -80,15 +89,20 @@ export default function RegisterPage() {
     setIsLoading(true);
     setError("");
 
+    // Validate referral code if provided
+    if (formData.referralCode.trim()) {
+      if (!referralCodeValidation?.valid) {
+        setError("Please enter a valid referral code or leave it empty");
+        return;
+      }
+    }
+
     try {
-      // Get referral code from hook (if exists)
-      const referralCode = getReferralCode();
-      
       await registerApi({
         email: formData.email.trim().toLowerCase(),
         username: formData.username.trim(),
         password: formData.password,
-        referralCode: referralCode || undefined, // Include referral code if exists
+        referralCode: formData.referralCode.trim() || undefined, // Use input field value
       });
 
       toast({
@@ -117,7 +131,48 @@ export default function RegisterPage() {
       ...prev,
       [name]: value
     }));
+
+    // Validate referral code on change (debounced)
+    if (name === 'referralCode') {
+      const code = value.trim().toUpperCase();
+      if (code.length > 0) {
+        // Debounce validation
+        const timeoutId = setTimeout(async () => {
+          setValidatingReferralCode(true);
+          try {
+            const result = await validateReferralCodeApi(code);
+            setReferralCodeValidation(result);
+          } catch (error) {
+            setReferralCodeValidation({
+              valid: false,
+              message: 'Failed to validate referral code'
+            });
+          } finally {
+            setValidatingReferralCode(false);
+          }
+        }, 500);
+
+        return () => clearTimeout(timeoutId);
+      } else {
+        setReferralCodeValidation(null);
+      }
+    }
   };
+
+  // Load referral code from URL/storage on mount
+  useEffect(() => {
+    const storedCode = getReferralCode();
+    if (storedCode) {
+      setFormData(prev => ({
+        ...prev,
+        referralCode: storedCode.toUpperCase()
+      }));
+      // Validate the stored code
+      validateReferralCodeApi(storedCode.toUpperCase()).then(result => {
+        setReferralCodeValidation(result);
+      });
+    }
+  }, [getReferralCode]);
 
   return (
     <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
@@ -250,10 +305,50 @@ export default function RegisterPage() {
               </div>
             </div>
 
+            {/* Referral Code Field */}
+            <div className="space-y-2">
+              <Label htmlFor="referralCode" className="text-sm font-medium">
+                Referral Code <span className="text-muted-foreground text-xs">(Optional)</span>
+              </Label>
+              <div className="relative">
+                <Input
+                  id="referralCode"
+                  name="referralCode"
+                  type="text"
+                  placeholder="Enter referral code (e.g., ABC123)"
+                  value={formData.referralCode}
+                  onChange={handleInputChange}
+                  disabled={isLoading}
+                  className="h-11 bg-white/50 border-white/20 focus:border-primary focus:ring-primary backdrop-blur-sm transition-all uppercase"
+                  style={{ textTransform: 'uppercase' }}
+                />
+                {formData.referralCode.trim() && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    {validatingReferralCode ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    ) : referralCodeValidation?.valid ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    ) : referralCodeValidation ? (
+                      <XCircle className="h-4 w-4 text-red-500" />
+                    ) : null}
+                  </div>
+                )}
+              </div>
+              {formData.referralCode.trim() && referralCodeValidation && (
+                <div className={`text-xs ${referralCodeValidation.valid ? 'text-green-600' : 'text-red-600'}`}>
+                  {referralCodeValidation.valid ? (
+                    <span>✓ Valid referral code from {referralCodeValidation.referrer_name}</span>
+                  ) : (
+                    <span>✗ {referralCodeValidation.message}</span>
+                  )}
+                </div>
+              )}
+            </div>
+
             <Button
               type="submit"
               className="w-full h-11 bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-white font-semibold shadow-lg shadow-primary/20 transition-all duration-200"
-              disabled={isLoading}
+              disabled={isLoading || (formData.referralCode.trim() && validatingReferralCode)}
             >
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Create account

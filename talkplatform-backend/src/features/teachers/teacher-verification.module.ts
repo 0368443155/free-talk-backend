@@ -9,6 +9,7 @@ import { TeacherVerificationReference } from './entities/teacher-verification-re
 import { TeacherProfile } from './entities/teacher-profile.entity';
 import { User } from '../../users/user.entity';
 import { StorageModule } from '../../core/storage/storage.module';
+import { UsersModule } from '../../users/users.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { StorageModule } from '../../core/storage/storage.module';
       User,
     ]),
     StorageModule,
+    UsersModule, // Import UsersModule để sử dụng UsersService
   ],
   controllers: [TeacherVerificationController],
   providers: [TeacherVerificationService],

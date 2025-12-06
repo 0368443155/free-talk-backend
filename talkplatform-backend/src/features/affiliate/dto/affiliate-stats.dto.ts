@@ -8,7 +8,7 @@ export class AffiliateStatsDto {
     avatar: string;
     joined_at: Date;
   }[];
-  referral_link: string;
+  referral_code: string; // Changed from referral_link to referral_code
 }
 
 export class ReferralDto {

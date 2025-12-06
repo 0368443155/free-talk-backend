@@ -23,7 +23,8 @@ export class CreateStudentDto {
 
     @IsOptional()
     @IsString()
-    @MaxLength(8, {message: 'Referal code cannot be longer than 8 characters'})
+    @MaxLength(20, { message: 'Referral code cannot be longer than 20 characters' })
+    @Matches(/^[A-Z0-9]*$/, { message: 'Referral code must contain only uppercase letters and numbers' })
     referralCode?: string;
 
     // Nên có trường chấp nhận điều khoản

@@ -51,14 +51,16 @@ export class CreditTransaction {
   })
   status: TransactionStatus;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({ name: 'amount', type: 'decimal', precision: 10, scale: 2 })
   credit_amount: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
-  usd_amount: number;
+  // Note: These columns may not exist in old database schema
+  // Use @Column with { select: false } or make them optional
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, select: false })
+  usd_amount?: number;
 
-  @Column({ type: 'varchar', length: 3, nullable: true })
-  currency: string; // USD, VND, etc.
+  @Column({ type: 'varchar', length: 3, nullable: true, select: false })
+  currency?: string; // USD, VND, etc.
 
   @Column({ type: 'varchar', length: 1000, nullable: true })
   description: string;
@@ -90,24 +92,26 @@ export class CreditTransaction {
   @Column({ type: 'uuid', nullable: true })
   teacher_id: string;
 
-  @Column({ type: 'varchar', length: 200, nullable: true })
-  affiliate_code: string;
+  // Note: These columns may not exist in old database schema
+  // Use { select: false } to exclude from default queries
+  @Column({ type: 'varchar', length: 200, nullable: true, select: false })
+  affiliate_code?: string;
 
   // Revenue sharing info
-  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true })
-  platform_fee_percentage: number;
+  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, select: false })
+  platform_fee_percentage?: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
-  platform_fee_amount: number;
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, select: false })
+  platform_fee_amount?: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
-  teacher_amount: number;
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, select: false })
+  teacher_amount?: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
-  balance_before: number;
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, select: false })
+  balance_before?: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
-  balance_after: number;
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, select: false })
+  balance_after?: number;
 
   @CreateDateColumn()
   created_at: Date;

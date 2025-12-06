@@ -1,11 +1,12 @@
 // // src/users/users.service.ts
 
-import { ConflictException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User, UserRole } from './user.entity';
 import { CreateUserDto } from './dto/create-user.dto'; 
 import { CreateStudentDto } from '../auth/dto/create-student.dto';
+import { TeacherProfile, TeacherStatus } from '../features/teachers/entities/teacher-profile.entity';
 
 @Injectable()
 export class UsersService {
@@ -30,24 +31,37 @@ export class UsersService {
         let referrer: User | null = null;
         if (referralCode) {
             referrer = await this.usersRepository.findOne({
-                where: { affiliate_code: referralCode }
+                where: { affiliate_code: referralCode },
+                relations: ['teacherProfile'],
             });
             
-            // Optional: Log warning if invalid code, but don't block registration
+            // Validate referrer:
+            // 1. Tồn tại
+            // 2. Là giáo viên (role = TEACHER)
+            // 3. Teacher profile đã được verify
             if (!referrer) {
-                this.logger.warn(`Invalid affiliate code used during registration: ${referralCode}`);
+                throw new BadRequestException('Invalid referral code');
+            }
+            
+            if (referrer.role !== UserRole.TEACHER) {
+                throw new BadRequestException('Referral code is not from a verified teacher');
+            }
+            
+            if (!referrer.teacherProfile || referrer.teacherProfile.status !== TeacherStatus.APPROVED) {
+                throw new BadRequestException('Referral code is not from a verified teacher');
             }
         }
 
-        // Generate affiliate code for new user
-        const affiliateCode = await this.generateUniqueAffiliateCode(username);
+        // KHÔNG tạo affiliate_code cho student
+        // affiliate_code chỉ được tạo khi teacher được verified
 
         const user = this.usersRepository.create({
             email,
             username,
             password, //sẽ được hash
             role: UserRole.STUDENT, //role mặc định
-            affiliate_code: affiliateCode,
+            // KHÔNG set affiliate_code ở đây
+            // affiliate_code: null (default)
             referrer_id: referrer ? referrer.id : undefined,
         });
 
@@ -158,5 +172,44 @@ export class UsersService {
             console.error("Error saving OAuth user:", error);
             throw new InternalServerErrorException('Error creating OAuth user');
         }
+    }
+
+    /**
+     * Generate affiliate code for teacher (only when verified)
+     */
+    async generateAffiliateCodeForTeacher(teacherId: string): Promise<string> {
+        const teacher = await this.usersRepository.findOne({
+            where: { id: teacherId },
+            relations: ['teacherProfile'],
+        });
+
+        if (!teacher) {
+            throw new NotFoundException('Teacher not found');
+        }
+
+        if (teacher.role !== UserRole.TEACHER) {
+            throw new BadRequestException('User is not a teacher');
+        }
+
+        // Check if teacher is verified (using TeacherStatus enum)
+        if (!teacher.teacherProfile || teacher.teacherProfile.status !== TeacherStatus.APPROVED) {
+            throw new BadRequestException('Teacher is not verified');
+        }
+
+        // Nếu đã có affiliate_code, return existing
+        if (teacher.affiliate_code) {
+            return teacher.affiliate_code;
+        }
+
+        // Generate unique affiliate code
+        const affiliateCode = await this.generateUniqueAffiliateCode(
+            teacher.username || teacher.email
+        );
+
+        teacher.affiliate_code = affiliateCode;
+        await this.usersRepository.save(teacher);
+
+        this.logger.log(`✅ Generated affiliate code for teacher ${teacherId}: ${affiliateCode}`);
+        return affiliateCode;
     }
 }

@@ -82,64 +82,95 @@ npm run dev
    - ✅ Đăng ký thành công
    - ✅ Redirect đến `/login`
 
-#### 1.2. Đăng nhập và lấy Affiliate Code
+#### 1.2. Submit Teacher Verification
 
-1. **Đăng nhập với:**
+1. **Đăng nhập với Teacher A:**
    ```
    Email: teacherA@test.com
    Password: Test123!@#
    ```
+2. **Truy cập:** `/teacher/verification` hoặc tương tự
+3. **Submit teacher verification** (upload documents, fill form)
+4. **Đăng nhập với Admin account** và **approve verification**
+
+#### 1.3. Lấy Affiliate Code (Sau khi được verify)
+
+1. **Đăng nhập với Teacher A** (sau khi được approve)
 2. **Truy cập:** `http://localhost:3001/dashboard/affiliate`
 3. **Verify:**
    - ✅ Dashboard hiển thị
-   - ✅ Có referral link (vd: `http://localhost:3001/register?ref=ABC123`)
-   - ✅ Copy referral link vào clipboard
+   - ✅ **Hiển thị referral code** (vd: `ABC123`) - chỉ code, không phải link
+   - ✅ Có button "Copy Code"
+   - ✅ Copy referral code vào clipboard
+4. **Verify (trước khi verify):**
+   - ❌ Nếu chưa được verify → Dashboard không truy cập được (403 Forbidden)
 
-#### 1.3. Verify Database
+#### 1.4. Verify Database
 
 ```sql
--- Check user A đã có affiliate_code
-SELECT id, username, email, affiliate_code, referrer_id 
-FROM users 
-WHERE email = 'teacherA@test.com';
+-- Check user A đã có affiliate_code (sau khi verify)
+SELECT 
+    u.id, 
+    u.username, 
+    u.email, 
+    u.role,
+    u.affiliate_code, 
+    u.referrer_id,
+    tp.status as teacher_status
+FROM users u
+LEFT JOIN teacher_profiles tp ON u.id = tp.user_id
+WHERE u.email = 'teacherA@test.com';
 
--- Expected:
+-- Expected (SAU KHI VERIFY):
 -- id: [UUID]
 -- username: teacherA
 -- email: teacherA@test.com
--- affiliate_code: [Random code, e.g. ABC123]
+-- role: 'teacher'
+-- affiliate_code: [Random code, e.g. ABC123] ✅ (tự động generate khi verify)
 -- referrer_id: NULL (vì là user đầu tiên)
+-- teacher_status: 'approved' ✅
+
+-- Expected (TRƯỚC KHI VERIFY):
+-- affiliate_code: NULL ✅ (student/teacher chưa verify không có code)
+-- teacher_status: 'pending' hoặc NULL
 ```
 
 ---
 
 ### Bước 2: Đăng Ký User Được Giới Thiệu (Referred User)
 
-#### 2.1. Đăng ký với Referral Link
+#### 2.1. Đăng ký với Referral Code
+
+**Option 1: Nhập Referral Code trong form**
 
 1. **Mở trình duyệt mới (Incognito mode - khác với User A)**
-2. **Truy cập referral link:**
-   ```
-   http://localhost:3001/register?ref=ABC123
-   ```
-   (Thay ABC123 bằng affiliate_code thực tế của teacherA)
-
-3. **Verify UI:**
-   - ✅ Hiển thị banner: "You are invited by teacherA"
-   - ✅ Có avatar của referrer (nếu có)
-
-4. **Mở DevTools (F12) → Application → Local Storage**
-   - ✅ Check có key: `affiliate_ref` với value là referral code
-
-5. **Điền form đăng ký:**
+2. **Truy cập:** `http://localhost:3001/register`
+3. **Điền form đăng ký:**
    ```
    Email: studentB@test.com
    Username: studentB
    Password: Test123!@#
    Confirm Password: Test123!@#
+   Referral Code: ABC123 (optional field)
    ```
+   (Thay ABC123 bằng referral code thực tế của teacherA)
 
-6. **Click "Create account"**
+4. **Verify UI khi nhập Referral Code:**
+   - ✅ Field "Referral Code" hiển thị (optional)
+   - ✅ Khi gõ code → Real-time validation
+   - ✅ Nếu code hợp lệ → Hiển thị checkmark (✓) và message: "✓ Valid referral code from teacherA"
+   - ✅ Nếu code không hợp lệ → Hiển thị X và message lỗi
+   - ✅ Code tự động uppercase khi nhập
+
+5. **Click "Create account"**
+
+**Option 2: Referral Code từ URL (still supported)**
+
+1. **Truy cập:** `http://localhost:3001/register?ref=ABC123`
+2. **Verify:**
+   - ✅ Referral Code field tự động fill với code từ URL
+   - ✅ Validation chạy tự động
+3. **Điền form và submit**
 
 #### 2.2. Verify Referral Tracking trong Database
 
@@ -148,50 +179,72 @@ WHERE email = 'teacherA@test.com';
 SELECT 
     u1.id as student_id,
     u1.username as student_username,
+    u1.role,
+    u1.affiliate_code, -- Should be NULL for students
     u1.referrer_id,
     u2.id as referrer_id_check,
     u2.username as referrer_username,
-    u2.affiliate_code as referrer_code
+    u2.affiliate_code as referrer_code,
+    tp.status as referrer_status
 FROM users u1
 LEFT JOIN users u2 ON u1.referrer_id = u2.id
+LEFT JOIN teacher_profiles tp ON u2.id = tp.user_id
 WHERE u1.email = 'studentB@test.com';
 
 -- Expected:
 -- student_id: [UUID của studentB]
 -- student_username: studentB
+-- role: 'student'
+-- affiliate_code: NULL ✅ (students không có affiliate_code)
 -- referrer_id: [UUID của teacherA] ✅
 -- referrer_id_check: [UUID của teacherA] ✅
 -- referrer_username: teacherA ✅
 -- referrer_code: ABC123 ✅
+-- referrer_status: 'approved' ✅
 ```
 
-#### 2.3. Test Referral Code trong URL Parameter
+#### 2.3. Test Referral Code Validation
 
-1. **Xóa localStorage** (DevTools → Application → Local Storage → Clear)
-2. **Truy cập:** `http://localhost:3001/register?ref=ABC123`
-3. **Verify:**
-   - ✅ Banner hiển thị referrer info
-   - ✅ LocalStorage được set lại với referral code
-4. **Reload trang** (F5)
-   - ✅ Referral code vẫn còn trong localStorage (persist)
+1. **Test Valid Code:**
+   - Nhập code hợp lệ của verified teacher
+   - ✅ Hiển thị checkmark và message: "✓ Valid referral code from [teacher_name]"
 
-#### 2.4. Test Invalid Referral Code
+2. **Test Invalid Code:**
+   - Nhập code không tồn tại (vd: `INVALID123`)
+   - ✅ Hiển thị X và message: "✗ Invalid referral code"
 
-1. **Truy cập:** `http://localhost:3001/register?ref=INVALID_CODE`
-2. **Verify:**
-   - ✅ Không hiển thị banner
-   - ✅ Hoặc hiển thị message "Invalid referral code"
-3. **Đăng ký user mới:**
-   ```
-   Email: studentC@test.com
-   Username: studentC
-   Password: Test123!@#
-   ```
-4. **Verify Database:**
-   ```sql
-   SELECT referrer_id FROM users WHERE email = 'studentC@test.com';
-   -- Expected: referrer_id = NULL ✅
-   ```
+3. **Test Code từ Non-Verified Teacher:**
+   - Nhập code của teacher chưa được verify
+   - ✅ Hiển thị X và message: "✗ Referral code is not from a verified teacher"
+
+4. **Test Empty Code:**
+   - Để trống referral code field
+   - ✅ Form vẫn submit được (field là optional)
+   - ✅ Database: `referrer_id = NULL`
+
+5. **Test Referral Code từ URL Parameter:**
+   - Truy cập: `http://localhost:3001/register?ref=ABC123`
+   - ✅ Referral Code field tự động fill
+   - ✅ Validation chạy tự động
+
+#### 2.4. Verify Student không có Affiliate Code
+
+```sql
+-- Check students không có affiliate_code
+SELECT 
+    id, 
+    username, 
+    email, 
+    role,
+    affiliate_code 
+FROM users 
+WHERE role = 'student'
+LIMIT 10;
+
+-- Expected:
+-- affiliate_code: NULL ✅ (tất cả students)
+-- role: 'student'
+```
 
 ---
 
@@ -376,16 +429,22 @@ LIMIT 10;
 
 **Verify các thông tin hiển thị:**
 
-1. **Referral Link Section:**
-   - ✅ Hiển thị referral link đầy đủ
-   - ✅ Có button "Copy Link"
-   - ✅ Click copy → Verify clipboard có link
-   - ✅ Message: "Share this link to earn 90% revenue..."
+1. **Referral Code Section:**
+   - ✅ Hiển thị **referral code** (vd: `ABC123`) - chỉ code, không phải link
+   - ✅ Code hiển thị rõ ràng, font lớn
+   - ✅ Có button "Copy Code" (không phải "Copy Link")
+   - ✅ Click copy → Verify clipboard có code (vd: `ABC123`)
+   - ✅ Message: "Share this code with students to earn 90% revenue..."
+   - ✅ **KHÔNG** hiển thị full URL link
 
 2. **Stats Cards:**
    - ✅ **Total Referrals:** Hiển thị số người đã giới thiệu
    - ✅ **Total Earnings:** Hiển thị tổng earnings từ referrals
    - ✅ **This Month:** Hiển thị earnings tháng này
+
+3. **Access Control:**
+   - ✅ Chỉ verified teachers mới truy cập được dashboard
+   - ✅ Students hoặc teachers chưa verify → 403 Forbidden
 
 ### Bước 3: Test Referrals List Tab
 
@@ -418,17 +477,19 @@ LIMIT 10;
 **Open DevTools → Network tab:**
 
 1. **GET `/api/v1/affiliate/dashboard`**
-   - ✅ Status: 200
+   - ✅ Status: 200 (chỉ với verified teachers)
+   - ✅ Status: 403 Forbidden (với students hoặc teachers chưa verify)
    - ✅ Response có structure:
      ```json
      {
        "total_referrals": 1,
        "total_earnings": 90,
        "this_month_earnings": 90,
-       "referral_link": "http://localhost:3001/register?ref=ABC123",
+       "referral_code": "ABC123",
        "recent_referrals": [...]
      }
      ```
+     **Note:** `referral_code` thay vì `referral_link`
 
 2. **GET `/api/v1/affiliate/referrals?page=1&limit=20`**
    - ✅ Status: 200
@@ -525,15 +586,76 @@ ORDER BY ct.created_at DESC;
 
 ---
 
-## ✅ TEST CASE 5: VALIDATE AFFILIATE CODE
+## ✅ TEST CASE 5: VALIDATE REFERRAL CODE
 
-### Mục đích: Test API validate affiliate code
+### Mục đích: Test API validate referral code (public endpoint cho registration)
 
-### Bước 1: Test Valid Code
+### Bước 1: Test Public Endpoint (No Auth Required)
 
 **Using Postman hoặc curl:**
 
 ```bash
+# Public endpoint - không cần auth token
+curl -X GET "http://localhost:3000/api/v1/affiliate/validate-code/ABC123"
+```
+
+**Expected Response (Valid Code từ Verified Teacher):**
+```json
+{
+  "valid": true,
+  "referrer_name": "teacherA"
+}
+```
+
+### Bước 2: Test Invalid Code
+
+```bash
+curl -X GET "http://localhost:3000/api/v1/affiliate/validate-code/INVALID"
+```
+
+**Expected Response:**
+```json
+{
+  "valid": false,
+  "message": "Invalid referral code"
+}
+```
+
+### Bước 3: Test Code từ Non-Verified Teacher
+
+1. **Tạo teacher chưa verify** (chưa submit hoặc chưa được approve)
+2. **Test code của teacher đó:**
+
+```bash
+curl -X GET "http://localhost:3000/api/v1/affiliate/validate-code/XYZ789"
+```
+
+**Expected Response:**
+```json
+{
+  "valid": false,
+  "message": "Referral code is not from a verified teacher"
+}
+```
+
+### Bước 4: Test Empty Code
+
+```bash
+curl -X GET "http://localhost:3000/api/v1/affiliate/validate-code/"
+```
+
+**Expected Response:**
+```json
+{
+  "valid": false,
+  "message": "Referral code is required"
+}
+```
+
+### Bước 5: Test Internal Endpoint (Requires Auth)
+
+```bash
+# Internal endpoint - cần auth token
 curl -X GET "http://localhost:3000/api/v1/affiliate/validate/ABC123" \
   -H "Authorization: Bearer [JWT_TOKEN]"
 ```
@@ -542,37 +664,11 @@ curl -X GET "http://localhost:3000/api/v1/affiliate/validate/ABC123" \
 ```json
 {
   "valid": true,
-  "referrer_name": "teacherA",
-  "referrer_avatar": "http://..."
-}
-```
-
-### Bước 2: Test Invalid Code
-
-```bash
-curl -X GET "http://localhost:3000/api/v1/affiliate/validate/INVALID" \
-  -H "Authorization: Bearer [JWT_TOKEN]"
-```
-
-**Expected Response:**
-```json
-{
-  "valid": false
-}
-```
-
-### Bước 3: Test Empty Code
-
-```bash
-curl -X GET "http://localhost:3000/api/v1/affiliate/validate/" \
-  -H "Authorization: Bearer [JWT_TOKEN]"
-```
-
-**Expected Response:**
-```json
-{
-  "valid": false,
-  "message": "Affiliate code is required"
+  "referrer": {
+    "id": "[UUID]",
+    "username": "teacherA",
+    "avatar_url": "http://..."
+  }
 }
 ```
 
@@ -582,12 +678,16 @@ curl -X GET "http://localhost:3000/api/v1/affiliate/validate/" \
 
 ### ✅ Referral Tracking
 
-- [ ] User có thể đăng ký với referral link
-- [ ] Referral code được lưu vào localStorage
-- [ ] Referral code persist sau khi reload
-- [ ] Database lưu đúng referrer_id
-- [ ] Invalid referral code không được lưu
-- [ ] Banner hiển thị referrer info khi đăng ký
+- [ ] Teacher chỉ có affiliate_code sau khi được verify
+- [ ] Student đăng ký không tự động có affiliate_code
+- [ ] Register form có input field "Referral Code" (optional)
+- [ ] Referral code validation real-time khi nhập
+- [ ] Hiển thị visual feedback (✓/✗) khi validate
+- [ ] Invalid referral code bị reject với message rõ ràng
+- [ ] Code từ non-verified teacher bị reject
+- [ ] Database lưu đúng referrer_id khi code hợp lệ
+- [ ] Referral code từ URL parameter tự động fill vào form
+- [ ] Form submit được với hoặc không có referral code
 
 ### ✅ Revenue Sharing
 
@@ -599,9 +699,12 @@ curl -X GET "http://localhost:3000/api/v1/affiliate/validate/" \
 
 ### ✅ Dashboard UI
 
-- [ ] Dashboard load được
+- [ ] Dashboard chỉ accessible bởi verified teachers
+- [ ] Students/Non-verified teachers → 403 Forbidden
+- [ ] Dashboard hiển thị **referral code** (vd: `ABC123`), không phải link
+- [ ] Button "Copy Code" (không phải "Copy Link")
+- [ ] Code copy vào clipboard đúng format (chỉ code)
 - [ ] Stats hiển thị đúng
-- [ ] Referral link copy được
 - [ ] Referrals list hiển thị đúng
 - [ ] Earnings history chart hiển thị
 - [ ] Pagination hoạt động
@@ -615,18 +718,24 @@ curl -X GET "http://localhost:3000/api/v1/affiliate/validate/" \
 
 ### ✅ API Endpoints
 
-- [ ] `/affiliate/dashboard` - 200 OK
+- [ ] `/affiliate/dashboard` - 200 OK (verified teachers only), 403 (others)
 - [ ] `/affiliate/referrals` - 200 OK
 - [ ] `/affiliate/earnings-history` - 200 OK
-- [ ] `/affiliate/validate/:code` - 200 OK
-- [ ] Old endpoints vẫn hoạt động (backward compatible)
+- [ ] `/affiliate/validate-code/:code` - 200 OK (public, no auth)
+- [ ] `/affiliate/validate/:code` - 200 OK (internal, requires auth)
+- [ ] Response structure: `referral_code` thay vì `referral_link`
 
 ### ✅ Edge Cases
 
+- [ ] Teacher chưa verify không có affiliate_code
+- [ ] Teacher được verify → affiliate_code tự động generate
+- [ ] Student đăng ký không tự động có affiliate_code (luôn NULL)
+- [ ] Referral code validation check teacher verified status
 - [ ] Free classes (0 credits) không tính revenue
 - [ ] Meeting không có participants → payment status = completed (no revenue)
 - [ ] Multiple referrals cùng lúc
 - [ ] Referrer không tồn tại → error handling
+- [ ] Referral code không hợp lệ → registration vẫn thành công (field optional)
 
 ---
 
@@ -638,11 +747,21 @@ curl -X GET "http://localhost:3000/api/v1/affiliate/validate/" \
 -- Check all referrals
 SELECT 
     u1.username as referrer,
+    u1.affiliate_code as referrer_code,
+    u1.role as referrer_role,
     u2.username as referred,
+    u2.role as referred_role,
+    u2.affiliate_code as referred_code, -- Should be NULL
     u2.created_at as referred_date
 FROM users u1
 JOIN users u2 ON u1.id = u2.referrer_id
 ORDER BY u2.created_at DESC;
+
+-- Expected:
+-- referrer_code: [Code] (only for verified teachers)
+-- referred_code: NULL (all students)
+-- referrer_role: 'teacher'
+-- referred_role: 'student'
 
 -- Check revenue transactions
 SELECT 
@@ -688,8 +807,12 @@ ORDER BY m.ended_at DESC;
 // Check for:
 // - API errors
 // - Network requests
-// - localStorage values
-localStorage.getItem('affiliate_ref')
+// - localStorage values (if using URL parameter)
+localStorage.getItem('referral_code')
+
+// Check referral code validation in Network tab:
+// GET /api/v1/affiliate/validate-code/ABC123
+// Response: { valid: true, referrer_name: "teacherA" }
 ```
 
 ---
@@ -699,21 +822,28 @@ localStorage.getItem('affiliate_ref')
 Sau khi test xong, bạn nên có:
 
 1. ✅ **3-4 users đã đăng ký:**
-   - 1 teacher (referrer)
-   - 2-3 students (1 được giới thiệu, 1-2 organic)
+   - 1 teacher (referrer) - **đã được verify** → có affiliate_code
+   - 2-3 students (1 được giới thiệu, 1-2 organic) → **không có affiliate_code**
 
-2. ✅ **2-3 meetings đã hoàn thành:**
+2. ✅ **Verify database state:**
+   - Teacher có `affiliate_code` và `teacher_profile.status = 'approved'`
+   - Students có `affiliate_code = NULL`
+   - Students được giới thiệu có `referrer_id` trỏ đến teacher
+
+3. ✅ **2-3 meetings đã hoàn thành:**
    - 1 với affiliate student (90/10 split)
    - 1 với organic student (70/30 split)
 
-3. ✅ **Transactions trong database:**
+4. ✅ **Transactions trong database:**
    - Student deductions
    - Teacher earnings (affiliate bonus + credits)
 
-4. ✅ **Dashboard hiển thị đúng:**
+5. ✅ **Dashboard hiển thị đúng:**
+   - Referral **code** (vd: `ABC123`), không phải link
    - Total referrals count
    - Total earnings
    - Earnings history chart
+   - Chỉ accessible bởi verified teachers
 
 ---
 

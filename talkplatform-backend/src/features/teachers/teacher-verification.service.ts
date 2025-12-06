@@ -13,8 +13,9 @@ import { TeacherVerificationReference } from './entities/teacher-verification-re
 import { TeacherProfile, TeacherStatus } from './entities/teacher-profile.entity';
 import { User, UserRole } from '../../users/user.entity';
 import { SubmitVerificationDto } from './dto/submit-verification.dto';
-import { Inject } from '@nestjs/common';
+import { Inject, forwardRef } from '@nestjs/common';
 import type { IStorageService } from '../../core/storage/storage.interface';
+import { UsersService } from '../../users/users.service';
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
@@ -47,6 +48,8 @@ export class TeacherVerificationService {
     private readonly userRepository: Repository<User>,
     @Inject('IStorageService')
     private readonly storageService: IStorageService,
+    @Inject(forwardRef(() => UsersService))
+    private readonly usersService: UsersService,
   ) {
     // Tạo thư mục uploads/teacher-verification nếu chưa có
     this.uploadBaseDir = path.join(process.cwd(), 'uploads', 'teacher-verification');
@@ -315,6 +318,15 @@ export class TeacherVerificationService {
       user.role = UserRole.TEACHER;
       await this.userRepository.save(user);
       this.logger.log(`✅ Updated user role to teacher for user ${verification.user_id}`);
+    }
+
+    // Auto-generate affiliate code for teacher when verified
+    try {
+      await this.usersService.generateAffiliateCodeForTeacher(verification.user_id);
+      this.logger.log(`✅ Generated affiliate code for verified teacher: ${verification.user_id}`);
+    } catch (error) {
+      this.logger.warn(`⚠️ Failed to generate affiliate code for teacher ${verification.user_id}:`, error);
+      // Don't fail the verification if affiliate code generation fails
     }
 
     this.logger.log(`✅ Verification approved: ${verificationId} by admin ${adminId}`);

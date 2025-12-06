@@ -1,6 +1,6 @@
 import { Controller, Post, Body, UseInterceptors, ClassSerializerInterceptor, HttpCode, HttpStatus, UnauthorizedException, UsePipes, ValidationPipe, Get, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { CreateUserDto } from 'src/users/dto/create-user.dto';
+import { CreateStudentDto } from './dto/create-student.dto';
 import { LoginDto } from './dto/login.dto'; // Sẽ tạo file này
 import { JwtAuthGuard } from '../core/auth/guards/jwt-auth.guard';
 import { Account } from '../core/auth/decorators/account.decorator';
@@ -17,14 +17,13 @@ export class AuthController {
     ) {}
     //Post auth/register
     @Post('register')
-    //@UsePipes(ValidationPipe)
-    async register(@Body() createUserDto: CreateUserDto) {
+    async register(@Body() createStudentDto: CreateStudentDto) {
         // (Trong dự án thực tế, bạn nên dùng try-catch để bắt lỗi email trùng lặp)
         // Có thể thêm logic kiểm tra confirmPassword ở đây nếu DTO có thêm trường đó
         // if (createStudentDto.password !== createStudentDto.confirmPassword) {
         //   throw new BadRequestException('Passwords do not match');
         // }
-        const user = await this.authService.registerStudent(createUserDto);
+        const user = await this.authService.registerStudent(createStudentDto);
         return user; // Tự động ẩn password nhờ @Exclude() và ClassSerializerInterceptor
     }
 

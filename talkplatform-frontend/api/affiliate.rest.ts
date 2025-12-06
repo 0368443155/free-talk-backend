@@ -10,7 +10,7 @@ export interface AffiliateStats {
     avatar: string;
     joined_at: string;
   }[];
-  referral_link: string;
+  referral_code: string; // Changed from referral_link to referral_code
 }
 
 export interface Referral {
@@ -90,6 +90,22 @@ export const validateAffiliateCodeApi = async (
   code: string,
 ): Promise<ValidateAffiliateCodeResponse> => {
   const response = await axiosConfig.get(`/affiliate/validate/${code}`);
+  return response.data;
+};
+
+/**
+ * Validate referral code (public endpoint - for registration)
+ */
+export const validateReferralCodeApi = async (code: string): Promise<{
+  valid: boolean;
+  message?: string;
+  referrer_name?: string;
+}> => {
+  const response = await axiosConfig.get(`/affiliate/validate-code/${code}`, {
+    headers: {
+      // No auth token needed for public endpoint
+    }
+  });
   return response.data;
 };
 
