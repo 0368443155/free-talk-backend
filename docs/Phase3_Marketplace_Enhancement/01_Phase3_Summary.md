@@ -63,20 +63,65 @@ Nâng cấp marketplace với revenue dashboard và auto preview generation:
 
 ```
 Phase3_Marketplace_Enhancement/
-├── 01_Phase3_Summary.md            (File này)
-├── 02_Revenue_Dashboard.md         (Dashboard UI)
-├── 03_PDF_Preview_Generator.md     (Auto preview)
-├── 04_Signed_URL.md                (Secure downloads)
-└── 05_Testing_Guide.md             (Hướng dẫn test)
+├── 01_Phase3_Summary.md                (File này - Tổng quan)
+├── 02_Current_Architecture.md          (Kiến trúc hiện tại)
+├── 03_Revenue_Dashboard.md             (Dashboard doanh thu)
+├── 04_PDF_Preview_Generator.md         (Tạo preview tự động)
+├── 05_Signed_URL.md                    (Download bảo mật)
+├── 06_Testing_Guide.md                 (Hướng dẫn test)
+└── 07_Deployment_Guide.md              (Hướng dẫn deploy)
 ```
+
+### Chi tiết từng tài liệu:
+
+1. **01_Phase3_Summary.md** - Tổng quan Phase 3
+   - Mục tiêu và timeline
+   - Hiện trạng và deliverables
+   - Revenue policy
+
+2. **02_Current_Architecture.md** - Kiến trúc hiện tại
+   - Backend/Frontend structure
+   - Database schema chi tiết
+   - Current workflows và features
+   - Security considerations
+
+3. **03_Revenue_Dashboard.md** - Revenue Dashboard
+   - AnalyticsService implementation
+   - AnalyticsController endpoints
+   - Frontend dashboard UI
+   - Charts và statistics
+
+4. **04_PDF_Preview_Generator.md** - PDF Preview
+   - PdfService với pdf-lib
+   - Auto preview generation (3 pages)
+   - Watermark implementation
+   - Thumbnail generation
+
+5. **05_Signed_URL.md** - Secure Downloads
+   - SignedUrlService với HMAC
+   - Time-limited URLs (15 minutes)
+   - DownloadController
+   - Security best practices
+
+6. **06_Testing_Guide.md** - Testing
+   - Unit tests (Analytics, PDF, SignedURL)
+   - Integration tests (E2E)
+   - Manual testing scenarios
+   - Performance testing
+
+7. **07_Deployment_Guide.md** - Deployment
+   - Pre-deployment checklist
+   - Backend/Frontend deployment
+   - Nginx configuration
+   - Monitoring và rollback plan
 
 ---
 
 ## 💰 REVENUE POLICY
 
 ### Material Sales
-- **Platform Fee:** 20%
-- **Teacher Share:** 80%
+- **Platform Fee:** 30%
+- **Teacher Share:** 70%
 
 ---
 

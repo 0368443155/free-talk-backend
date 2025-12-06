@@ -44,9 +44,14 @@ export class StudentMaterialController {
     @Get(':id/download')
     @UseGuards(JwtAuthGuard)
     getDownloadUrl(@Param('id') id: string, @Request() req) {
-        return this.materialService.getDownloadUrl(id, req.user.id).then((url) => ({
-            download_url: url,
-        }));
+        // Returns signed URL with expiration
+        return this.materialService.getDownloadUrl(id, req.user.id);
+    }
+
+    @Get(':id/preview')
+    getPreview(@Param('id') id: string) {
+        // Returns preview info (including signed URL)
+        return this.materialService.getPreviewUrl(id);
     }
 
     @Get(':id/purchased')

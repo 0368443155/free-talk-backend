@@ -150,7 +150,8 @@ export default function MaterialDetailPage() {
 
         try {
             const data = await marketplaceApi.getDownloadUrl(materialId);
-            window.open(data.download_url, '_blank');
+            // Navigate to signed URL (will trigger file download)
+            window.location.href = data.download_url;
         } catch (error: any) {
             toast({
                 title: "Download Failed",

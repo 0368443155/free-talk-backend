@@ -80,7 +80,17 @@ export const marketplaceApi = {
 
     getDownloadUrl: async (materialId: string) => {
         const response = await axiosConfig.get(`/marketplace/materials/${materialId}/download`);
-        return response.data;
+        return response.data; // Returns { download_url: string, expires_at: Date }
+    },
+
+    getPreviewUrl: async (materialId: string) => {
+        const response = await axiosConfig.get(`/marketplace/materials/${materialId}/preview`);
+        return response.data; // Returns { preview_url: string, expires_at: Date }
+    },
+
+    getPreview: async (materialId: string) => {
+        const response = await axiosConfig.get(`/marketplace/materials/${materialId}/preview`);
+        return response.data; // Returns { preview_url: string, thumbnail_url: string, page_count: number }
     },
 
     getPurchasedMaterials: async (page: number = 1, limit: number = 10) => {

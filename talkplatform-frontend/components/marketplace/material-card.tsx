@@ -92,7 +92,7 @@ export function MaterialCard({ material }: MaterialCardProps) {
                 </div>
             </CardContent>
 
-            <CardFooter className="p-4 border-t bg-gray-50 flex items-center justify-between">
+            <CardFooter className="p-4 border-t bg-gray-50 flex items-center justify-between gap-2">
                 <div className="flex flex-col">
                     {material.original_price_credits && material.original_price_credits > material.price_credits && (
                         <span className="text-xs text-gray-400 line-through">
@@ -103,9 +103,19 @@ export function MaterialCard({ material }: MaterialCardProps) {
                         {material.price_credits === 0 ? 'FREE' : `${material.price_credits} Credits`}
                     </span>
                 </div>
-                <Link href={`/marketplace/${material.id}`}>
-                    <Button size="sm">View Details</Button>
-                </Link>
+                <div className="flex gap-2">
+                    {(material as any).preview_url && (
+                        <Link href={`/marketplace/${material.id}/preview`}>
+                            <Button variant="outline" size="sm">
+                                <Eye className="w-4 h-4 mr-1" />
+                                Preview
+                            </Button>
+                        </Link>
+                    )}
+                    <Link href={`/marketplace/${material.id}`}>
+                        <Button size="sm">View</Button>
+                    </Link>
+                </div>
             </CardFooter>
         </Card>
     );

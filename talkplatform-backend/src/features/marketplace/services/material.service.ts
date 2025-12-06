@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like, Between, FindOptionsWhere } from 'typeorm';
 import { Material, MaterialType, MaterialLevel } from '../entities/material.entity';
@@ -9,9 +9,16 @@ import { UpdateMaterialDto } from '../dto/update-material.dto';
 import { FilterMaterialDto } from '../dto/filter-material.dto';
 import { User } from '../../../users/user.entity';
 import { WalletService } from '../../wallet/wallet.service';
+import { SignedUrlService } from './signed-url.service';
+import { UploadService } from './upload.service';
+import { RedisCacheService } from '../../../infrastructure/cache/services/redis-cache.service';
+import * as path from 'path';
+import * as fs from 'fs/promises';
 
 @Injectable()
 export class MaterialService {
+    private readonly logger = new Logger(MaterialService.name);
+
     constructor(
         @InjectRepository(Material)
         private materialRepository: Repository<Material>,
@@ -20,6 +27,9 @@ export class MaterialService {
         @InjectRepository(MaterialPurchase)
         private purchaseRepository: Repository<MaterialPurchase>,
         private walletService: WalletService,
+        private signedUrlService: SignedUrlService,
+        private uploadService: UploadService,
+        private cacheService: RedisCacheService,
     ) { }
 
     async create(createMaterialDto: CreateMaterialDto, teacher: User): Promise<Material> {
@@ -29,7 +39,33 @@ export class MaterialService {
             is_published: false, // Default to draft
         });
 
-        return this.materialRepository.save(material);
+        const savedMaterial = await this.materialRepository.save(material);
+
+        // If PDF and has file_url, regenerate preview with actual material ID
+        if (
+            savedMaterial.material_type === MaterialType.PDF &&
+            savedMaterial.file_url
+        ) {
+            try {
+                const { preview_url, thumbnail_url } =
+                    await this.uploadService.regeneratePreview(
+                        savedMaterial.file_url,
+                        savedMaterial.id,
+                    );
+
+                savedMaterial.preview_url = preview_url;
+                savedMaterial.thumbnail_url = thumbnail_url;
+
+                await this.materialRepository.save(savedMaterial);
+            } catch (error) {
+                this.logger.error(
+                    `Failed to generate preview for material ${savedMaterial.id}`,
+                    error,
+                );
+            }
+        }
+
+        return savedMaterial;
     }
 
     async findAll(filterDto: FilterMaterialDto) {
@@ -251,6 +287,19 @@ export class MaterialService {
             savedPurchase.id,
         );
 
+        // Clear teacher's analytics cache (delete common patterns)
+        try {
+            // Delete common cache keys (we'll delete the most common ones)
+            const cacheKeysToDelete = [
+                `analytics:revenue:${material.teacher_id}:all`,
+                `analytics:top:${material.teacher_id}:10`,
+                `analytics:top:${material.teacher_id}:5`,
+            ];
+            await Promise.all(cacheKeysToDelete.map(key => this.cacheService.delete(key).catch(() => {})));
+        } catch (error) {
+            this.logger.warn(`Failed to clear analytics cache for teacher ${material.teacher_id}:`, error);
+        }
+
         return savedPurchase;
     }
 
@@ -291,9 +340,12 @@ export class MaterialService {
     }
 
     /**
-     * Lấy download URL (pre-signed URL nếu cần)
+     * Lấy signed download URL (15 phút expiration)
      */
-    async getDownloadUrl(materialId: string, userId: string): Promise<string> {
+    async getDownloadUrl(materialId: string, userId: string): Promise<{
+        download_url: string;
+        expires_at: Date;
+    }> {
         const hasPurchased = await this.hasPurchased(materialId, userId);
         if (!hasPurchased) {
             throw new ForbiddenException('You must purchase this material first');
@@ -301,21 +353,41 @@ export class MaterialService {
 
         const material = await this.findOne(materialId);
 
-        // Increment download count
-        await this.purchaseRepository.increment(
-            { material_id: materialId, user_id: userId },
-            'download_count',
-            1,
+        // Generate signed URL (15 minutes expiration)
+        const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+        const downloadUrl = this.signedUrlService.generateSignedUrl(
+            materialId,
+            userId,
+            'full',
+            15,
         );
-        await this.purchaseRepository.update(
-            { material_id: materialId, user_id: userId },
-            { last_downloaded_at: new Date() },
-        );
-        await this.materialRepository.increment({ id: materialId }, 'download_count', 1);
 
-        // TODO: Generate pre-signed URL nếu dùng cloud storage
-        // Hiện tại trả về direct URL
-        return material.file_url;
+        return {
+            download_url: downloadUrl,
+            expires_at: expiresAt,
+        };
+    }
+
+    /**
+     * Get preview signed URL (public, 60 minutes expiration)
+     */
+    async getPreviewUrl(materialId: string): Promise<{
+        preview_url: string;
+        expires_at: Date;
+    }> {
+        const material = await this.findOne(materialId);
+        
+        if (!material.preview_url) {
+            throw new NotFoundException('Preview not available for this material');
+        }
+
+        const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+        const previewUrl = this.signedUrlService.generatePreviewUrl(materialId, 60);
+
+        return {
+            preview_url: previewUrl,
+            expires_at: expiresAt,
+        };
     }
 
     // Admin methods

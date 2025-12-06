@@ -12,7 +12,7 @@ import {
     TableRow
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Edit, Trash2, Eye } from 'lucide-react';
+import { Plus, Edit, Trash2, Eye, BarChart3 } from 'lucide-react';
 import { marketplaceApi } from '@/api/marketplace';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -48,12 +48,20 @@ export default function TeacherMaterialsPage() {
                     <h1 className="text-3xl font-bold text-gray-900">My Materials</h1>
                     <p className="text-gray-500 mt-1">Manage your learning resources</p>
                 </div>
-                <Link href="/teacher/materials/upload">
-                    <Button className="gap-2">
-                        <Plus className="w-4 h-4" />
-                        Upload New Material
-                    </Button>
-                </Link>
+                <div className="flex gap-2">
+                    <Link href="/teacher/materials/analytics">
+                        <Button variant="outline" className="gap-2">
+                            <BarChart3 className="w-4 h-4" />
+                            Analytics
+                        </Button>
+                    </Link>
+                    <Link href="/teacher/materials/upload">
+                        <Button className="gap-2">
+                            <Plus className="w-4 h-4" />
+                            Upload New Material
+                        </Button>
+                    </Link>
+                </div>
             </div>
 
             <div className="bg-white rounded-lg shadow overflow-hidden">

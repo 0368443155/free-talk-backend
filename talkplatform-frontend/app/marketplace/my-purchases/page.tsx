@@ -63,7 +63,8 @@ export default function MyPurchasesPage() {
     const handleDownload = async (material: Material) => {
         try {
             const data = await marketplaceApi.getDownloadUrl(material.id);
-            window.open(data.download_url, '_blank');
+            // Navigate to signed URL (will trigger file download)
+            window.location.href = data.download_url;
             toast({
                 title: "Success",
                 description: "Download started",
