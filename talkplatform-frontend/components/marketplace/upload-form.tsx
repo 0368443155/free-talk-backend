@@ -32,7 +32,10 @@ const formSchema = z.object({
     title: z.string().min(5, 'Title must be at least 5 characters'),
     description: z.string().min(20, 'Description must be at least 20 characters'),
     material_type: z.enum(['pdf', 'video', 'slide', 'audio', 'document', 'course', 'ebook']),
-    price_credits: z.string().transform((val) => parseInt(val, 10)),
+    price_credits: z.union([
+        z.string().transform((val) => parseInt(val, 10)),
+        z.number()
+    ]).pipe(z.number().int().min(0)),
     level: z.enum(['beginner', 'intermediate', 'advanced', 'all']),
     language: z.string().min(2, 'Language is required'),
 });
@@ -68,26 +71,79 @@ export function UploadMaterialForm() {
         setUploading(true);
         try {
             // 1. Upload file directly to backend
-            const { fileUrl, fileSize } = await marketplaceApi.uploadMaterialFile(file);
+            const { fileUrl, fileSize, previewUrl, thumbnailUrl, pageCount } = await marketplaceApi.uploadMaterialFile(file);
 
             // 2. Create material record
-            await marketplaceApi.createMaterial({
-                ...values,
+            const materialData: any = {
+                title: values.title,
+                description: values.description,
+                material_type: values.material_type,
+                level: values.level,
+                language: values.language,
                 file_url: fileUrl,
-                file_size: fileSize,
-            });
+                file_size: typeof fileSize === 'number' ? fileSize : parseInt(String(fileSize || 0), 10),
+                price_credits: typeof values.price_credits === 'number' 
+                    ? values.price_credits 
+                    : parseInt(String(values.price_credits || 0), 10),
+            };
+
+            // Add preview and thumbnail URLs if available (from PDF processing)
+            if (previewUrl) {
+                materialData.preview_url = previewUrl;
+            }
+            if (thumbnailUrl) {
+                materialData.thumbnail_url = thumbnailUrl;
+            }
+            if (pageCount) {
+                materialData.page_count = pageCount;
+            }
+
+            console.log('Creating material with data:', JSON.stringify(materialData, null, 2));
+            const createdMaterial = await marketplaceApi.createMaterial(materialData);
+
+            console.log('Material created successfully:', createdMaterial);
 
             toast({
                 title: "Success",
                 description: "Material uploaded successfully",
             });
 
-            router.push('/teacher/materials');
-        } catch (error) {
+            // Use window.location to force full page reload and data refresh
+            window.location.href = '/teacher/materials';
+        } catch (error: any) {
             console.error('Upload failed:', error);
+            console.error('Full error response:', JSON.stringify(error?.response, null, 2));
+            console.error('Error data:', JSON.stringify(error?.response?.data, null, 2));
+            
+            // Extract validation messages
+            let errorMessage = 'Failed to upload material';
+            if (error?.response?.data?.message) {
+                if (Array.isArray(error.response.data.message)) {
+                    // Format validation errors: "field should be..." or just the message
+                    errorMessage = error.response.data.message
+                        .map((msg: any) => {
+                            if (typeof msg === 'string') return msg;
+                            if (msg.property) {
+                                const constraints = Object.values(msg.constraints || {}).join(', ');
+                                return `${msg.property}: ${constraints}`;
+                            }
+                            return JSON.stringify(msg);
+                        })
+                        .join('\n');
+                } else {
+                    errorMessage = error.response.data.message;
+                }
+            } else if (error?.response?.data?.error) {
+                errorMessage = error.response.data.error;
+            } else if (error?.message) {
+                errorMessage = error.message;
+            }
+            
+            console.error('Formatted error message:', errorMessage);
+            
             toast({
                 title: "Error",
-                description: "Failed to upload material",
+                description: errorMessage.length > 200 ? errorMessage.substring(0, 200) + '...' : errorMessage,
                 variant: "destructive",
             });
         } finally {

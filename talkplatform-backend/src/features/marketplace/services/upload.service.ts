@@ -39,9 +39,9 @@ export class UploadService {
 
         this.logger.log(`File saved: ${fileName}`);
 
-        // Generate public URL
+        // Generate public URL (full URL for DTO validation)
         const baseUrl = this.configService.get('BACKEND_URL') || 'http://localhost:3000';
-        const fileUrl = `/uploads/materials/${fileName}`;
+        const fileUrl = `${baseUrl}/uploads/materials/${fileName}`;
 
         const result: any = {
             fileUrl,
@@ -59,8 +59,13 @@ export class UploadService {
                 const { previewPath, thumbnailPath, pageCount } =
                     await this.pdfService.generatePreview(filePath, materialId);
 
-                result.previewUrl = previewPath;
-                result.thumbnailUrl = thumbnailPath;
+                // Convert relative paths to full URLs
+                result.previewUrl = previewPath.startsWith('http') 
+                    ? previewPath 
+                    : `${baseUrl}${previewPath}`;
+                result.thumbnailUrl = thumbnailPath.startsWith('http')
+                    ? thumbnailPath
+                    : `${baseUrl}${thumbnailPath}`;
                 result.pageCount = pageCount;
 
                 this.logger.log(`Preview generated for PDF: ${fileName}`);
@@ -82,7 +87,7 @@ export class UploadService {
         fileUrl: string,
         materialId: string,
     ): Promise<{ preview_url: string; thumbnail_url: string }> {
-        // Extract filename from URL
+        // Extract filename from URL (handle both full URL and relative path)
         const filename = path.basename(fileUrl);
         const filePath = path.join(this.uploadDir, filename);
 
@@ -95,9 +100,16 @@ export class UploadService {
             materialId,
         );
 
+        // Convert relative paths to full URLs
+        const baseUrl = this.configService.get('BACKEND_URL') || 'http://localhost:3000';
+        
         return {
-            preview_url: previewPath,
-            thumbnail_url: thumbnailPath,
+            preview_url: previewPath.startsWith('http') 
+                ? previewPath 
+                : `${baseUrl}${previewPath}`,
+            thumbnail_url: thumbnailPath.startsWith('http')
+                ? thumbnailPath
+                : `${baseUrl}${thumbnailPath}`,
         };
     }
 }

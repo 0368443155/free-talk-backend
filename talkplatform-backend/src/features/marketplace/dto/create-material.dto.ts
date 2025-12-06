@@ -24,7 +24,7 @@ export class CreateMaterialDto {
     @IsEnum(MaterialType)
     material_type: MaterialType;
 
-    @IsUrl()
+    @IsString()
     @IsNotEmpty()
     file_url: string;
 
@@ -34,11 +34,11 @@ export class CreateMaterialDto {
     file_size?: number;
 
     @IsOptional()
-    @IsUrl()
+    @IsString()
     preview_url?: string;
 
     @IsOptional()
-    @IsUrl()
+    @IsString()
     thumbnail_url?: string;
 
     @IsInt()

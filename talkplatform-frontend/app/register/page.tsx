@@ -348,7 +348,7 @@ export default function RegisterPage() {
             <Button
               type="submit"
               className="w-full h-11 bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-white font-semibold shadow-lg shadow-primary/20 transition-all duration-200"
-              disabled={isLoading || (formData.referralCode.trim() && validatingReferralCode)}
+              disabled={isLoading || (formData.referralCode.trim().length > 0 && validatingReferralCode)}
             >
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Create account

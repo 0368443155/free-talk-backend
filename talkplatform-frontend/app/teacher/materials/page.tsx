@@ -25,6 +25,15 @@ export default function TeacherMaterialsPage() {
         fetchMaterials();
     }, []);
 
+    // Refresh materials when page is focused (e.g., after redirect from upload)
+    useEffect(() => {
+        const handleFocus = () => {
+            fetchMaterials();
+        };
+        window.addEventListener('focus', handleFocus);
+        return () => window.removeEventListener('focus', handleFocus);
+    }, []);
+
     const fetchMaterials = async () => {
         try {
             const response = await marketplaceApi.getTeacherMaterials({ page: 1, limit: 10 });

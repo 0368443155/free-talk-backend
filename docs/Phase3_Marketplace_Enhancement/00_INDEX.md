@@ -2,7 +2,7 @@
 
 **Ngày tạo:** 06/12/2025  
 **Trạng thái:** ✅ DOCUMENTATION COMPLETE  
-**Tổng số tài liệu:** 10 files (bao gồm INDEX, CHANGELOG và Testing Guide)
+**Tổng số tài liệu:** 11 files (bao gồm INDEX, CHANGELOG, Testing Guide và Proposal)
 
 ---
 
@@ -330,6 +330,22 @@ Day 5: Testing & Deployment
 - **SQL queries** cho database verification
 
 **Đọc khi:** Bắt đầu testing phase, cần test manual từng feature
+
+---
+
+### 1️⃣1️⃣ [Material Course Structure Proposal](./11_MATERIAL_COURSE_STRUCTURE_PROPOSAL.md)
+**Mục đích:** Đề xuất nâng cấp Materials theo cấu trúc Course-like  
+**Nội dung:**
+- **Phân tích hiện trạng** và so sánh với Courses
+- **Kiến trúc đề xuất**: Material → Sessions → Lessons
+- **Database Schema** chi tiết với migrations
+- **API Design** cho structured materials
+- **Frontend UI/UX** design
+- **Implementation Plan** (6 phases, 6 weeks)
+- **Migration Strategy** (backward compatible)
+- **Testing Strategy** và timeline
+
+**Đọc khi:** Cần review đề xuất trước khi triển khai Material Structure Enhancement
 
 ---
 
