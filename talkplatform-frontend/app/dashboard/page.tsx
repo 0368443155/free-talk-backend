@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useUser } from "@/store/user-store";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, Video, GraduationCap, ArrowRight, ShieldCheck, Clock, Sparkles, BookOpen, Wallet, Calendar, ShoppingBag } from "lucide-react";
+import { Users, Video, GraduationCap, ArrowRight, ShieldCheck, Clock, Sparkles, BookOpen, Wallet, Calendar, ShoppingBag, DollarSign, TrendingUp, Star, FileText } from "lucide-react";
 import BecomeTeacherButton from "@/components/become-teacher-button";
 import { GlobalChatPanel } from "@/components/global-chat/global-chat-panel";
 import { Phase2Navigation } from "@/components/courses/phase2-navigation";
@@ -170,26 +170,6 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
 
-            {/* Classrooms */}
-            <Card className="glass-card border-white/20 hover:scale-[1.02] transition-transform cursor-pointer group" onClick={() => router.push('/classrooms')}>
-              <CardHeader>
-                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
-                  <GraduationCap className="h-6 w-6 text-primary" />
-                </div>
-                <CardTitle className="font-heading text-xl">Classrooms</CardTitle>
-                <CardDescription>
-                  {isTeacher
-                    ? 'Create and manage your classrooms, schedule meetings with students'
-                    : 'View your classrooms and join scheduled meetings'}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button className="w-full bg-primary/10 text-primary hover:bg-primary/20 border-0" variant="outline">
-                  {isTeacher ? 'Manage Classrooms' : 'View Classrooms'}
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </CardContent>
-            </Card>
 
             {/* Public Meetings */}
             <Card className="glass-card border-white/20 hover:scale-[1.02] transition-transform cursor-pointer group" onClick={() => router.push('/meetings')}>
@@ -256,6 +236,133 @@ export default function DashboardPage() {
               </Card>
             )}
           </div>
+
+          {/* Teacher Dashboard Section */}
+          {user.role === 'teacher' && (
+            <div className="mt-8">
+              <div className="mb-6">
+                <h2 className="text-2xl font-bold mb-2 font-heading">Teacher Dashboard</h2>
+                <p className="text-muted-foreground">Manage your teaching business and track your earnings</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {/* Teacher Dashboard */}
+                <Card className="glass-card border-white/20 hover:scale-[1.02] transition-transform cursor-pointer group" onClick={() => router.push('/teacher/dashboard')}>
+                  <CardHeader>
+                    <div className="w-12 h-12 rounded-xl bg-indigo-500/10 flex items-center justify-center mb-4 group-hover:bg-indigo-500/20 transition-colors">
+                      <GraduationCap className="h-6 w-6 text-indigo-600" />
+                    </div>
+                    <CardTitle className="font-heading text-xl">Teacher Dashboard</CardTitle>
+                    <CardDescription>
+                      Overview of your teaching business, earnings, and analytics
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button className="w-full bg-indigo-500/10 text-indigo-600 hover:bg-indigo-500/20 border-0" variant="outline">
+                      Open Dashboard
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* Revenue & Earnings */}
+                <Card className="glass-card border-white/20 hover:scale-[1.02] transition-transform cursor-pointer group" onClick={() => router.push('/teacher/revenue')}>
+                  <CardHeader>
+                    <div className="w-12 h-12 rounded-xl bg-green-500/10 flex items-center justify-center mb-4 group-hover:bg-green-500/20 transition-colors">
+                      <DollarSign className="h-6 w-6 text-green-600" />
+                    </div>
+                    <CardTitle className="font-heading text-xl">Revenue & Earnings</CardTitle>
+                    <CardDescription>
+                      View your earnings, transactions, and withdrawal history
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button className="w-full bg-green-500/10 text-green-600 hover:bg-green-500/20 border-0" variant="outline">
+                      View Revenue
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* Affiliate Program */}
+                <Card className="glass-card border-white/20 hover:scale-[1.02] transition-transform cursor-pointer group" onClick={() => router.push('/teacher/affiliate')}>
+                  <CardHeader>
+                    <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center mb-4 group-hover:bg-blue-500/20 transition-colors">
+                      <TrendingUp className="h-6 w-6 text-blue-600" />
+                    </div>
+                    <CardTitle className="font-heading text-xl">Affiliate Program</CardTitle>
+                    <CardDescription>
+                      Track referrals and earn 90% revenue from student purchases
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button className="w-full bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border-0" variant="outline">
+                      View Affiliate
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* Availability */}
+                <Card className="glass-card border-white/20 hover:scale-[1.02] transition-transform cursor-pointer group" onClick={() => router.push('/teacher/availability')}>
+                  <CardHeader>
+                    <div className="w-12 h-12 rounded-xl bg-purple-500/10 flex items-center justify-center mb-4 group-hover:bg-purple-500/20 transition-colors">
+                      <Calendar className="h-6 w-6 text-purple-600" />
+                    </div>
+                    <CardTitle className="font-heading text-xl">Availability</CardTitle>
+                    <CardDescription>
+                      Set and manage your teaching schedule and booking slots
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button className="w-full bg-purple-500/10 text-purple-600 hover:bg-purple-500/20 border-0" variant="outline">
+                      Manage Schedule
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* Teaching Materials */}
+                <Card className="glass-card border-white/20 hover:scale-[1.02] transition-transform cursor-pointer group" onClick={() => router.push('/teacher/materials')}>
+                  <CardHeader>
+                    <div className="w-12 h-12 rounded-xl bg-orange-500/10 flex items-center justify-center mb-4 group-hover:bg-orange-500/20 transition-colors">
+                      <BookOpen className="h-6 w-6 text-orange-600" />
+                    </div>
+                    <CardTitle className="font-heading text-xl">Teaching Materials</CardTitle>
+                    <CardDescription>
+                      Upload and manage your teaching resources and materials
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button className="w-full bg-orange-500/10 text-orange-600 hover:bg-orange-500/20 border-0" variant="outline">
+                      Manage Materials
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* Verification */}
+                {teacherStatus === 'pending' && (
+                  <Card className="glass-card border-yellow-200/50 bg-yellow-50/50 hover:scale-[1.02] transition-transform cursor-pointer group" onClick={() => router.push('/teacher/verification')}>
+                    <CardHeader>
+                      <div className="w-12 h-12 rounded-xl bg-yellow-500/10 flex items-center justify-center mb-4 group-hover:bg-yellow-500/20 transition-colors">
+                        <Star className="h-6 w-6 text-yellow-600" />
+                      </div>
+                      <CardTitle className="font-heading text-xl">Verification</CardTitle>
+                      <CardDescription>
+                        Complete verification to access all teacher features
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <Button className="w-full bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20 border-0" variant="outline">
+                        Complete Verification
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Phase 2 Quick Navigation */}
           <div className="mt-6">

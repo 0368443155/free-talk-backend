@@ -69,7 +69,8 @@ export class BookingSlotsController {
     }
 
     const slot = this.slotRepository.create({
-      teacher_id: req.user.id,
+      teacher: profile, // Set relation
+      teacher_id: profile.user_id, // Also set directly to ensure it's included in INSERT
       date: slotDate, // Convert to Date object
       start_time: dto.start_time,
       end_time: dto.end_time,

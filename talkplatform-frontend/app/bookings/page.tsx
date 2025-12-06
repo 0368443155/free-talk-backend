@@ -242,7 +242,7 @@ export default function BookingsPage() {
                     <div className="flex flex-col gap-2 ml-4">
                       {booking.status === BookingStatus.CONFIRMED && (
                         <Button
-                          onClick={() => router.push(`/classrooms/${booking.meeting_id}`)}
+                          onClick={() => router.push(`/meetings/${booking.meeting_id}`)}
                         >
                           <Video className="w-4 h-4 mr-2" />
                           Join Class

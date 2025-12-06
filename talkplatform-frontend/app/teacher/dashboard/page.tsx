@@ -128,25 +128,25 @@ export default function TeacherDashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Revenue"
-          value={revenue ? `$${revenue.total_revenue.toFixed(2)}` : 'Loading...'}
+          value={revenue?.total_earnings != null ? `$${(revenue.total_earnings || 0).toFixed(2)}` : 'Loading...'}
           icon={<DollarSign className="h-4 w-4 text-muted-foreground" />}
           description="All time earnings"
         />
         <StatCard
           title="Available Balance"
-          value={revenue ? `$${revenue.available_balance.toFixed(2)}` : 'Loading...'}
+          value={revenue?.available_balance != null ? `$${(revenue.available_balance || 0).toFixed(2)}` : 'Loading...'}
           icon={<Wallet className="h-4 w-4 text-muted-foreground" />}
           description="Ready to withdraw"
         />
         <StatCard
           title="Total Referrals"
-          value={affiliateStats ? affiliateStats.total_referrals.toString() : '0'}
+          value={affiliateStats?.total_referrals != null ? affiliateStats.total_referrals.toString() : '0'}
           icon={<Users className="h-4 w-4 text-muted-foreground" />}
           description="Affiliate referrals"
         />
         <StatCard
           title="Affiliate Earnings"
-          value={affiliateStats ? `${affiliateStats.total_earnings} Credits` : '0 Credits'}
+          value={affiliateStats?.total_earnings != null ? `${affiliateStats.total_earnings} Credits` : '0 Credits'}
           icon={<TrendingUp className="h-4 w-4 text-muted-foreground" />}
           description="From referrals"
         />
@@ -261,36 +261,28 @@ export default function TeacherDashboardPage() {
       </div>
 
       {/* Recent Activity Section */}
-      {revenue && revenue.recent_transactions && revenue.recent_transactions.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Transactions</CardTitle>
-            <CardDescription>Your latest earning activities</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {revenue.recent_transactions.slice(0, 5).map((tx: any) => (
-                <div key={tx.id} className="flex items-center justify-between border-b pb-3 last:border-0">
-                  <div>
-                    <p className="font-medium">{tx.description || 'Transaction'}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {new Date(tx.created_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <Badge variant={tx.amount > 0 ? 'default' : 'secondary'}>
-                    {tx.amount > 0 ? '+' : ''}${tx.amount?.toFixed(2) || '0.00'}
-                  </Badge>
-                </div>
-              ))}
-              <Link href="/teacher/revenue/transactions">
-                <Button variant="outline" className="w-full">
-                  View All Transactions
-                </Button>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <Card>
+        <CardHeader>
+          <CardTitle>Quick Links</CardTitle>
+          <CardDescription>Access your revenue and transaction details</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Link href="/teacher/revenue/transactions">
+              <Button variant="outline" className="w-full justify-start">
+                <FileText className="mr-2 h-4 w-4" />
+                View All Transactions
+              </Button>
+            </Link>
+            <Link href="/teacher/revenue/withdrawals">
+              <Button variant="outline" className="w-full justify-start">
+                <Wallet className="mr-2 h-4 w-4" />
+                View Withdrawals
+              </Button>
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

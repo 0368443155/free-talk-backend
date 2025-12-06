@@ -30,7 +30,7 @@ export class BookingSlot {
   @JoinColumn({ name: 'teacher_id' })
   teacher: TeacherProfile;
 
-  @Column({ type: 'uuid', insert: false, update: false })
+  @Column({ type: 'uuid' })
   teacher_id: string;
 
   /**

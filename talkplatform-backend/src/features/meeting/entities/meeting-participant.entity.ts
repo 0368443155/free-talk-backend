@@ -20,7 +20,6 @@ export enum ParticipantRole {
 @Index(['meeting_id', 'user_id'], { unique: true })
 @Index(['meeting_id'])
 @Index(['user_id'])
-@Index(['duration_seconds'])
 export class MeetingParticipant {
   @PrimaryGeneratedColumn('uuid')
   id: string;

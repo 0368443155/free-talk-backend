@@ -10,9 +10,11 @@ import { Repository, DataSource } from 'typeorm';
 import { Booking, BookingStatus } from './entities/booking.entity';
 import { BookingSlot } from './entities/booking-slot.entity';
 import { User } from '../../users/user.entity';
-import { Meeting } from '../meeting/entities/meeting.entity';
+import { Meeting, MeetingStatus, MeetingType, PricingType } from '../meeting/entities/meeting.entity';
+import { MeetingSettings } from '../meeting/entities/meeting-settings.entity';
 import { CreateBookingDto, CancelBookingDto } from './dto/create-booking.dto';
 import { RefundService } from './refund.service';
+import { ConfigService } from '@nestjs/config';
 
 /**
  * Booking Service
@@ -36,6 +38,7 @@ export class BookingService {
     @InjectDataSource()
     private readonly dataSource: DataSource,
     private readonly refundService: RefundService,
+    private readonly configService: ConfigService,
   ) { }
 
   /**
@@ -75,38 +78,79 @@ export class BookingService {
         throw new BadRequestException('Insufficient credits');
       }
 
-      // 5. Tạo Meeting cho booking
-      const meeting = new Meeting();
-      meeting.title = `Class with ${teacher.name || teacher.username}`;
-      meeting.description = dto.student_notes || '';
-      meeting.host = teacher; // Set relation instead of host_id
-      meeting.meeting_type = 'teacher_class' as any;
-      meeting.max_participants = 10;
-      meeting.scheduled_at = new Date(`${slot.date.toISOString().split('T')[0]}T${slot.start_time}`);
-      meeting.status = 'scheduled' as any;
+      // 5. Format date - handle both Date object and string
+      // TypeORM may return date column as Date object or string depending on database driver
+      let dateStr: string;
+      const slotDate = slot.date as Date | string;
+      if (slotDate instanceof Date) {
+        dateStr = slotDate.toISOString().split('T')[0];
+      } else {
+        // Handle string format (YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss)
+        dateStr = String(slotDate).split('T')[0];
+      }
+
+      // 6. Generate LiveKit room name for booking meeting
+      const livekitRoomName = `booking_${slot.id}`;
+
+      // 7. Tạo Meeting cho booking - tương tự như course meetings
+      const meetingTitle = `Private Session - ${teacher.username || teacher.email}`;
+      const scheduledDateTime = new Date(`${dateStr}T${slot.start_time}`);
+      
+      const meeting = manager.create(Meeting, {
+        title: meetingTitle,
+        description: dto.student_notes || 'Private session booking',
+        host: teacher,
+        teacher_name: teacher.username,
+        subject_name: 'Private Session',
+        scheduled_at: scheduledDateTime,
+        max_participants: 2, // Private session: only teacher and student
+        meeting_type: MeetingType.PRIVATE_SESSION,
+        status: MeetingStatus.SCHEDULED,
+        pricing_type: PricingType.CREDITS,
+        price_credits: slot.price_credits,
+        is_private: true,
+        is_locked: false,
+        meeting_state: 'scheduled',
+      });
 
       const savedMeeting = await manager.save(Meeting, meeting);
 
-      // 6. Tạo Booking
+      // 8. Tạo MeetingSettings - tương tự như course meetings
+      const meetingSettings = manager.create(MeetingSettings, {
+        meeting_id: savedMeeting.id,
+        allow_screen_share: true,
+        allow_chat: true,
+        allow_reactions: true,
+        record_meeting: true,
+        waiting_room: false,
+        auto_record: false,
+        mute_on_join: false,
+      });
+      await manager.save(MeetingSettings, meetingSettings);
+
+      // 9. Tạo Booking
       const booking = manager.create(Booking, {
         meeting: savedMeeting,
+        meeting_id: savedMeeting.id, // Set directly to ensure it's included
         student: student,
+        student_id: student.id, // Set directly
         teacher: teacher,
+        teacher_id: teacher.id, // Set directly
         status: BookingStatus.CONFIRMED,
         credits_paid: slot.price_credits,
-        scheduled_at: new Date(`${slot.date.toISOString().split('T')[0]}T${slot.start_time}`),
+        scheduled_at: scheduledDateTime,
         student_notes: dto.student_notes,
       });
 
       const savedBooking = await manager.save(Booking, booking);
 
-      // 7. Cập nhật slot
+      // 10. Cập nhật slot
       slot.is_booked = true;
       slot.booking = savedBooking;
       slot.student_id = student.id;
       await manager.save(BookingSlot, slot);
 
-      // 8. Trừ credits - tạo transaction trực tiếp
+      // 11. Trừ credits - tạo transaction trực tiếp
       const studentUser = await manager.findOne(User, { where: { id: student.id } });
       if (studentUser) {
         studentUser.credit_balance = (studentUser.credit_balance || 0) - slot.price_credits;
