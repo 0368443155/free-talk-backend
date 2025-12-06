@@ -21,6 +21,8 @@ import { UpdateMeetingDto } from './dto/update-meeting.dto';
 import { PaginationDto } from '../../core/common/dto/pagination.dto';
 import { EnrollmentService } from '../courses/enrollment.service';
 import { RefundService } from '../booking/refund.service';
+import { CreditsService } from '../credits/credits.service';
+import { CreditTransaction, TransactionType, TransactionStatus } from '../credits/entities/credit-transaction.entity';
 
 @Injectable()
 export class MeetingsService {
@@ -45,6 +47,7 @@ export class MeetingsService {
     private readonly dataSource: DataSource,
     private readonly enrollmentService: EnrollmentService,
     private readonly refundService: RefundService,
+    private readonly creditsService: CreditsService,
   ) { }
 
   async cancelMeeting(meetingId: string, user: User, reason: string) {
@@ -407,7 +410,90 @@ export class MeetingsService {
       { is_online: false, left_at: new Date() },
     );
 
-    return this.meetingRepository.save(meeting);
+    const savedMeeting = await this.meetingRepository.save(meeting);
+
+    // 🔥 HOTFIX: Trigger real-time payment processing for paid meetings
+    // This ensures teachers receive payment immediately instead of waiting for sweeper job
+    if (meeting.pricing_type === 'credits' && meeting.price_credits > 0) {
+      try {
+        // Reload meeting with host relation for payment processing
+        const meetingWithHost = await this.meetingRepository.findOne({
+          where: { id: meetingId },
+          relations: ['host'],
+        });
+
+        // Only process if payment hasn't been processed yet
+        if (meetingWithHost && (!meetingWithHost.payment_status || meetingWithHost.payment_status === 'pending')) {
+          this.logger.log(`Triggering real-time payment processing for meeting ${meetingId}`);
+          
+          // Get all participants who actually joined (have left_at or duration > 0, excluding host)
+          const participants = await this.participantRepository
+            .createQueryBuilder('participant')
+            .leftJoinAndSelect('participant.user', 'user')
+            .where('participant.meeting_id = :meetingId', { meetingId })
+            .andWhere('participant.user_id != :hostId', { hostId: meetingWithHost.host.id })
+            .andWhere('(participant.left_at IS NOT NULL OR participant.duration_seconds > 0)')
+            .getMany();
+
+          if (participants.length > 0) {
+            // Process payment for each participant
+            let successCount = 0;
+            let failureCount = 0;
+
+            for (const participant of participants) {
+              try {
+                // Check if payment already processed by checking for existing transaction
+                const existingTransaction = await this.dataSource
+                  .getRepository(CreditTransaction)
+                  .findOne({
+                    where: {
+                      meeting_id: meetingId,
+                      user_id: participant.user_id,
+                      transaction_type: TransactionType.DEDUCTION,
+                      status: TransactionStatus.COMPLETED,
+                    },
+                  });
+
+                if (!existingTransaction) {
+                  await this.creditsService.processClassPayment(meetingWithHost, participant.user);
+                  this.logger.log(`Payment processed for participant ${participant.user_id} in meeting ${meetingId}`);
+                  successCount++;
+                } else {
+                  this.logger.log(`Payment already processed for participant ${participant.user_id}, skipping`);
+                  successCount++; // Count as success since already processed
+                }
+              } catch (error) {
+                this.logger.error(`Failed to process payment for participant ${participant.user_id}: ${error.message}`);
+                failureCount++;
+                // Continue processing other participants even if one fails
+              }
+            }
+
+            // Update payment status based on results
+            const paymentStatus = failureCount === 0 ? 'completed' : successCount > 0 ? 'partial' : 'failed';
+            await this.meetingRepository.update(meetingId, {
+              payment_status: paymentStatus as any,
+              payment_processed_at: new Date(),
+            });
+
+            this.logger.log(`Real-time payment processing completed for meeting ${meetingId}: ${successCount} success, ${failureCount} failures`);
+          } else {
+            // No participants, mark as completed with no payments
+            await this.meetingRepository.update(meetingId, {
+              payment_status: 'completed' as any,
+              payment_processed_at: new Date(),
+            });
+            this.logger.log(`No participants found for meeting ${meetingId}, marked as completed`);
+          }
+        }
+      } catch (error) {
+        // Log error but don't fail the meeting end operation
+        // Payment will be processed by sweeper job if real-time processing fails
+        this.logger.error(`Real-time payment processing failed for meeting ${meetingId}: ${error.message}`);
+      }
+    }
+
+    return savedMeeting;
   }
 
   async joinMeeting(meetingId: string, user: User, deviceSettings?: { audioEnabled?: boolean; videoEnabled?: boolean }) {

@@ -5,6 +5,8 @@ import { User, UserRole } from '../../users/user.entity';
 import { CreditTransaction, TransactionType, TransactionStatus } from '../credits/entities/credit-transaction.entity';
 import { TeacherProfile, TeacherStatus } from '../teachers/entities/teacher-profile.entity';
 import { AffiliateStatsDto, ReferralDto, EarningsHistoryDto, ValidateAffiliateCodeDto } from './dto/affiliate-stats.dto';
+import { Meeting } from '../meeting/entities/meeting.entity';
+import { MeetingParticipant } from '../meeting/entities/meeting-participant.entity';
 
 @Injectable()
 export class AffiliateService {
@@ -15,6 +17,10 @@ export class AffiliateService {
     private userRepository: Repository<User>,
     @InjectRepository(CreditTransaction)
     private transactionRepository: Repository<CreditTransaction>,
+    @InjectRepository(Meeting)
+    private meetingRepository: Repository<Meeting>,
+    @InjectRepository(MeetingParticipant)
+    private participantRepository: Repository<MeetingParticipant>,
   ) {}
 
   /**
@@ -61,16 +67,28 @@ export class AffiliateService {
       select: ['id', 'username', 'email', 'avatar_url', 'created_at'],
     });
 
-    // Calculate total earnings from affiliate transactions (using amount column)
+    // Calculate total affiliate earnings from EARNING transactions
+    // Affiliate earnings = EARNING transactions where meeting has participants with referrer_id = teacher.id
+    // Use EXISTS subquery to check if meeting has any participant referred by this teacher
     const totalEarningsResult = await this.transactionRepository
       .createQueryBuilder('transaction')
       .select('SUM(transaction.amount)', 'total')
       .where('transaction.user_id = :userId', { userId })
-      .andWhere('transaction.transaction_type = :type', { type: TransactionType.AFFILIATE_BONUS })
+      .andWhere('transaction.transaction_type = :type', { type: TransactionType.EARNING })
       .andWhere('transaction.status = :status', { status: TransactionStatus.COMPLETED })
+      .andWhere('transaction.meeting_id IS NOT NULL')
+      .andWhere(
+        `EXISTS (
+          SELECT 1 FROM meeting_participants mp 
+          INNER JOIN users u ON mp.user_id = u.id 
+          WHERE mp.meeting_id = transaction.meeting_id 
+          AND u.referrer_id = :userId
+        )`,
+        { userId }
+      )
       .getRawOne();
 
-    const totalEarnings = Math.abs(Number(totalEarningsResult?.total || 0)); // Use absolute value
+    const totalEarnings = Math.abs(Number(totalEarningsResult?.total || 0));
 
     // Calculate this month earnings
     const startOfMonth = new Date();
@@ -81,12 +99,22 @@ export class AffiliateService {
       .createQueryBuilder('transaction')
       .select('SUM(transaction.amount)', 'total')
       .where('transaction.user_id = :userId', { userId })
-      .andWhere('transaction.transaction_type = :type', { type: TransactionType.AFFILIATE_BONUS })
+      .andWhere('transaction.transaction_type = :type', { type: TransactionType.EARNING })
       .andWhere('transaction.status = :status', { status: TransactionStatus.COMPLETED })
       .andWhere('transaction.created_at >= :startDate', { startDate: startOfMonth })
+      .andWhere('transaction.meeting_id IS NOT NULL')
+      .andWhere(
+        `EXISTS (
+          SELECT 1 FROM meeting_participants mp 
+          INNER JOIN users u ON mp.user_id = u.id 
+          WHERE mp.meeting_id = transaction.meeting_id 
+          AND u.referrer_id = :userId
+        )`,
+        { userId }
+      )
       .getRawOne();
 
-    const thisMonthEarnings = Math.abs(Number(thisMonthEarningsResult?.total || 0)); // Use absolute value
+    const thisMonthEarnings = Math.abs(Number(thisMonthEarningsResult?.total || 0))
 
     // Return chỉ affiliate_code, KHÔNG return referral_link
     return {
@@ -192,19 +220,31 @@ export class AffiliateService {
         startDate = new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000);
     }
 
-    // Use raw query to only select columns that exist in old schema (amount instead of credit_amount)
+    // Query EARNING transactions that are from affiliate referrals
+    // Affiliate earnings = EARNING transactions where meeting has participants with referrer_id = teacher.id
     const transactions = await this.transactionRepository
       .createQueryBuilder('transaction')
       .select([
         'transaction.id AS id',
-        'transaction.amount AS amount', // Use amount column from old schema
+        'transaction.amount AS amount',
         'transaction.description AS description',
         'transaction.created_at AS created_at',
       ])
       .where('transaction.user_id = :userId', { userId })
-      .andWhere('transaction.transaction_type = :type', { type: TransactionType.AFFILIATE_BONUS })
+      .andWhere('transaction.transaction_type = :type', { type: TransactionType.EARNING })
       .andWhere('transaction.status = :status', { status: TransactionStatus.COMPLETED })
       .andWhere('transaction.created_at > :startDate', { startDate })
+      .andWhere('transaction.meeting_id IS NOT NULL')
+      .andWhere(
+        `EXISTS (
+          SELECT 1 FROM meeting_participants mp 
+          INNER JOIN users u ON mp.user_id = u.id 
+          WHERE mp.meeting_id = transaction.meeting_id 
+          AND u.referrer_id = :userId
+        )`,
+        { userId }
+      )
+      .groupBy('transaction.id') // Group to get distinct transactions
       .orderBy('transaction.created_at', 'DESC')
       .getRawMany();
 

@@ -24,6 +24,7 @@ import { FeatureFlagModule } from '../../core/feature-flags/feature-flag.module'
 
 import { NotificationsModule } from '../notifications/notifications.module';
 import { BookingModule } from '../booking/booking.module';
+import { CreditsModule } from '../credits/credits.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { BookingModule } from '../booking/booking.module';
     FeatureFlagModule,
     NotificationsModule,
     BookingModule,
+    forwardRef(() => CreditsModule),
   ],
   controllers: [PublicMeetingsController, MeetingsGeneralController, WaitingRoomController],
   providers: [
