@@ -49,7 +49,8 @@ describe('BaseP2PManager', () => {
   describe('Socket Event Handling', () => {
     it('should track listeners when using onSocketEvent', () => {
       const handler = vi.fn();
-      manager.onSocketEvent('test-event', handler);
+      // Access protected method using type assertion for testing
+      (manager as any).onSocketEvent('test-event', handler);
 
       expect(mockSocket.on).toHaveBeenCalledWith('test-event', handler);
       expect(manager.getInfo().trackedListenersCount).toBe(1);
@@ -57,10 +58,11 @@ describe('BaseP2PManager', () => {
 
     it('should remove tracked listeners when using offSocketEvent', () => {
       const handler = vi.fn();
-      manager.onSocketEvent('test-event', handler);
+      // Access protected method using type assertion for testing
+      (manager as any).onSocketEvent('test-event', handler);
       expect(manager.getInfo().trackedListenersCount).toBe(1);
 
-      manager.offSocketEvent('test-event', handler);
+      (manager as any).offSocketEvent('test-event', handler);
       expect(mockSocket.off).toHaveBeenCalledWith('test-event', handler);
       expect(manager.getInfo().trackedListenersCount).toBe(0);
     });
@@ -69,11 +71,12 @@ describe('BaseP2PManager', () => {
       const handler1 = vi.fn();
       const handler2 = vi.fn();
       
-      manager.onSocketEvent('test-event', handler1);
-      manager.onSocketEvent('test-event', handler2);
+      // Access protected method using type assertion for testing
+      (manager as any).onSocketEvent('test-event', handler1);
+      (manager as any).onSocketEvent('test-event', handler2);
       expect(manager.getInfo().trackedListenersCount).toBe(1); // Same event, 2 handlers
 
-      manager.offSocketEvent('test-event');
+      (manager as any).offSocketEvent('test-event');
       expect(mockSocket.off).toHaveBeenCalledWith('test-event');
       expect(manager.getInfo().trackedListenersCount).toBe(0);
     });
@@ -84,8 +87,9 @@ describe('BaseP2PManager', () => {
       const handler1 = vi.fn();
       const handler2 = vi.fn();
       
-      manager.onSocketEvent('event-1', handler1);
-      manager.onSocketEvent('event-2', handler2);
+      // Access protected method using type assertion for testing
+      (manager as any).onSocketEvent('event-1', handler1);
+      (manager as any).onSocketEvent('event-2', handler2);
       expect(manager.getInfo().trackedListenersCount).toBe(2);
 
       manager.cleanup();
@@ -99,7 +103,8 @@ describe('BaseP2PManager', () => {
     it('should prevent duplicate listeners after cleanup and re-init', async () => {
       const handler = vi.fn();
       
-      manager.onSocketEvent('test-event', handler);
+      // Access protected method using type assertion for testing
+      (manager as any).onSocketEvent('test-event', handler);
       expect(manager.getInfo().trackedListenersCount).toBe(1);
 
       // Cleanup
@@ -108,7 +113,7 @@ describe('BaseP2PManager', () => {
 
       // Re-initialize and add listener again
       await manager.initialize();
-      manager.onSocketEvent('test-event', handler);
+      (manager as any).onSocketEvent('test-event', handler);
       expect(manager.getInfo().trackedListenersCount).toBe(1);
       
       // Verify socket.on was called exactly twice (once before cleanup, once after)
@@ -120,7 +125,8 @@ describe('BaseP2PManager', () => {
     it('should emit event when socket is connected', () => {
       mockSocket.connected = true;
       
-      manager.emitSocketEvent('test-event', { data: 'test' });
+      // Access protected method using type assertion for testing
+      (manager as any).emitSocketEvent('test-event', { data: 'test' });
       
       expect(mockSocket.emit).toHaveBeenCalledWith('test-event', { data: 'test' });
     });
@@ -128,7 +134,8 @@ describe('BaseP2PManager', () => {
     it('should not emit when socket is disconnected', () => {
       mockSocket.connected = false;
       
-      manager.emitSocketEvent('test-event', { data: 'test' });
+      // Access protected method using type assertion for testing
+      (manager as any).emitSocketEvent('test-event', { data: 'test' });
       
       expect(mockSocket.emit).not.toHaveBeenCalled();
     });
@@ -137,7 +144,8 @@ describe('BaseP2PManager', () => {
       mockSocket.connected = true;
       const callback = vi.fn();
       
-      manager.emitSocketEvent('test-event', { data: 'test' }, callback);
+      // Access protected method using type assertion for testing
+      (manager as any).emitSocketEvent('test-event', { data: 'test' }, callback);
       
       expect(mockSocket.emit).toHaveBeenCalledWith('test-event', { data: 'test' }, callback);
     });
