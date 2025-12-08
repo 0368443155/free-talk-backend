@@ -7,7 +7,12 @@
     "build": "next build",
     "start": "next start --port 3001",
     "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "test:watch": "vitest --watch",
+    "test:run": "vitest run"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.3.1",
@@ -59,15 +64,24 @@
     "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-big-calendar": "^1.16.3",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^5.1.1",
+    "@vitest/coverage-v8": "^1.6.1",
+    "@vitest/ui": "^1.6.1",
     "autoprefixer": "^10.4.20",
     "eslint": "^8",
     "eslint-config-next": "15.1.0",
+    "jsdom": "^23.2.0",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^1.6.1"
   }
 }
