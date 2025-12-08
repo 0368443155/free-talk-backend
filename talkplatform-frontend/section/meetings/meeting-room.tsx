@@ -21,7 +21,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useMeetingSocket } from "@/hooks/use-meeting-socket";
-import { useWebRTC } from "@/hooks/use-webrtc";
+import { useWebRTCV2 as useWebRTC } from "@/hooks/use-webrtc-v2";
 import { useWebRTCStatsWorker } from "@/hooks/useWebRTCStatsWorker";
 import { useThrottledMetrics } from "@/hooks/useThrottledMetrics";
 import { VideoGrid } from "./video-grid";
