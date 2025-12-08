@@ -200,8 +200,11 @@ export class P2PMediaManager extends BaseP2PManager {
    * Enable/disable camera
    */
   async enableCamera(enabled: boolean, deviceId?: string): Promise<void> {
-    if (enabled === this.state.camera.enabled && !deviceId) {
+    // Check current state - if already in desired state and no device change, skip
+    const currentEnabled = this.state.camera.enabled && !this.state.camera.isVideoOff;
+    if (enabled === currentEnabled && !deviceId) {
       // Already in desired state, no need to change
+      this.log('debug', 'Camera already in desired state', { enabled, currentEnabled });
       return;
     }
 
@@ -463,7 +466,18 @@ export class P2PMediaManager extends BaseP2PManager {
    * Fetch latest mic state from server to reconcile after timeout/rejection
    */
   private async fetchLatestMicState(): Promise<void> {
-    if (!this.socket) return;
+    if (!this.socket || !this.socket.connected) {
+      this.log('debug', 'Skipping fetchLatestMicState: socket not connected');
+      return;
+    }
+
+    // Throttle to prevent spam
+    const now = Date.now();
+    if (now - this.lastFetchMicStateTime < this.FETCH_STATE_THROTTLE_MS) {
+      this.log('debug', 'Skipping fetchLatestMicState: throttled');
+      return;
+    }
+    this.lastFetchMicStateTime = now;
 
     // Emit request for latest participant state
     // Backend should respond with current participant state
@@ -506,8 +520,13 @@ export class P2PMediaManager extends BaseP2PManager {
 
       this.onSocketEvent('media:user-muted', handleStateUpdate);
       
-      // Request latest state
-      this.emitSocketEvent('room:request-participant-state', { userId: this.userId });
+      // Request latest state (only if socket is connected)
+      if (this.socket.connected) {
+        this.emitSocketEvent('room:request-participant-state', { userId: this.userId });
+      } else {
+        clearTimeout(timeout);
+        resolve();
+      }
     });
   }
 

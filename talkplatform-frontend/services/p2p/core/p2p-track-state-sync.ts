@@ -123,6 +123,8 @@ export class P2PTrackStateSync extends BaseP2PManager {
 
   /**
    * Sync state from server
+   * NOTE: Backend may not support room:request-participant-state yet
+   * This is a placeholder for future implementation
    */
   async syncStateFromServer(): Promise<ServerTrackState | null> {
     if (!this.socket || !this.socket.connected) {
@@ -130,6 +132,13 @@ export class P2PTrackStateSync extends BaseP2PManager {
       return null;
     }
 
+    // TODO: Backend needs to implement room:request-participant-state handler
+    // For now, skip this sync to avoid timeout errors
+    this.log('debug', 'State sync from server skipped - backend not implemented yet');
+    return null;
+
+    // Commented out until backend supports it:
+    /*
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
         this.log('warn', 'Timeout waiting for server state');
@@ -153,6 +162,7 @@ export class P2PTrackStateSync extends BaseP2PManager {
       // Request latest state from server
       this.emitSocketEvent('room:request-participant-state', { userId: this.userId });
     });
+    */
   }
 
   /**

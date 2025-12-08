@@ -101,7 +101,7 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
 
   // Initialize or recreate managers when config changes
   useEffect(() => {
-    if (!socket || !isOnline) {
+    if (!socket) {
       // Cleanup if socket disconnects
       if (mediaManagerRef.current) {
         cleanupManagers();
@@ -206,7 +206,7 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
       console.log('[useWebRTCV2] useEffect cleanup function running.');
       cleanupManagers(); // Synchronous cleanup on unmount or effect re-run
     };
-  }, [socket, meetingId, userId, isOnline, cleanupManagers]);
+  }, [socket, meetingId, userId, cleanupManagers]);
 
   // Use useSyncExternalStore to subscribe to manager state changes
   // This is the React 18+ recommended way to bind external stores (like our class managers)
@@ -367,16 +367,24 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
 
   // Start local stream
   const startLocalStream = useCallback(async () => {
-    if (!mediaManagerRef.current) return;
+    if (!mediaManagerRef.current || !socket) return;
 
     try {
+      console.log('📹 [useWebRTCV2] Starting local stream...');
       await mediaManagerRef.current.initializeLocalStream(true, true);
       // State will update automatically via useSyncExternalStore subscription
       mediaManagerRef.current.emit('stream-changed');
+      
+      // 🔥 FIX: Emit media:ready with userId (like v1)
+      if (socket.connected) {
+        socket.emit('media:ready', { roomId: meetingId, userId });
+        console.log('✅ [useWebRTCV2] Emitted media:ready');
+      }
     } catch (error: any) {
+      console.error('❌ [useWebRTCV2] Failed:', error);
       toast.error(`Failed to start local stream: ${error.message}`);
     }
-  }, []);
+  }, [socket, meetingId, userId]);
 
   // Stop local stream
   const stopLocalStream = useCallback(() => {
@@ -514,9 +522,29 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
     }
   }, [socket, meetingId]);
 
+  // 🔥 FIX: AUTO-START local stream when socket connects
+  useEffect(() => {
+    if (socket?.connected && !localStream && mediaManagerRef.current) {
+      console.log('🎥 [useWebRTCV2] Auto-starting local stream...');
+      startLocalStream()
+        .then(() => {
+          console.log('✅ [useWebRTCV2] Stream started');
+        })
+        .catch((error: any) => {
+          console.error('❌ [useWebRTCV2] Failed:', error);
+          toast.error(
+            error?.message?.includes('permission')
+              ? error.message
+              : "Failed to access camera/microphone",
+            { duration: 5000 }
+          );
+        });
+    }
+  }, [socket?.connected, localStream, startLocalStream]);
+
   // Handle peer connections (offer, answer, ICE candidate)
   useEffect(() => {
-    if (!socket || !isOnline || !peerConnectionManagerRef.current) return;
+    if (!socket?.connected || !peerConnectionManagerRef.current) return;
 
     // Handle new peer ready
     const handlePeerReady = async (data: { userId: string }) => {
@@ -537,6 +565,12 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
         localStream.getTracks().forEach(track => {
           peerConnectionManagerRef.current!.addTrackToPeer(data.userId, track, localStream);
         });
+
+        // Sync peer connections to media manager after adding new peer
+        if (mediaManagerRef.current) {
+          const allConnections = peerConnectionManagerRef.current.getAllPeerConnections();
+          mediaManagerRef.current.setPeerConnections(allConnections);
+        }
       } catch (error: any) {
         console.error(`Failed to create peer connection for ${data.userId}:`, error);
       }
@@ -550,19 +584,74 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
       if (streamManagerRef.current) {
         streamManagerRef.current.removeRemoteStream(data.userId);
       }
+
+      // Sync peer connections to media manager after removing peer
+      if (mediaManagerRef.current && peerConnectionManagerRef.current) {
+        const allConnections = peerConnectionManagerRef.current.getAllPeerConnections();
+        mediaManagerRef.current.setPeerConnections(allConnections);
+      }
     };
 
-    socket.on('media:ready', handlePeerReady);
+    // 🔥 FIX: Add WebRTC signaling handlers (CRITICAL!)
+    const handleOffer = async (data: { fromUserId: string; roomId: string; offer: RTCSessionDescriptionInit }) => {
+      if (!peerConnectionManagerRef.current) return;
+      console.log(`📨 [useWebRTCV2] Received offer from ${data.fromUserId}`);
+      try {
+        await peerConnectionManagerRef.current.handleRemoteOffer(data.fromUserId, data.offer);
+        console.log(`✅ [useWebRTCV2] Processed offer`);
+      } catch (error: any) {
+        console.error(`❌ [useWebRTCV2] Failed to handle offer:`, error);
+      }
+    };
+
+    const handleAnswer = async (data: { fromUserId: string; roomId: string; answer: RTCSessionDescriptionInit }) => {
+      if (!peerConnectionManagerRef.current) return;
+      console.log(`📨 [useWebRTCV2] Received answer from ${data.fromUserId}`);
+      try {
+        await peerConnectionManagerRef.current.handleRemoteAnswer(data.fromUserId, data.answer);
+        console.log(`✅ [useWebRTCV2] Processed answer`);
+      } catch (error: any) {
+        console.error(`❌ [useWebRTCV2] Failed to handle answer:`, error);
+      }
+    };
+
+    const handleIceCandidate = async (data: { fromUserId: string; roomId: string; candidate: RTCIceCandidateInit }) => {
+      if (!peerConnectionManagerRef.current) return;
+      try {
+        await peerConnectionManagerRef.current.handleRemoteIceCandidate(data.fromUserId, data.candidate);
+      } catch (error: any) {
+        console.error(`❌ [useWebRTCV2] Failed to add ICE candidate:`, error);
+      }
+    };
+
+    // Backend emits 'meeting:user-joined' when requesting peers
+    // Backend emits 'media:peer-ready' when user is ready for WebRTC
+    const handleUserJoined = async (data: { userId: string; userName?: string }) => {
+      if (data.userId === userId) return;
+      // Trigger peer ready handler
+      await handlePeerReady({ userId: data.userId });
+    };
+
+    // Register all handlers
+    socket.on('media:peer-ready', handlePeerReady);
+    socket.on('meeting:user-joined', handleUserJoined);
     socket.on('meeting:user-left', handleUserLeft);
+    socket.on('media:offer', handleOffer);  // ✅ NEW
+    socket.on('media:answer', handleAnswer);  // ✅ NEW
+    socket.on('media:ice-candidate', handleIceCandidate);  // ✅ NEW
 
     // Request existing peers when we join
     socket.emit('meeting:request-peers');
 
     return () => {
-      socket.off('media:ready', handlePeerReady);
+      socket.off('media:peer-ready', handlePeerReady);
+      socket.off('meeting:user-joined', handleUserJoined);
       socket.off('meeting:user-left', handleUserLeft);
+      socket.off('media:offer', handleOffer);  // ✅ NEW
+      socket.off('media:answer', handleAnswer);  // ✅ NEW
+      socket.off('media:ice-candidate', handleIceCandidate);  // ✅ NEW
     };
-  }, [socket, userId, isOnline]);
+  }, [socket, userId]);
 
   // Helper to get first peer connection for bandwidth monitoring
   const getFirstPeerConnection = useCallback((): RTCPeerConnection | null => {

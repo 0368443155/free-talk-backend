@@ -21,7 +21,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useMeetingSocket } from "@/hooks/use-meeting-socket";
-import { useWebRTCV2 as useWebRTC } from "@/hooks/use-webrtc-v2";
+import { useWebRTC } from "@/hooks/use-webrtc";
 import { useWebRTCStatsWorker } from "@/hooks/useWebRTCStatsWorker";
 import { useThrottledMetrics } from "@/hooks/useThrottledMetrics";
 import { VideoGrid } from "./video-grid";
@@ -131,7 +131,7 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   const [blockedModalOpen, setBlockedModalOpen] = useState(false);
   const [blockedMessage, setBlockedMessage] = useState('');
   const [showRoomFullDialog, setShowRoomFullDialog] = useState(false);
-  
+
   // UI states
   const [showParticipants, setShowParticipants] = useState(false);
   const [showChat, setShowChat] = useState(true);
@@ -142,7 +142,7 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   const [showYouTubeSearch, setShowYouTubeSearch] = useState(false);
   const [youtubeVolume, setYoutubeVolume] = useState(50);
   const youtubePlayerRef = useRef<YouTubePlayerHandle | null>(null);
-  
+
   const { toast } = useToast();
   const router = useRouter();
   const [spotlightUserId, setSpotlightUserId] = useState<string | null>(null);
@@ -152,13 +152,13 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   const [useLiveKit, setUseLiveKit] = useState<boolean | null>(null); // null = not selected yet
   const [livekitPhase, setLivekitPhase] = useState<'green-room' | 'meeting'>('green-room');
   const [showGreenRoom, setShowGreenRoom] = useState(false);
-  
+
   // Chat input state
   const [newMessage, setNewMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const chatInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Emoji list
   const EMOJI_CATEGORIES = {
     smileys: ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😙', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤐', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶', '😶‍🌫️', '😵', '😵‍💫', '🤯', '🤠', '🥳', '🥸', '😎', '🤓', '🧐', '😕', '😟', '🙁', '☹️', '😮', '😯', '😲', '😳', '🥺', '😦', '😧', '😨', '😰', '😥', '😢', '😭', '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡', '😠', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺', '👻', '👽', '👾', '🤖', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾'],
@@ -172,7 +172,7 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   // Determine if current user is the meeting host
   // Host has full control over YouTube player, meeting settings, etc.
   const isHost = meeting.host?.id === user.id;
-  
+
   console.log("🎯 Meeting Room - Host Check:", {
     meetingHostId: meeting.host?.id,
     currentUserId: user.id,
@@ -216,10 +216,10 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
       const errorMessage = error.response?.data?.message || "";
       const statusCode = error.response?.status;
       if (statusCode === 409) {
-        const isRoomFull = errorMessage.toLowerCase().includes("full") || 
-                          errorMessage.toLowerCase().includes("đầy") ||
-                          errorMessage.toLowerCase().includes("maximum") ||
-                          errorMessage.toLowerCase().includes("tối đa");
+        const isRoomFull = errorMessage.toLowerCase().includes("full") ||
+          errorMessage.toLowerCase().includes("đầy") ||
+          errorMessage.toLowerCase().includes("maximum") ||
+          errorMessage.toLowerCase().includes("tối đa");
         if (isRoomFull) {
           setIsJoining(false);
           setShowRoomFullDialog(true);
@@ -332,7 +332,7 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   }, [isHost, meeting.youtube_video_id, meeting.youtube_is_playing, meeting.youtube_current_time]);
 
   // WebRTC
-    const {
+  const {
     localStream,
     peers,
     isMuted,
@@ -353,7 +353,7 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
 
   // Helper function to determine connection quality
   const getConnectionQuality = useCallback((
-    latency: number, 
+    latency: number,
     packetLoss: number
   ): 'excellent' | 'good' | 'fair' | 'poor' => {
     if (latency < 100 && packetLoss < 1) return 'excellent';
@@ -408,10 +408,10 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     const avgLatency = webrtcStats.reduce((sum: number, s) => sum + s.latency, 0) / webrtcStats.length;
     const avgPacketLoss = webrtcStats.reduce((sum: number, s) => sum + s.packetLoss, 0) / webrtcStats.length;
     const usingRelay = webrtcStats.some((s: any) => s.usingRelay);
-    
+
     // Determine connection quality
     const quality = getConnectionQuality(avgLatency, avgPacketLoss);
-    
+
     return {
       uploadBitrate: totalUpload,
       downloadBitrate: totalDownload,
@@ -500,8 +500,8 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
           const errorMessage = error?.message || error?.toString() || "Failed to access camera/microphone";
           toast({
             title: "Media Error",
-            description: errorMessage.includes('permission') 
-              ? errorMessage 
+            description: errorMessage.includes('permission')
+              ? errorMessage
               : "Failed to access camera/microphone. Please check permissions and try again.",
             variant: "destructive",
           });
@@ -571,18 +571,18 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
         if (data.isMuted && !isMuted) {
           // Host muted me - force mute if not already muted
           toggleMute();
-          toast({ 
-            title: "You have been muted by the host", 
+          toast({
+            title: "You have been muted by the host",
             description: "Your microphone has been turned off.",
-            variant: "default" 
+            variant: "default"
           });
         } else if (!data.isMuted && isMuted) {
           // Host unmuted me - force unmute if currently muted
           toggleMute();
-          toast({ 
-            title: "You have been unmuted by the host", 
+          toast({
+            title: "You have been unmuted by the host",
             description: "Your microphone has been turned on.",
-            variant: "default" 
+            variant: "default"
           });
         }
       }
@@ -594,18 +594,18 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
         if (data.isVideoOff && !isVideoOff) {
           // Host turned off my camera - force video off if not already off
           toggleVideo();
-          toast({ 
-            title: "Your camera has been turned off", 
+          toast({
+            title: "Your camera has been turned off",
             description: "The host has disabled your camera.",
-            variant: "default" 
+            variant: "default"
           });
         } else if (!data.isVideoOff && isVideoOff) {
           // Host turned on my camera - force video on if currently off
           toggleVideo();
-          toast({ 
-            title: "Your camera has been turned on", 
+          toast({
+            title: "Your camera has been turned on",
             description: "The host has enabled your camera.",
-            variant: "default" 
+            variant: "default"
           });
         }
       }
@@ -616,10 +616,10 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
         // Host stopped my screen share - force stop if currently sharing
         if (isScreenSharing) {
           toggleScreenShare();
-          toast({ 
-            title: "Screen sharing stopped", 
+          toast({
+            title: "Screen sharing stopped",
             description: "The host has stopped your screen sharing.",
-            variant: "default" 
+            variant: "default"
           });
         }
       }
@@ -724,7 +724,7 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
 
       if (isPublicMeeting) {
         const joinResult = await safeJoinPublicMeetingApi(meeting.id);
-        
+
         if (!joinResult.success) {
           if (joinResult.blocked) {
             // Handle blocked user without console error
@@ -741,27 +741,27 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
       } else {
         await joinMeetingApi(classroomId!, meeting.id);
       }
-      
+
       console.log("✅ [JOIN] Join API success");
       toast({ title: "Success", description: "Joined meeting successfully" });
-      
+
       await fetchParticipants();
       console.log("✅ [JOIN] Participants refreshed");
-      
+
     } catch (error: any) {
       console.error("❌ [JOIN] Error:", error);
 
       const errorMessage = error.response?.data?.message || "";
       const statusCode = error.response?.status;
-      
+
       // Handle 409 status code - room is full
       if (statusCode === 409) {
         // Check if it's a room full error or already participant
-        const isRoomFull = errorMessage.toLowerCase().includes("full") || 
-                          errorMessage.toLowerCase().includes("đầy") ||
-                          errorMessage.toLowerCase().includes("maximum") ||
-                          errorMessage.toLowerCase().includes("tối đa");
-        
+        const isRoomFull = errorMessage.toLowerCase().includes("full") ||
+          errorMessage.toLowerCase().includes("đầy") ||
+          errorMessage.toLowerCase().includes("maximum") ||
+          errorMessage.toLowerCase().includes("tối đa");
+
         if (isRoomFull) {
           // Show dialog for room full
           setIsJoining(false); // Stop loading immediately
@@ -867,9 +867,9 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   const confirmKickParticipant = async () => {
     if (!targetParticipant) return;
     // Emit socket event for real-time notification
-    socket?.emit('admin:kick-user', { 
-      targetUserId: targetParticipant.id, 
-      reason: 'Kicked by host' 
+    socket?.emit('admin:kick-user', {
+      targetUserId: targetParticipant.id,
+      reason: 'Kicked by host'
     });
     // Call API to actually kick
     await handleKickParticipantApi(targetParticipant.id, targetParticipant.name);
@@ -885,9 +885,9 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   const confirmBlockParticipant = async () => {
     if (!targetParticipant) return;
     // Emit socket event for real-time notification
-    socket?.emit('admin:block-user', { 
-      targetUserId: targetParticipant.id, 
-      reason: 'Blocked by host' 
+    socket?.emit('admin:block-user', {
+      targetUserId: targetParticipant.id,
+      reason: 'Blocked by host'
     });
     // Call API to actually block
     await handleBlockParticipantApi(targetParticipant.id, targetParticipant.name);
@@ -983,487 +983,480 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     <>
       {/* Room Full Dialog */}
       <AlertDialog open={showRoomFullDialog} onOpenChange={setShowRoomFullDialog}>
-          <AlertDialogContent className="sm:max-w-[425px]">
-            <AlertDialogHeader>
-              <div className="flex flex-col items-center gap-4 mb-2">
-                <div className="w-16 h-16 rounded-full bg-orange-100 dark:bg-orange-900/20 flex items-center justify-center">
-                  <Users className="w-8 h-8 text-orange-600 dark:text-orange-400" />
-                </div>
-                <div className="text-center">
-                  <AlertDialogTitle className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                    Phòng đã đầy
-                  </AlertDialogTitle>
-                  <AlertDialogDescription className="text-base text-gray-600 dark:text-gray-300">
-                    Phòng này đã đạt số lượng người tham gia tối đa
-                  </AlertDialogDescription>
-                </div>
-                <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-                  <div className="flex items-center justify-center gap-2">
-                    <Users className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-                    <span className="text-lg font-semibold text-gray-900 dark:text-white">
-                      {onlineParticipantsCount} / {meeting.max_participants} người
-                    </span>
-                  </div>
-                </div>
-                <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
-                  Vui lòng thử lại sau hoặc tham gia phòng khác
-                </p>
+        <AlertDialogContent className="sm:max-w-[425px]">
+          <AlertDialogHeader>
+            <div className="flex flex-col items-center gap-4 mb-2">
+              <div className="w-16 h-16 rounded-full bg-orange-100 dark:bg-orange-900/20 flex items-center justify-center">
+                <Users className="w-8 h-8 text-orange-600 dark:text-orange-400" />
               </div>
-            </AlertDialogHeader>
-            <AlertDialogFooter className="sm:justify-center mt-4">
-              <AlertDialogAction
-                onClick={() => {
-                  setShowRoomFullDialog(false);
-                  router.push("/meetings");
-                }}
-                className="w-full sm:w-auto !bg-blue-600 hover:!bg-blue-700 !text-white font-medium px-6 py-3 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-md"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                Quay về danh sách phòng
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+              <div className="text-center">
+                <AlertDialogTitle className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                  Phòng đã đầy
+                </AlertDialogTitle>
+                <AlertDialogDescription className="text-base text-gray-600 dark:text-gray-300">
+                  Phòng này đã đạt số lượng người tham gia tối đa
+                </AlertDialogDescription>
+              </div>
+              <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                <div className="flex items-center justify-center gap-2">
+                  <Users className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                  <span className="text-lg font-semibold text-gray-900 dark:text-white">
+                    {onlineParticipantsCount} / {meeting.max_participants} người
+                  </span>
+                </div>
+              </div>
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
+                Vui lòng thử lại sau hoặc tham gia phòng khác
+              </p>
+            </div>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="sm:justify-center mt-4">
+            <AlertDialogAction
+              onClick={() => {
+                setShowRoomFullDialog(false);
+                router.push("/meetings");
+              }}
+              className="w-full sm:w-auto !bg-blue-600 hover:!bg-blue-700 !text-white font-medium px-6 py-3 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-md"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Quay về danh sách phòng
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="h-screen flex flex-col bg-gray-900">
-      {/* Header */}
-      <MeetingHeader
-        meetingTitle={meeting.title}
-        onlineParticipantsCount={onlineParticipantsCount}
-        maxParticipants={meeting.max_participants}
-        isConnected={isConnected}
-        showParticipants={showParticipants}
-        showChat={showChat}
-        showYouTubeSearch={showYouTubeSearch}
-        onToggleParticipants={() => { setShowParticipants(true); setShowChat(false); setShowFunctions(false); }}
-        onToggleChat={() => { setShowChat(true); setShowParticipants(false); setShowFunctions(false); setShowYouTubeSearch(false); }}
-        onToggleYouTubeSearch={() => { 
-          setShowYouTubeSearch(!showYouTubeSearch); 
-          setShowParticipants(false); 
-          setShowChat(false); 
-          setShowFunctions(false); 
-        }}
-      />
-      {showConnectionBanner && (
-        <div className="bg-yellow-600 text-white px-4 py-2 text-sm flex items-center justify-between">
-          <span>⚠️ Connection lost. Reconnecting...</span>
-        </div>
-      )}
-
-      {/* Main Content - Between header and controls */}
-      <div className="flex-1 flex overflow-hidden min-h-0">
-        {/* Video Area - clean without overlay buttons */}
-        <div className="flex-1 bg-gray-900 flex flex-col min-w-0">
-          <div className="flex-1 overflow-auto p-4 min-h-0">
-            {(() => {
-              console.log('🎥 [MeetingRoom] Rendering:', {
-                showVideoGrid,
-                isHost,
-                hasSocket: !!socket,
-                socketConnected: socket?.connected,
-                meetingYoutubeData: {
-                  videoId: youtubeVideoId,
-                  currentTime: youtubeCurrentTime,
-                  isPlaying: youtubeIsPlaying,
-                }
-              });
-              
-              return (
-                <div className="h-full">
-                  <div className={showVideoGrid ? "h-full" : "hidden"}>
-                    <VideoGrid
-                      localStream={localStream}
-                      peers={peers}
-                      participants={participants}
-                      currentUserId={user.id}
-                      isMuted={isMuted}
-                      isVideoOff={isVideoOff}
-                      spotlightUserId={spotlightUserId || undefined}
-                      isScreenSharing={isScreenSharing}
-                    />
-                  </div>
-                  <div className={showVideoGrid ? "hidden" : "h-full"}>
-                    <YouTubePlayer
-                      ref={youtubePlayerRef}
-                      socket={socket}
-                      isHost={isHost}
-                      initialVideoId={youtubeVideoId || undefined}
-                      initialCurrentTime={youtubeCurrentTime}
-                      initialIsPlaying={youtubeIsPlaying}
-                      volume={youtubeVolume}
-                    />
-                  </div>
-                </div>
-              );
-            })()}
+        {/* Header */}
+        <MeetingHeader
+          meetingTitle={meeting.title}
+          onlineParticipantsCount={onlineParticipantsCount}
+          maxParticipants={meeting.max_participants}
+          isConnected={isConnected}
+          showParticipants={showParticipants}
+          showChat={showChat}
+          showYouTubeSearch={showYouTubeSearch}
+          onToggleParticipants={() => { setShowParticipants(true); setShowChat(false); setShowFunctions(false); }}
+          onToggleChat={() => { setShowChat(true); setShowParticipants(false); setShowFunctions(false); setShowYouTubeSearch(false); }}
+          onToggleYouTubeSearch={() => {
+            setShowYouTubeSearch(!showYouTubeSearch);
+            setShowParticipants(false);
+            setShowChat(false);
+            setShowFunctions(false);
+          }}
+        />
+        {showConnectionBanner && (
+          <div className="bg-yellow-600 text-white px-4 py-2 text-sm flex items-center justify-between">
+            <span>⚠️ Connection lost. Reconnecting...</span>
           </div>
-        </div>
+        )}
 
-        {/* Sidebar - Fixed width */}
-        <div className="w-80 bg-gray-800 flex flex-col border-l border-gray-700 flex-shrink-0">
-          {/* Tab buttons */}
-          <div className="flex border-b border-gray-700 flex-shrink-0 hidden">
-            <button
-              className={`flex-1 p-2 transition-colors ${
-                showParticipants ? "bg-gray-700 text-white" : "text-gray-400 hover:text-white"
-              }`}
-              onClick={() => { setShowParticipants(true); setShowChat(false); setShowFunctions(false); }}
-            >
-              <Users className="w-5 h-5 mx-auto" />
-            </button>
-            <button
-              className={`flex-1 p-2 transition-colors ${
-                showChat ? "bg-gray-700 text-white" : "text-gray-400 hover:text-white"
-              }`}
-              onClick={() => { setShowChat(true); setShowParticipants(false); setShowFunctions(false); }}
-            >
-              <MessageSquare className="w-5 h-5 mx-auto" />
-            </button>
-            <button
-              className={`flex-1 p-2 transition-colors ${
-                showFunctions ? "bg-gray-700 text-white" : "text-gray-400 hover:text-white"
-              }`}
-              onClick={() => { setShowFunctions(true); setShowParticipants(false); setShowChat(false); }}
-            >
-              <Play className="w-5 h-5 mx-auto" />
-            </button>
-          </div>
+        {/* Main Content - Between header and controls */}
+        <div className="flex-1 flex overflow-hidden min-h-0">
+          {/* Video Area - clean without overlay buttons */}
+          <div className="flex-1 bg-gray-900 flex flex-col min-w-0">
+            <div className="flex-1 overflow-auto p-4 min-h-0">
+              {(() => {
+                console.log('🎥 [MeetingRoom] Rendering:', {
+                  showVideoGrid,
+                  isHost,
+                  hasSocket: !!socket,
+                  socketConnected: socket?.connected,
+                  meetingYoutubeData: {
+                    videoId: youtubeVideoId,
+                    currentTime: youtubeCurrentTime,
+                    isPlaying: youtubeIsPlaying,
+                  }
+                });
 
-          {/* Tab content - Fill remaining space */}
-          <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-            {showParticipants && (
-              <MeetingParticipantsPanel
-                participants={participants}
-                currentUserId={user.id}
-                isHost={isHost}
-                socket={socket}
-                onKickParticipant={handleKickParticipant}
-                onBlockParticipant={handleBlockParticipant}
-              />
-            )}
-
-            {showChat && (
-              <MeetingChatPanel
-                messages={chatMessages}
-                isOnline={isOnline}
-                currentUserId={user.id}
-                onSendMessage={handleSendMessage}
-              />
-            )}
-
-            {showYouTubeSearch && (
-              <div className="flex-1 flex flex-col overflow-hidden bg-[#0f0f0f]">
-                {/* Player Controls - At top of sidebar */}
-                {youtubeVideoId && (
-                  <div className="p-4 border-b border-gray-800 bg-[#0f0f0f] flex-shrink-0">
-                    <div className="flex flex-col gap-3">
-                      {/* Host Controls */}
-                      {isHost && (
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            onClick={handleYoutubeTogglePlay}
-                            className="flex-1 bg-[#272727] hover:bg-[#3f3f3f] text-white border-0"
-                          >
-                            {youtubeIsPlaying ? (
-                              <>
-                                <Pause className="w-4 h-4 mr-2" />
-                                Pause
-                              </>
-                            ) : (
-                              <>
-                                <Play className="w-4 h-4 mr-2" />
-                                Play
-                              </>
-                            )}
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={handleYoutubeClear}
-                            variant="ghost"
-                            className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
-                          >
-                            <X className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      )}
-                      
-                      {/* Volume Control - All users */}
-                      <div className="flex items-center gap-3 bg-[#272727] rounded-lg px-3 py-2">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={handleYoutubeMute}
-                          className="text-gray-300 hover:text-white p-0 h-auto"
-                        >
-                          {youtubeVolume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-                        </Button>
-                        <Slider
-                          value={[youtubeVolume]}
-                          onValueChange={(v) => setYoutubeVolume(v[0])}
-                          min={0}
-                          max={100}
-                          step={1}
-                          className="flex-1"
-                        />
-                        <span className="text-xs text-gray-300 min-w-[36px] text-right">{youtubeVolume}%</span>
-                      </div>
+                return (
+                  <div className="h-full">
+                    <div className={showVideoGrid ? "h-full" : "hidden"}>
+                      <VideoGrid
+                        localStream={localStream}
+                        peers={peers}
+                        participants={participants}
+                        currentUserId={user.id}
+                        isMuted={isMuted}
+                        isVideoOff={isVideoOff}
+                        spotlightUserId={spotlightUserId || undefined}
+                        isScreenSharing={isScreenSharing}
+                      />
+                    </div>
+                    <div className={showVideoGrid ? "hidden" : "h-full"}>
+                      <YouTubePlayer
+                        ref={youtubePlayerRef}
+                        socket={socket}
+                        isHost={isHost}
+                        initialVideoId={youtubeVideoId || undefined}
+                        initialCurrentTime={youtubeCurrentTime}
+                        initialIsPlaying={youtubeIsPlaying}
+                        volume={youtubeVolume}
+                      />
                     </div>
                   </div>
-                )}
-                
-                {/* YouTube Search Content - Below controls */}
-                <div className="flex-1 overflow-hidden flex flex-col">
-                  <YouTubeSearchModal
-                    open={true}
-                    onClose={() => {}}
-                    onSelectVideo={handleYoutubeSelectVideo}
-                    isHost={isHost}
-                    currentVideoId={youtubeVideoId}
-                    isPlaying={youtubeIsPlaying}
-                    volume={youtubeVolume}
-                    onTogglePlay={handleYoutubeTogglePlay}
-                    onClear={handleYoutubeClear}
-                    onVolumeChange={setYoutubeVolume}
-                    onMute={handleYoutubeMute}
-                    embedded={true}
-                  />
+                );
+              })()}
+            </div>
+          </div>
+
+          {/* Sidebar - Fixed width */}
+          <div className="w-80 bg-gray-800 flex flex-col border-l border-gray-700 flex-shrink-0">
+            {/* Tab buttons */}
+            <div className="flex border-b border-gray-700 flex-shrink-0 hidden">
+              <button
+                className={`flex-1 p-2 transition-colors ${showParticipants ? "bg-gray-700 text-white" : "text-gray-400 hover:text-white"
+                  }`}
+                onClick={() => { setShowParticipants(true); setShowChat(false); setShowFunctions(false); }}
+              >
+                <Users className="w-5 h-5 mx-auto" />
+              </button>
+              <button
+                className={`flex-1 p-2 transition-colors ${showChat ? "bg-gray-700 text-white" : "text-gray-400 hover:text-white"
+                  }`}
+                onClick={() => { setShowChat(true); setShowParticipants(false); setShowFunctions(false); }}
+              >
+                <MessageSquare className="w-5 h-5 mx-auto" />
+              </button>
+              <button
+                className={`flex-1 p-2 transition-colors ${showFunctions ? "bg-gray-700 text-white" : "text-gray-400 hover:text-white"
+                  }`}
+                onClick={() => { setShowFunctions(true); setShowParticipants(false); setShowChat(false); }}
+              >
+                <Play className="w-5 h-5 mx-auto" />
+              </button>
+            </div>
+
+            {/* Tab content - Fill remaining space */}
+            <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+              {showParticipants && (
+                <MeetingParticipantsPanel
+                  participants={participants}
+                  currentUserId={user.id}
+                  isHost={isHost}
+                  socket={socket}
+                  onKickParticipant={handleKickParticipant}
+                  onBlockParticipant={handleBlockParticipant}
+                />
+              )}
+
+              {showChat && (
+                <MeetingChatPanel
+                  messages={chatMessages}
+                  isOnline={isOnline}
+                  currentUserId={user.id}
+                  onSendMessage={handleSendMessage}
+                />
+              )}
+
+              {showYouTubeSearch && (
+                <div className="flex-1 flex flex-col overflow-hidden bg-[#0f0f0f]">
+                  {/* Player Controls - At top of sidebar */}
+                  {youtubeVideoId && (
+                    <div className="p-4 border-b border-gray-800 bg-[#0f0f0f] flex-shrink-0">
+                      <div className="flex flex-col gap-3">
+                        {/* Host Controls */}
+                        {isHost && (
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              onClick={handleYoutubeTogglePlay}
+                              className="flex-1 bg-[#272727] hover:bg-[#3f3f3f] text-white border-0"
+                            >
+                              {youtubeIsPlaying ? (
+                                <>
+                                  <Pause className="w-4 h-4 mr-2" />
+                                  Pause
+                                </>
+                              ) : (
+                                <>
+                                  <Play className="w-4 h-4 mr-2" />
+                                  Play
+                                </>
+                              )}
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={handleYoutubeClear}
+                              variant="ghost"
+                              className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        )}
+
+                        {/* Volume Control - All users */}
+                        <div className="flex items-center gap-3 bg-[#272727] rounded-lg px-3 py-2">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={handleYoutubeMute}
+                            className="text-gray-300 hover:text-white p-0 h-auto"
+                          >
+                            {youtubeVolume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                          </Button>
+                          <Slider
+                            value={[youtubeVolume]}
+                            onValueChange={(v) => setYoutubeVolume(v[0])}
+                            min={0}
+                            max={100}
+                            step={1}
+                            className="flex-1"
+                          />
+                          <span className="text-xs text-gray-300 min-w-[36px] text-right">{youtubeVolume}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* YouTube Search Content - Below controls */}
+                  <div className="flex-1 overflow-hidden flex flex-col">
+                    <YouTubeSearchModal
+                      open={true}
+                      onClose={() => { }}
+                      onSelectVideo={handleYoutubeSelectVideo}
+                      isHost={isHost}
+                      currentVideoId={youtubeVideoId}
+                      isPlaying={youtubeIsPlaying}
+                      volume={youtubeVolume}
+                      onTogglePlay={handleYoutubeTogglePlay}
+                      onClear={handleYoutubeClear}
+                      onVolumeChange={setYoutubeVolume}
+                      onMute={handleYoutubeMute}
+                      embedded={true}
+                    />
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Controls - Fixed at bottom */}
-      <div className="h-14 bg-gray-800 p-2 flex items-center justify-between flex-shrink-0 border-t border-gray-700">
-        {/* Left side: Main controls */}
-        
-        {/* Left side - Bandwidth monitoring (Phase 3: Real data) */}
-        <div className="flex items-center gap-3 text-sm text-gray-300">
-          <div className="flex items-center gap-1">
-            <div className={`w-2 h-2 rounded-full ${
-              aggregatedMetrics.quality === 'excellent' ? 'bg-green-500' :
-              aggregatedMetrics.quality === 'good' ? 'bg-blue-500' :
-              aggregatedMetrics.quality === 'fair' ? 'bg-yellow-500' :
-              'bg-red-500'
-            }`} />
-            <span className="text-xs">Quality</span>
-          </div>
-          
-          {statsWorkerReady && aggregatedMetrics.downloadBitrate > 0 ? (
-            <>
-              <div className="flex items-center gap-1">
-                <ArrowDown className="w-3 h-3 text-blue-400" />
-                <span className="text-xs">{formatBandwidth(aggregatedMetrics.downloadBitrate)}</span>
-              </div>
-              
-              <div className="flex items-center gap-1">
-                <ArrowUp className="w-3 h-3 text-green-400" />
-                <span className="text-xs">{formatBandwidth(aggregatedMetrics.uploadBitrate)}</span>
-              </div>
-              
-              <div className="flex items-center gap-1">
-                <span className="text-xs text-gray-400">Latency:</span>
-                <span className="text-xs">{aggregatedMetrics.latency}ms</span>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="flex items-center gap-1">
-                <ArrowDown className="w-3 h-3 text-blue-400" />
-                <span className="text-xs">-- KB/s</span>
-              </div>
-              
-              <div className="flex items-center gap-1">
-                <ArrowUp className="w-3 h-3 text-green-400" />
-                <span className="text-xs">-- KB/s</span>
-              </div>
-              
-              <div className="flex items-center gap-1">
-                <span className="text-xs text-gray-400">Latency:</span>
-                <span className="text-xs">-- ms</span>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Center - Main Controls */}
-        <div className="flex justify-center items-center gap-3">
-          {/* 🔥 FIX: Mic button with white background and clear visibility */}
-          <Button
-            onClick={toggleMute}
-            className={`rounded-full w-10 h-10 p-0 flex items-center justify-center shadow-lg transition-all ${
-              isMuted 
-                ? 'bg-red-600 hover:bg-red-700 text-white' 
-                : 'bg-white hover:bg-gray-100 text-gray-900'
-            }`}
-            aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
-          >
-            {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-          </Button>
-          
-          {/* 🔥 FIX: Video button with white background and clear visibility */}
-          <Button
-            onClick={toggleVideo}
-            className={`rounded-full w-10 h-10 p-0 flex items-center justify-center shadow-lg transition-all ${
-              isVideoOff 
-                ? 'bg-red-600 hover:bg-red-700 text-white' 
-                : 'bg-white hover:bg-gray-100 text-gray-900'
-            }`}
-            aria-label={isVideoOff ? "Turn on camera" : "Turn off camera"}
-          >
-            {isVideoOff ? <VideoOff className="w-4 h-4" /> : <Video className="w-4 h-4" />}
-          </Button>
-
-          {/* Screen Share button */}
-          <Button
-            onClick={toggleScreenShare}
-            className={`rounded-full w-10 h-10 p-0 flex items-center justify-center shadow-lg transition-all ${
-              isScreenSharing
-                ? 'bg-green-600 hover:bg-green-700 text-white'
-                : 'bg-white hover:bg-gray-100 text-gray-900'
-            }`}
-            aria-label={isScreenSharing ? "Stop screen share" : "Start screen share"}
-          >
-            <MonitorUp className="w-4 h-4" />
-          </Button>
-
-          {/* Spacer */}
-          <div className="w-6" />
-
-          {/* YouTube / Video Grid toggles (small controls, aligned with mic/cam/share) */}
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant={showVideoGrid ? 'secondary' : 'default'}
-              onClick={() => setShowVideoGrid(false)}
-              className={`h-10 px-3 ${showVideoGrid ? 'bg-gray-700 text-gray-100' : 'bg-red-600 hover:bg-red-700 text-white'}`}
-              aria-label="Switch to YouTube"
-              title="YouTube"
-            >
-              <Play className="w-4 h-4 mr-1" />
-              YouTube
-            </Button>
-            <Button
-              size="sm"
-              variant={!showVideoGrid ? 'secondary' : 'default'}
-              onClick={() => setShowVideoGrid(true)}
-              className={`h-10 px-3 ${!showVideoGrid ? 'bg-gray-700 text-gray-100' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
-              aria-label="Switch to Video Grid"
-              title="Video Grid"
-            >
-              <Video className="w-4 h-4 mr-1" />
-              Video Grid
-            </Button>
-
-            {/* Moved: reload/lock/leave on the right */}
-            {onReconnect && (
-              <Button size="icon" variant="outline" onClick={onReconnect} className="w-10 h-10">
-                <RefreshCw className="w-4 h-4" />
-              </Button>
-            )}
-            {isHost && (
-              <Button size="icon" variant="outline" onClick={handleToggleLock} className="w-10 h-10">
-                {meeting.is_locked ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-              </Button>
-            )}
-            <Button size="icon" onClick={() => setConfirmLeaveOpen(true)} className="w-10 h-10 rounded-md bg-red-600 hover:bg-red-700 text-white" aria-label="Leave">
-              <PhoneOff className="w-4 h-4" />
-            </Button>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Right side - Message Input */}
-        <div className="flex items-center gap-2">
-          <div className="flex-1 relative">
-            <Input
-              ref={chatInputRef}
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyDown={handleChatInputKeyPress}
-              placeholder={isOnline ? "Send a message to everyone" : "Join meeting to chat"}
-              disabled={!isOnline || isSending}
-              className="pl-4 pr-12 bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500 focus:ring-blue-500"
-            />
-            
-            {/* Emoji picker button */}
-            <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white hover:bg-gray-600 w-8 h-8 p-0"
-                  disabled={!isOnline}
-                >
-                  <Smile className="w-4 h-4" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent side="top" className="w-80 p-2 bg-gray-800 border-gray-700">
-                <div className="grid grid-cols-8 gap-1">
-                  {['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '👍', '👎', '👏', '🙌', '👋', '✌️', '🤞', '🤟', '🤘', '👌', '🤌', '🤏', '✨', '🎉'].map((emoji) => (
-                    <Button
-                      key={emoji}
-                      variant="ghost"
-                      size="sm"
-                      className="w-8 h-8 p-0 text-lg hover:bg-gray-700"
-                      onClick={() => {
-                        setNewMessage(prev => prev + emoji);
-                        setShowEmojiPicker(false);
-                        chatInputRef.current?.focus();
-                      }}
-                    >
-                      {emoji}
-                    </Button>
-                  ))}
+        {/* Controls - Fixed at bottom */}
+        <div className="h-14 bg-gray-800 p-2 flex items-center justify-between flex-shrink-0 border-t border-gray-700">
+          {/* Left side: Main controls */}
+
+          {/* Left side - Bandwidth monitoring (Phase 3: Real data) */}
+          <div className="flex items-center gap-3 text-sm text-gray-300">
+            <div className="flex items-center gap-1">
+              <div className={`w-2 h-2 rounded-full ${aggregatedMetrics.quality === 'excellent' ? 'bg-green-500' :
+                  aggregatedMetrics.quality === 'good' ? 'bg-blue-500' :
+                    aggregatedMetrics.quality === 'fair' ? 'bg-yellow-500' :
+                      'bg-red-500'
+                }`} />
+              <span className="text-xs">Quality</span>
+            </div>
+
+            {statsWorkerReady && aggregatedMetrics.downloadBitrate > 0 ? (
+              <>
+                <div className="flex items-center gap-1">
+                  <ArrowDown className="w-3 h-3 text-blue-400" />
+                  <span className="text-xs">{formatBandwidth(aggregatedMetrics.downloadBitrate)}</span>
                 </div>
-              </PopoverContent>
-            </Popover>
-          </div>
 
-          {/* Send button */}
-          <Button
-            onClick={handleChatInputSend}
-            disabled={!newMessage.trim() || !isOnline || isSending}
-            size="sm"
-            className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600"
-          >
-            {isSending ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+                <div className="flex items-center gap-1">
+                  <ArrowUp className="w-3 h-3 text-green-400" />
+                  <span className="text-xs">{formatBandwidth(aggregatedMetrics.uploadBitrate)}</span>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-gray-400">Latency:</span>
+                  <span className="text-xs">{aggregatedMetrics.latency}ms</span>
+                </div>
+              </>
             ) : (
-              <Send className="w-4 h-4" />
+              <>
+                <div className="flex items-center gap-1">
+                  <ArrowDown className="w-3 h-3 text-blue-400" />
+                  <span className="text-xs">-- KB/s</span>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <ArrowUp className="w-3 h-3 text-green-400" />
+                  <span className="text-xs">-- KB/s</span>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-gray-400">Latency:</span>
+                  <span className="text-xs">-- ms</span>
+                </div>
+              </>
             )}
-          </Button>
+          </div>
+
+          {/* Center - Main Controls */}
+          <div className="flex justify-center items-center gap-3">
+            {/* 🔥 FIX: Mic button with white background and clear visibility */}
+            <Button
+              onClick={toggleMute}
+              className={`rounded-full w-10 h-10 p-0 flex items-center justify-center shadow-lg transition-all ${isMuted
+                  ? 'bg-red-600 hover:bg-red-700 text-white'
+                  : 'bg-white hover:bg-gray-100 text-gray-900'
+                }`}
+              aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
+            >
+              {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            </Button>
+
+            {/* 🔥 FIX: Video button with white background and clear visibility */}
+            <Button
+              onClick={toggleVideo}
+              className={`rounded-full w-10 h-10 p-0 flex items-center justify-center shadow-lg transition-all ${isVideoOff
+                  ? 'bg-red-600 hover:bg-red-700 text-white'
+                  : 'bg-white hover:bg-gray-100 text-gray-900'
+                }`}
+              aria-label={isVideoOff ? "Turn on camera" : "Turn off camera"}
+            >
+              {isVideoOff ? <VideoOff className="w-4 h-4" /> : <Video className="w-4 h-4" />}
+            </Button>
+
+            {/* Screen Share button */}
+            <Button
+              onClick={toggleScreenShare}
+              className={`rounded-full w-10 h-10 p-0 flex items-center justify-center shadow-lg transition-all ${isScreenSharing
+                  ? 'bg-green-600 hover:bg-green-700 text-white'
+                  : 'bg-white hover:bg-gray-100 text-gray-900'
+                }`}
+              aria-label={isScreenSharing ? "Stop screen share" : "Start screen share"}
+            >
+              <MonitorUp className="w-4 h-4" />
+            </Button>
+
+            {/* Spacer */}
+            <div className="w-6" />
+
+            {/* YouTube / Video Grid toggles (small controls, aligned with mic/cam/share) */}
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant={showVideoGrid ? 'secondary' : 'default'}
+                onClick={() => setShowVideoGrid(false)}
+                className={`h-10 px-3 ${showVideoGrid ? 'bg-gray-700 text-gray-100' : 'bg-red-600 hover:bg-red-700 text-white'}`}
+                aria-label="Switch to YouTube"
+                title="YouTube"
+              >
+                <Play className="w-4 h-4 mr-1" />
+                YouTube
+              </Button>
+              <Button
+                size="sm"
+                variant={!showVideoGrid ? 'secondary' : 'default'}
+                onClick={() => setShowVideoGrid(true)}
+                className={`h-10 px-3 ${!showVideoGrid ? 'bg-gray-700 text-gray-100' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+                aria-label="Switch to Video Grid"
+                title="Video Grid"
+              >
+                <Video className="w-4 h-4 mr-1" />
+                Video Grid
+              </Button>
+
+              {/* Moved: reload/lock/leave on the right */}
+              {onReconnect && (
+                <Button size="icon" variant="outline" onClick={onReconnect} className="w-10 h-10">
+                  <RefreshCw className="w-4 h-4" />
+                </Button>
+              )}
+              {isHost && (
+                <Button size="icon" variant="outline" onClick={handleToggleLock} className="w-10 h-10">
+                  {meeting.is_locked ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                </Button>
+              )}
+              <Button size="icon" onClick={() => setConfirmLeaveOpen(true)} className="w-10 h-10 rounded-md bg-red-600 hover:bg-red-700 text-white" aria-label="Leave">
+                <PhoneOff className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Right side - Message Input */}
+          <div className="flex items-center gap-2">
+            <div className="flex-1 relative">
+              <Input
+                ref={chatInputRef}
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                onKeyDown={handleChatInputKeyPress}
+                placeholder={isOnline ? "Send a message to everyone" : "Join meeting to chat"}
+                disabled={!isOnline || isSending}
+                className="pl-4 pr-12 bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500 focus:ring-blue-500"
+              />
+
+              {/* Emoji picker button */}
+              <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white hover:bg-gray-600 w-8 h-8 p-0"
+                    disabled={!isOnline}
+                  >
+                    <Smile className="w-4 h-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent side="top" className="w-80 p-2 bg-gray-800 border-gray-700">
+                  <div className="grid grid-cols-8 gap-1">
+                    {['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '👍', '👎', '👏', '🙌', '👋', '✌️', '🤞', '🤟', '🤘', '👌', '🤌', '🤏', '✨', '🎉'].map((emoji) => (
+                      <Button
+                        key={emoji}
+                        variant="ghost"
+                        size="sm"
+                        className="w-8 h-8 p-0 text-lg hover:bg-gray-700"
+                        onClick={() => {
+                          setNewMessage(prev => prev + emoji);
+                          setShowEmojiPicker(false);
+                          chatInputRef.current?.focus();
+                        }}
+                      >
+                        {emoji}
+                      </Button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Send button */}
+            <Button
+              onClick={handleChatInputSend}
+              disabled={!newMessage.trim() || !isOnline || isSending}
+              size="sm"
+              className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600"
+            >
+              {isSending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
+            </Button>
+          </div>
         </div>
-      </div>
 
-      {/* Meeting Bandwidth Monitor - Floating Widget */}
-{/* Bandwidth monitor removed - now in bottom controls */}
-
+        {/* Meeting Bandwidth Monitor - Floating Widget */}
+        {/* Bandwidth monitor removed - now in bottom controls */}
 
 
-      {/* MeetingDialogs component handles all dialogs (including Room Full Dialog) */}
-      <MeetingDialogs
-        confirmLeaveOpen={confirmLeaveOpen}
-        setConfirmLeaveOpen={setConfirmLeaveOpen}
-        onConfirmLeave={handleLeaveMeeting}
-        confirmKickOpen={confirmKickOpen}
-        setConfirmKickOpen={setConfirmKickOpen}
-        targetParticipant={targetParticipant}
-        setTargetParticipant={setTargetParticipant}
-        onConfirmKick={confirmKickParticipant}
-        confirmBlockOpen={confirmBlockOpen}
-        setConfirmBlockOpen={setConfirmBlockOpen}
-        onConfirmBlock={confirmBlockParticipant}
-        showRoomFullDialog={showRoomFullDialog}
-        setShowRoomFullDialog={setShowRoomFullDialog}
-        onlineParticipantsCount={onlineParticipantsCount}
-        maxParticipants={meeting.max_participants}
-        isPublicMeeting={isPublicMeeting}
-        blockedModalOpen={blockedModalOpen}
-        blockedMessage={blockedMessage}
-        setBlockedModalOpen={setBlockedModalOpen}
-      />
+
+        {/* MeetingDialogs component handles all dialogs (including Room Full Dialog) */}
+        <MeetingDialogs
+          confirmLeaveOpen={confirmLeaveOpen}
+          setConfirmLeaveOpen={setConfirmLeaveOpen}
+          onConfirmLeave={handleLeaveMeeting}
+          confirmKickOpen={confirmKickOpen}
+          setConfirmKickOpen={setConfirmKickOpen}
+          targetParticipant={targetParticipant}
+          setTargetParticipant={setTargetParticipant}
+          onConfirmKick={confirmKickParticipant}
+          confirmBlockOpen={confirmBlockOpen}
+          setConfirmBlockOpen={setConfirmBlockOpen}
+          onConfirmBlock={confirmBlockParticipant}
+          showRoomFullDialog={showRoomFullDialog}
+          setShowRoomFullDialog={setShowRoomFullDialog}
+          onlineParticipantsCount={onlineParticipantsCount}
+          maxParticipants={meeting.max_participants}
+          isPublicMeeting={isPublicMeeting}
+          blockedModalOpen={blockedModalOpen}
+          blockedMessage={blockedMessage}
+          setBlockedModalOpen={setBlockedModalOpen}
+        />
       </div>
     </>
   );
