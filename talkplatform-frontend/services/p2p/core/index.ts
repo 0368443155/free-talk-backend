@@ -4,5 +4,7 @@ export { P2PStreamManager } from './p2p-stream-manager';
 export type { RemoteStreamInfo } from './p2p-stream-manager';
 export { P2PTrackStateSync } from './p2p-track-state-sync';
 export type { TrackStateSyncConfig, ServerTrackState } from './p2p-track-state-sync';
+export { P2PPeerConnectionManager } from './p2p-peer-connection-manager';
+export type { PeerConnectionInfo, NegotiationTask, PeerConnectionConfig } from './p2p-peer-connection-manager';
 // Phase 1+ managers will be exported here as they're created
 
