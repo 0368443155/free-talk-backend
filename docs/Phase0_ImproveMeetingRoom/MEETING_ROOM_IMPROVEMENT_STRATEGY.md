@@ -1751,6 +1751,83 @@ class P2PModerationManager {
 
 ## 🚀 CHIẾN LƯỢC CẢI THIỆN
 
+### Phase 0: Foundation & Migration Setup - Priority: CRITICAL
+
+**Timeline:** 2 weeks (Week 0-1)
+
+> **⚠️ IMPORTANT:** Phase 0 phải hoàn thành trước khi bắt đầu các phases khác.  
+> Đây là foundation cho toàn bộ implementation.
+
+#### Tasks:
+1. ✅ **Testing Infrastructure Setup**
+   - Install Vitest, Testing Library, WebRTC mocks
+   - Create test configuration và setup files
+   - Create test utilities for WebRTC testing
+   - Write example tests
+
+2. ✅ **Migration Strategy**
+   - Document migration plan từ old gateway sang new gateway
+   - Update EVENT_MIGRATION_MAP.md
+   - Define feature flag strategy
+   - Create rollout plan
+
+3. ✅ **Base Classes & Interfaces**
+   - Create directory structure (`services/p2p/`)
+   - Define base types (`p2p-types.ts`, `p2p-events.ts`)
+   - Create `BaseP2PManager` class
+   - Export all types correctly
+
+4. ✅ **Architecture Documentation**
+   - Create architecture overview với diagrams
+   - Document component responsibilities
+   - Create sequence diagrams cho WebRTC flows
+   - Document security considerations
+
+5. ✅ **Monitoring & Metrics Setup**
+   - Create `P2PMetricsCollector` class
+   - Implement stats collection
+   - Setup metrics reporting
+
+#### Files to create:
+```
+talkplatform-frontend/
+  ├── vitest.config.ts (NEW)
+  ├── tests/
+  │   ├── setup.ts (NEW)
+  │   └── utils/
+  │       └── webrtc-test-utils.ts (NEW)
+  ├── services/
+  │   └── p2p/
+  │       ├── core/
+  │       │   └── base-p2p-manager.ts (NEW)
+  │       ├── types/
+  │       │   ├── p2p-types.ts (NEW)
+  │       │   ├── p2p-events.ts (NEW)
+  │       │   └── index.ts (NEW)
+  │       └── utils/
+  │           └── p2p-metrics-collector.ts (NEW)
+  └── hooks/
+      └── __tests__/
+          └── use-webrtc.test.ts (NEW)
+
+docs/
+  ├── PHASE_0_FOUNDATION.md (NEW)
+  ├── P2P_MIGRATION_STRATEGY.md (NEW)
+  ├── P2P_ARCHITECTURE.md (NEW)
+  └── P2P_SEQUENCE_DIAGRAMS.md (NEW)
+```
+
+#### Deliverables:
+- [ ] Testing infrastructure hoàn chỉnh và working
+- [ ] Migration strategy document với rollout plan
+- [ ] Base classes và types cho tất cả managers
+- [ ] Architecture documentation với diagrams
+- [ ] Metrics collection framework
+
+**📖 Chi tiết:** Xem `docs/PHASE_0_FOUNDATION.md`
+
+---
+
 ### Phase 1: Media Controls (Mic/Cam) - Priority: CRITICAL
 
 **Timeline:** 1-2 weeks
@@ -1963,12 +2040,17 @@ describe('Meeting Room E2E', () => {
 
 | Feature | Priority | Effort | Impact | Timeline |
 |---------|----------|--------|--------|----------|
-| Mic/Cam Controls | 🔴 CRITICAL | High | Very High | Week 1-2 |
-| Peer Connection Management | 🔴 CRITICAL | Medium | Very High | Week 2-3 |
-| Screen Sharing | 🟠 HIGH | Medium | High | Week 3-4 |
-| User Management | 🟠 HIGH | Medium | High | Week 4-5 |
-| Layout Management | 🟡 MEDIUM | High | Medium | Week 5-7 |
-| Chat System | 🟡 MEDIUM | Low | Medium | Week 7-8 |
+| **Phase 0:** Foundation & Migration | 🔴 CRITICAL | Medium | Very High | Week 0-1 |
+| **Phase 1:** Mic/Cam Controls | 🔴 CRITICAL | High | Very High | Week 2-4 |
+| **Phase 2:** Peer Connection Management | 🔴 CRITICAL | Medium | Very High | Week 4-5 |
+| **Phase 3:** Screen Sharing | 🟠 HIGH | Medium | High | Week 5-6 |
+| **Phase 6:** User Management | 🟠 HIGH | Medium | High | Week 6-7 |
+| **Phase 5:** Chat System | 🟡 MEDIUM | Low | Medium | Week 7-8 |
+| **Phase 4:** Layout Management | 🟡 MEDIUM | High | Medium | Week 8-10 |
+
+**Total Timeline:** 10-12 weeks (2.5-3 months)
+
+**Note:** Phase 0 là prerequisite cho tất cả phases khác. Không thể skip Phase 0.
 
 ---
 
@@ -2019,18 +2101,29 @@ describe('Meeting Room E2E', () => {
 
 ## 🎯 NEXT STEPS
 
-1. **Review và approve** chiến lược này
-2. **Create detailed tickets** cho từng phase
-3. **Start Phase 1** (Media Controls) - CRITICAL
+1. **Review và approve** chiến lược này (bao gồm Phase 0)
+2. **Start Phase 0** (Foundation & Migration Setup) - CRITICAL
+   - Setup testing infrastructure
+   - Create migration strategy
+   - Build base classes
+   - Document architecture
+3. **Create detailed tickets** cho Phase 0 tasks
 4. **Daily standup** để track progress
 5. **Weekly review** để adjust timeline nếu cần
+6. **Sau khi Phase 0 complete:** Start Phase 1 (Media Controls)
 
 ---
 
-**Document Version**: 2.0  
+**Document Version**: 3.0  
 **Created**: 2025-12-06  
-**Last Updated**: 2025-12-06  
+**Last Updated**: 2025-12-08  
 **Author**: AI Assistant  
-**Status**: Ready for Review  
-**Focus**: P2P WebRTC Meeting Room (removed LiveKit references)
+**Status**: Updated with Phase 0  
+**Focus**: P2P WebRTC Meeting Room với Foundation Phase  
+**Changes in v3.0:**
+- ✅ Added Phase 0: Foundation & Migration Setup
+- ✅ Updated priority matrix với Phase 0
+- ✅ Adjusted timeline: 10-12 weeks total
+- ✅ Created detailed Phase 0 documentation
+- ✅ Updated next steps to start with Phase 0
 
