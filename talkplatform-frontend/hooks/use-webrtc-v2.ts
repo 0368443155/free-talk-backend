@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useCallback, useEffect } from 'react';
+import { useRef, useCallback, useEffect, useMemo } from 'react';
 import { useSyncExternalStore } from 'react'; // React 18+ hook for external stores
 import { Socket } from 'socket.io-client';
 import { P2PMediaManager, P2PStreamManager, P2PTrackStateSync, P2PPeerConnectionManager } from '@/services/p2p/core';
@@ -302,7 +302,13 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
 
   /**
    * Remote peers (from stream manager)
+   * 
+   * CRITICAL: Cache peers map reference to prevent infinite loop in useSyncExternalStore
+   * Only create new Map when actual data changes
    */
+  const peersSnapshotRef = useRef<Map<string, PeerConnection>>(new Map());
+  const peersDataRef = useRef<string>(''); // Serialized data for comparison
+
   const peers = useSyncExternalStore(
     (callback) => {
       if (!streamManagerRef.current) return () => {};
@@ -320,7 +326,12 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
     },
     () => {
       if (!streamManagerRef.current || !peerConnectionManagerRef.current) {
-        return new Map<string, PeerConnection>();
+        if (peersSnapshotRef.current.size === 0) {
+          return peersSnapshotRef.current; // Return cached empty map
+        }
+        peersSnapshotRef.current = new Map<string, PeerConnection>();
+        peersDataRef.current = '';
+        return peersSnapshotRef.current;
       }
 
       // Build peers map from stream manager and peer connection manager
@@ -339,7 +350,17 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
         }
       });
 
-      return peersMap;
+      // Serialize data for comparison (simple approach: userIds + stream count)
+      const currentData = Array.from(peersMap.keys()).sort().join(',') + `|${peersMap.size}`;
+      
+      // Only create new Map if data actually changed
+      if (currentData !== peersDataRef.current) {
+        peersSnapshotRef.current = peersMap;
+        peersDataRef.current = currentData;
+      }
+
+      // Always return cached reference to prevent infinite loop
+      return peersSnapshotRef.current;
     },
     () => new Map<string, PeerConnection>()
   );

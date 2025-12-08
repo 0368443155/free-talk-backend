@@ -20,7 +20,7 @@ import {
   CheckCircle
 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
-import { axiosConfig } from '@/api/axiosConfig';
+import axiosConfig from '@/api/axiosConfig';
 
 interface LiveKitDashboardData {
   timestamp: string;

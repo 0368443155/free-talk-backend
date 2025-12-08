@@ -114,38 +114,43 @@ global.MediaStream = vi.fn().mockImplementation((tracks?: MediaStreamTrack[]) =>
 }) as any;
 
 // Mock getUserMedia
-global.navigator.mediaDevices = {
-  getUserMedia: vi.fn().mockImplementation(async (constraints: MediaStreamConstraints) => {
-    const audioTrack = constraints.audio ? createMockTrack('audio') : null;
-    const videoTrack = constraints.video ? createMockTrack('video') : null;
-    const tracks = [audioTrack, videoTrack].filter(Boolean) as MediaStreamTrack[];
-    return new MediaStream(tracks);
-  }),
-  
-  getDisplayMedia: vi.fn().mockImplementation(async (constraints: DisplayMediaStreamConstraints) => {
-    const videoTrack = createMockTrack('video');
-    return new MediaStream([videoTrack]);
-  }),
-  
-  enumerateDevices: vi.fn().mockResolvedValue([
-    { deviceId: 'camera-1', kind: 'videoinput', label: 'Camera 1', groupId: 'group-1' },
-    { deviceId: 'camera-2', kind: 'videoinput', label: 'Camera 2', groupId: 'group-2' },
-    { deviceId: 'mic-1', kind: 'audioinput', label: 'Microphone 1', groupId: 'group-3' },
-    { deviceId: 'mic-2', kind: 'audioinput', label: 'Microphone 2', groupId: 'group-4' },
-    { deviceId: 'speaker-1', kind: 'audiooutput', label: 'Speaker 1', groupId: 'group-5' },
-  ] as MediaDeviceInfo[]),
-  
-  getSupportedConstraints: vi.fn().mockReturnValue({
-    width: true,
-    height: true,
-    aspectRatio: true,
-    frameRate: true,
-    facingMode: true,
-    echoCancellation: true,
-    noiseSuppression: true,
-    autoGainControl: true,
-  }),
-} as any;
+// Use Object.defineProperty to override read-only property
+Object.defineProperty(global.navigator, 'mediaDevices', {
+  writable: true,
+  configurable: true,
+  value: {
+    getUserMedia: vi.fn().mockImplementation(async (constraints: MediaStreamConstraints) => {
+      const audioTrack = constraints.audio ? createMockTrack('audio') : null;
+      const videoTrack = constraints.video ? createMockTrack('video') : null;
+      const tracks = [audioTrack, videoTrack].filter(Boolean) as MediaStreamTrack[];
+      return new MediaStream(tracks);
+    }),
+    
+    getDisplayMedia: vi.fn().mockImplementation(async (constraints: DisplayMediaStreamConstraints) => {
+      const videoTrack = createMockTrack('video');
+      return new MediaStream([videoTrack]);
+    }),
+    
+    enumerateDevices: vi.fn().mockResolvedValue([
+      { deviceId: 'camera-1', kind: 'videoinput', label: 'Camera 1', groupId: 'group-1' },
+      { deviceId: 'camera-2', kind: 'videoinput', label: 'Camera 2', groupId: 'group-2' },
+      { deviceId: 'mic-1', kind: 'audioinput', label: 'Microphone 1', groupId: 'group-3' },
+      { deviceId: 'mic-2', kind: 'audioinput', label: 'Microphone 2', groupId: 'group-4' },
+      { deviceId: 'speaker-1', kind: 'audiooutput', label: 'Speaker 1', groupId: 'group-5' },
+    ] as MediaDeviceInfo[]),
+    
+    getSupportedConstraints: vi.fn().mockReturnValue({
+      width: true,
+      height: true,
+      aspectRatio: true,
+      frameRate: true,
+      facingMode: true,
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    }),
+  },
+});
 
 // Mock Socket.IO client
 vi.mock('socket.io-client', () => {
