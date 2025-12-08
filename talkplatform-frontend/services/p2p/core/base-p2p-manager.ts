@@ -197,7 +197,7 @@ export abstract class BaseP2PManager extends EventEmitter {
     this.trackedListeners.forEach((handlers, event) => {
       handlers.forEach(handler => {
         if (this.socket) {
-          this.socket.off(event, handler);
+          this.socket.off(event, handler as (...args: any[]) => void);
         }
       });
     });

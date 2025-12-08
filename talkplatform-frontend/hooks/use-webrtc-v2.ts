@@ -1,0 +1,309 @@
+'use client';
+
+import { useRef, useCallback, useEffect } from 'react';
+import { useSyncExternalStore } from 'react'; // React 18+ hook for external stores
+import { Socket } from 'socket.io-client';
+import { P2PMediaManager, P2PStreamManager, P2PTrackStateSync } from '@/services/p2p/core';
+import { MediaManagerConfig } from '@/services/p2p/types';
+import { toast } from 'sonner';
+
+interface UseWebRTCV2Props {
+  socket: Socket | null;
+  meetingId: string;
+  userId: string;
+  isOnline: boolean;
+}
+
+interface UseWebRTCV2Return {
+  localStream: MediaStream | null;
+  isMuted: boolean;
+  isVideoOff: boolean;
+  startLocalStream: () => Promise<void>;
+  stopLocalStream: () => void;
+  toggleMute: () => Promise<void>;
+  toggleVideo: () => Promise<void>;
+  // TODO: Add more methods (screen share, peer connections, etc.)
+}
+
+/**
+ * CRITICAL: Use useSyncExternalStore to safely bind class manager state to React
+ * This prevents "tearing" issues in React 18/19 StrictMode and ensures state consistency
+ */
+export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2Props): UseWebRTCV2Return {
+  // Managers - stored in ref to persist across renders
+  const mediaManagerRef = useRef<P2PMediaManager | null>(null);
+  const streamManagerRef = useRef<P2PStreamManager | null>(null);
+  const stateSyncRef = useRef<P2PTrackStateSync | null>(null);
+  
+  // Track if cleanup has been called to prevent duplicate cleanup
+  const cleanupCalledRef = useRef(false);
+
+  // Track current config to detect changes
+  const configRef = useRef<{ socket: Socket; meetingId: string; userId: string } | null>(null);
+
+  // Cleanup function - must be defined before useEffect
+  const cleanupManagers = useCallback(() => {
+    // ⚠️ STRICT MODE DOUBLE INVOKE PROTECTION:
+    // React 18 Strict Mode (Dev) runs effects twice to detect side effects.
+    // cleanupCalledRef ensures cleanup only runs once per actual cleanup cycle.
+    // However, if you see "P2PMediaManager initialized" log twice WITHOUT cleanup in between,
+    // it means cleanupCalledRef is not being reset properly.
+    // 
+    // Debug: Watch console for:
+    // - Expected: "initialized" → "cleaned up" → "initialized" (Strict Mode cycle)
+    // - Problem: "initialized" → "initialized" (no cleanup between, check cleanupCalledRef reset)
+    
+    if (cleanupCalledRef.current) {
+      console.log('[useWebRTCV2] Cleanup already called, skipping (Strict Mode protection)');
+      return;
+    }
+    cleanupCalledRef.current = true;
+    
+    // Log cleanup for debugging Strict Mode
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[useWebRTCV2] Cleaning up managers (Strict Mode check)');
+    }
+
+    if (mediaManagerRef.current) {
+      mediaManagerRef.current.cleanup();
+      mediaManagerRef.current = null;
+      console.log('[useWebRTCV2] P2PMediaManager cleaned up.');
+    }
+    if (streamManagerRef.current) {
+      streamManagerRef.current.cleanup();
+      streamManagerRef.current = null;
+    }
+    if (stateSyncRef.current) {
+      stateSyncRef.current.cleanup();
+      stateSyncRef.current = null;
+    }
+    
+    // Reset config ref
+    configRef.current = null;
+    
+    // Reset cleanup flag (allows re-initialization if needed)
+    cleanupCalledRef.current = false;
+  }, []);
+
+  // Initialize or recreate managers when config changes
+  useEffect(() => {
+    if (!socket || !isOnline) {
+      // Cleanup if socket disconnects
+      if (mediaManagerRef.current) {
+        cleanupManagers();
+      }
+      return;
+    }
+
+    // Check if config changed (socket ID or meetingId/userId)
+    const currentConfig = { socket, meetingId, userId };
+    const configChanged = 
+      !configRef.current ||
+      configRef.current.socket.id !== socket.id ||
+      configRef.current.meetingId !== meetingId ||
+      configRef.current.userId !== userId;
+
+    // If config changed, cleanup old managers first (CRITICAL to prevent duplicate listeners)
+    // ⚠️ CRITICAL: Cleanup is synchronous - no need for await/delay
+    // cleanup() calls socket.off() and track.stop() which are all synchronous operations
+    // Adding await setTimeout here is an anti-pattern that can cause:
+    // - Component unmount during delay -> "Can't perform React state update on unmounted component"
+    // - Memory leaks if component unmounts before initialization completes
+    if (configChanged && mediaManagerRef.current) {
+      console.log('[useWebRTCV2] Config changed or manager not present, cleaning up old manager.');
+      cleanupManagers(); // Synchronous cleanup
+      // No delay needed - cleanup is synchronous
+      // If cleanup wasn't complete, we wouldn't be able to proceed anyway
+    }
+
+    // Initialize managers if not exists or config changed
+    if (!mediaManagerRef.current || configChanged) {
+      const mediaConfig: MediaManagerConfig = {
+        socket,
+        meetingId,
+        userId,
+      };
+
+      const mediaManager = new P2PMediaManager(mediaConfig);
+      const streamManager = new P2PStreamManager(mediaConfig);
+      const stateSync = new P2PTrackStateSync(mediaConfig, {
+        syncInterval: 30000, // 30 seconds
+        conflictResolution: 'server-wins',
+      });
+
+      // Initialize
+      mediaManager.initialize().then(() => {
+        mediaManagerRef.current = mediaManager;
+        console.log('[useWebRTCV2] P2PMediaManager initialized.');
+        
+        streamManager.initialize().then(() => {
+          streamManagerRef.current = streamManager;
+        });
+        
+        stateSync.initialize().then(() => {
+          stateSyncRef.current = stateSync;
+        });
+
+        // Listen to sync errors for Toast notifications
+        mediaManager.on('sync-error', (error: { type: string; error: string; action: string }) => {
+          toast.error(`Failed to ${error.action}: ${error.error}`, {
+            duration: 3000,
+          });
+        });
+
+        // Emit initial state change to trigger useSyncExternalStore subscriptions
+        mediaManager.emit('stream-changed');
+        mediaManager.emit('mic-state-changed', mediaManager.getMicState());
+        mediaManager.emit('camera-state-changed', mediaManager.getCameraState());
+      });
+
+      // Store current config
+      configRef.current = currentConfig;
+    }
+
+    // Cleanup on unmount or when dependencies change
+    // ⚠️ CRITICAL: This cleanup runs synchronously when effect re-runs or component unmounts
+    // No async operations here - all cleanup is synchronous
+    return () => {
+      console.log('[useWebRTCV2] useEffect cleanup function running.');
+      cleanupManagers(); // Synchronous cleanup on unmount or effect re-run
+    };
+  }, [socket, meetingId, userId, isOnline, cleanupManagers]);
+
+  // Use useSyncExternalStore to subscribe to manager state changes
+  // This is the React 18+ recommended way to bind external stores (like our class managers)
+  const localStream = useSyncExternalStore(
+    (callback) => {
+      // Subscribe function
+      if (!mediaManagerRef.current) return () => {};
+      
+      const handleStreamChange = () => {
+        callback(); // Trigger re-render
+      };
+      
+      mediaManagerRef.current.on('stream-changed', handleStreamChange);
+      
+      return () => {
+        mediaManagerRef.current?.off('stream-changed', handleStreamChange);
+      };
+    },
+    () => {
+      // Get snapshot
+      return mediaManagerRef.current?.getLocalStream() || null;
+    },
+    () => null // Server snapshot (not used in client-only)
+  );
+
+  /**
+   * CRITICAL: Use primitive values for getSnapshot to ensure reference equality
+   * If getState() returns a new object each time, React will re-render infinitely.
+   * Using getMicState().isMuted (primitive boolean) ensures same value = same reference.
+   */
+  const isMuted = useSyncExternalStore(
+    (callback) => {
+      if (!mediaManagerRef.current) return () => {};
+      
+      const handleStateChange = () => callback();
+      mediaManagerRef.current.on('mic-state-changed', handleStateChange);
+      
+      return () => {
+        mediaManagerRef.current?.off('mic-state-changed', handleStateChange);
+      };
+    },
+    () => {
+      // Use primitive value from getMicState() instead of full state object
+      // This ensures reference equality: same value = no re-render
+      const micState = mediaManagerRef.current?.getMicState();
+      return micState?.isMuted ?? false; // Primitive boolean
+    },
+    () => false // Server snapshot (SSR not used)
+  );
+
+  /**
+   * CRITICAL: Same approach - use primitive value for camera state
+   */
+  const isVideoOff = useSyncExternalStore(
+    (callback) => {
+      if (!mediaManagerRef.current) return () => {};
+      
+      const handleStateChange = () => callback();
+      mediaManagerRef.current.on('camera-state-changed', handleStateChange);
+      
+      return () => {
+        mediaManagerRef.current?.off('camera-state-changed', handleStateChange);
+      };
+    },
+    () => {
+      // Use primitive value from getCameraState() instead of full state object
+      const cameraState = mediaManagerRef.current?.getCameraState();
+      return cameraState?.isVideoOff ?? false; // Primitive boolean
+    },
+    () => false // Server snapshot (SSR not used)
+  );
+
+  // Start local stream
+  const startLocalStream = useCallback(async () => {
+    if (!mediaManagerRef.current) return;
+
+    try {
+      await mediaManagerRef.current.initializeLocalStream(true, true);
+      // State will update automatically via useSyncExternalStore subscription
+      mediaManagerRef.current.emit('stream-changed');
+    } catch (error: any) {
+      toast.error(`Failed to start local stream: ${error.message}`);
+    }
+  }, []);
+
+  // Stop local stream
+  const stopLocalStream = useCallback(() => {
+    if (!mediaManagerRef.current) return;
+    
+    const stream = mediaManagerRef.current.getLocalStream();
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      mediaManagerRef.current.emit('stream-changed');
+    }
+  }, []);
+
+  // Toggle mute
+  const toggleMute = useCallback(async () => {
+    if (!mediaManagerRef.current) return;
+    
+    try {
+      // Use getMicState() for primitive value instead of full state
+      const micState = mediaManagerRef.current.getMicState();
+      await mediaManagerRef.current.enableMicrophone(!micState.enabled);
+      // State will update automatically via useSyncExternalStore subscription
+      // Manager emits 'mic-state-changed' event which triggers callback()
+    } catch (error: any) {
+      toast.error(`Failed to toggle microphone: ${error.message}`);
+    }
+  }, []);
+
+  // Toggle video
+  const toggleVideo = useCallback(async () => {
+    if (!mediaManagerRef.current) return;
+    
+    try {
+      // Use getCameraState() for primitive value instead of full state
+      const cameraState = mediaManagerRef.current.getCameraState();
+      await mediaManagerRef.current.enableCamera(!cameraState.enabled);
+      // State will update automatically via useSyncExternalStore subscription
+      // Manager emits 'camera-state-changed' event which triggers callback()
+    } catch (error: any) {
+      toast.error(`Failed to toggle camera: ${error.message}`);
+    }
+  }, []);
+
+  return {
+    localStream,
+    isMuted,
+    isVideoOff,
+    startLocalStream,
+    stopLocalStream,
+    toggleMute,
+    toggleVideo,
+    // TODO: Add other methods (screen share, peer connections, etc.)
+  };
+}
+

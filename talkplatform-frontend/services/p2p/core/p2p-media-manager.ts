@@ -1,6 +1,6 @@
 import { BaseP2PManager } from './base-p2p-manager';
 import { P2PMediaState, MediaManagerConfig, P2PErrorType } from '../types';
-import { P2PError } from '../utils/p2p-error';
+import { createP2PError, P2PErrorClass } from '../utils/p2p-error';
 import { Socket } from 'socket.io-client';
 import { EventEmitter } from 'events';
 
@@ -140,7 +140,7 @@ export class P2PMediaManager extends BaseP2PManager {
       return stream;
     } catch (error: any) {
       this.log('error', 'Failed to initialize local stream', { error: error.message });
-      throw this.createError(P2PErrorType.PERMISSION_DENIED, 'Failed to get user media', error);
+      throw createP2PError(P2PErrorType.PERMISSION_DENIED, 'Failed to get user media', error);
     }
   }
 
@@ -149,12 +149,12 @@ export class P2PMediaManager extends BaseP2PManager {
    */
   async enableMicrophone(enabled: boolean): Promise<void> {
     if (!this.localStream) {
-      throw this.createError(P2PErrorType.DEVICE_NOT_FOUND, 'Local stream not initialized');
+      throw createP2PError(P2PErrorType.DEVICE_NOT_FOUND, 'Local stream not initialized');
     }
 
     const audioTrack = this.localStream.getAudioTracks()[0];
     if (!audioTrack) {
-      throw this.createError(P2PErrorType.DEVICE_NOT_FOUND, 'No audio track found');
+      throw createP2PError(P2PErrorType.DEVICE_NOT_FOUND, 'No audio track found');
     }
 
     // Check if forced by host
@@ -297,7 +297,7 @@ export class P2PMediaManager extends BaseP2PManager {
 
     } catch (error: any) {
       this.log('error', 'Failed to turn camera on', { error: error.message });
-      throw this.createError(P2PErrorType.DEVICE_NOT_FOUND, 'Failed to get video track', error);
+      throw createP2PError(P2PErrorType.DEVICE_NOT_FOUND, 'Failed to get video track', error);
     }
   }
 
@@ -690,7 +690,7 @@ export class P2PMediaManager extends BaseP2PManager {
    */
   async switchMicrophone(deviceId: string): Promise<void> {
     if (!this.localStream) {
-      throw this.createError(P2PErrorType.DEVICE_NOT_FOUND, 'Local stream not initialized');
+      throw createP2PError(P2PErrorType.DEVICE_NOT_FOUND, 'Local stream not initialized');
     }
 
     try {
@@ -734,7 +734,7 @@ export class P2PMediaManager extends BaseP2PManager {
 
     } catch (error: any) {
       this.log('error', 'Failed to switch microphone', { error: error.message });
-      throw this.createError(P2PErrorType.DEVICE_NOT_FOUND, 'Failed to switch microphone', error);
+      throw createP2PError(P2PErrorType.DEVICE_NOT_FOUND, 'Failed to switch microphone', error);
     }
   }
 
