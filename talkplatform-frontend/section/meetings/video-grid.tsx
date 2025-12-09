@@ -506,15 +506,15 @@ export function VideoGrid({
 
       {/* Grid section */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 auto-rows-fr">
-        {/* Local video - Hide camera when screen sharing (screen share is shown separately above) */}
-        {currentParticipant && !isScreenSharing && (
+        {/* Local video - Always show camera feed (screen share is shown separately above) */}
+        {currentParticipant && (
           <LocalVideo
             key="local-video"
             localStream={localStream}
             currentParticipant={currentParticipant}
             isMuted={isMuted}
             isVideoOff={isVideoOff}
-            isScreenSharing={false}
+            isScreenSharing={isScreenSharing}
           />
         )}
 

@@ -326,39 +326,45 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
           isReplacingTracksRef.current = false;
         }, 500);
 
+        // 🔥 FIX: Restore camera BEFORE clearing screen share state
+        const audio = localStreamRef.current?.getAudioTracks() || [];
+        let cameraTrack: MediaStreamTrack | null = null;
+        
+        if (lastCameraTrackRef.current && lastCameraTrackRef.current.readyState === 'live') {
+          cameraTrack = lastCameraTrackRef.current;
+          console.log('📹 Restoring cached camera track');
+        } else {
+          // Get fresh camera track if cached one is not available
+          try {
+            const freshCamera = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            cameraTrack = freshCamera.getVideoTracks()[0];
+            if (cameraTrack) {
+              lastCameraTrackRef.current = cameraTrack;
+              console.log('📹 Got fresh camera track');
+            }
+          } catch (error) {
+            console.warn('Could not restore camera after screen share:', error);
+          }
+        }
+        
+        // Update local stream with camera (remove any screen tracks)
+        if (cameraTrack) {
+          localStreamRef.current = new MediaStream([...audio, cameraTrack]);
+        } else {
+          localStreamRef.current = new MediaStream(audio);
+        }
+        setLocalStream(localStreamRef.current);
+        
+        // Clear screen share state
         setIsScreenSharing(false);
-        screenStreamRef.current = null; // 🔥 FIX: Clear screen stream ref
+        screenStreamRef.current = null;
+        
+        // Notify server
         if (socket) {
           if (useNewGateway) {
             socket.emit('media:screen-share', { isSharing: false });
           } else {
             socket.emit('screen-share', { enabled: false });
-          }
-        }
-        
-        // Restore camera after stopping screen share
-        const audio = localStreamRef.current?.getAudioTracks() || [];
-        
-        if (lastCameraTrackRef.current && lastCameraTrackRef.current.readyState === 'live') {
-          // Restore cached camera
-          localStreamRef.current = new MediaStream([...audio, lastCameraTrackRef.current]);
-          setLocalStream(localStreamRef.current);
-        } else {
-          // Get fresh camera track if cached one is not available
-          try {
-            const freshCamera = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-            const freshVideoTrack = freshCamera.getVideoTracks()[0];
-            
-            if (freshVideoTrack) {
-              localStreamRef.current = new MediaStream([...audio, freshVideoTrack]);
-              setLocalStream(localStreamRef.current);
-              lastCameraTrackRef.current = freshVideoTrack;
-            }
-          } catch (error) {
-            console.warn('Could not restore camera after screen share:', error);
-            // Fallback: just audio
-            localStreamRef.current = new MediaStream(audio);
-            setLocalStream(localStreamRef.current);
           }
         }
         
@@ -547,36 +553,44 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
                 isReplacingTracksRef.current = false;
               }, 500);
 
+              // 🔥 FIX: Restore camera BEFORE clearing screen share state
+              const audio = localStreamRef.current?.getAudioTracks() || [];
+              let cameraTrack: MediaStreamTrack | null = null;
+              
+              if (lastCameraTrackRef.current && lastCameraTrackRef.current.readyState === 'live') {
+                cameraTrack = lastCameraTrackRef.current;
+                console.log('📹 Restoring cached camera track (from notification)');
+              } else {
+                try {
+                  const freshCamera = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                  cameraTrack = freshCamera.getVideoTracks()[0];
+                  if (cameraTrack) {
+                    lastCameraTrackRef.current = cameraTrack;
+                    console.log('📹 Got fresh camera track (from notification)');
+                  }
+                } catch (error) {
+                  console.warn('Could not restore camera after screen share (from notification):', error);
+                }
+              }
+              
+              // Update local stream with camera (remove any screen tracks)
+              if (cameraTrack) {
+                localStreamRef.current = new MediaStream([...audio, cameraTrack]);
+              } else {
+                localStreamRef.current = new MediaStream(audio);
+              }
+              setLocalStream(localStreamRef.current);
+              
+              // Clear screen share state
               setIsScreenSharing(false);
-              screenStreamRef.current = null; // 🔥 FIX: Clear screen stream ref
+              screenStreamRef.current = null;
+              
+              // Notify server
               if (socket) {
                 if (useNewGateway) {
                   socket.emit('media:screen-share', { isSharing: false });
                 } else {
                   socket.emit('screen-share', { enabled: false });
-                }
-              }
-              
-              // Restore camera after stopping screen share
-              const audio = localStreamRef.current?.getAudioTracks() || [];
-              
-              if (lastCameraTrackRef.current && lastCameraTrackRef.current.readyState === 'live') {
-                localStreamRef.current = new MediaStream([...audio, lastCameraTrackRef.current]);
-                setLocalStream(localStreamRef.current);
-              } else {
-                try {
-                  const freshCamera = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                  const freshVideoTrack = freshCamera.getVideoTracks()[0];
-                  
-                  if (freshVideoTrack) {
-                    localStreamRef.current = new MediaStream([...audio, freshVideoTrack]);
-                    setLocalStream(localStreamRef.current);
-                    lastCameraTrackRef.current = freshVideoTrack;
-                  }
-                } catch (error) {
-                  console.warn('Could not restore camera after screen share:', error);
-                  localStreamRef.current = new MediaStream(audio);
-                  setLocalStream(localStreamRef.current);
                 }
               }
               
@@ -614,10 +628,66 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
         console.log(`🎵 Added audio track to peer connection`);
       });
       
-      // Add video tracks second
-      tracks.filter(track => track.kind === 'video').forEach(track => {
+      // Add video tracks second (camera only, filter out screen tracks)
+      tracks.filter(track => {
+        if (track.kind !== 'video') return false;
+        const label = track.label.toLowerCase();
+        return !label.includes('screen') &&
+               !label.includes('display') &&
+               !label.includes('window') &&
+               !label.includes('monitor') &&
+               !label.includes('desktop');
+      }).forEach(track => {
         pc.addTrack(track, localStreamRef.current!);
-        console.log(`📹 Added video track to peer connection`);
+        console.log(`📹 Added camera track to peer connection`);
+      });
+    }
+
+    // 🔥 NEW: If currently screen sharing, add screen share track to new peer connection
+    // This ensures new participants receive the screen share immediately
+    // Use ref to get latest value since createPeerConnection might be called before state updates
+    const currentScreenStream = screenStreamRef.current;
+    const currentIsScreenSharing = isScreenSharing;
+    
+    if (currentIsScreenSharing && currentScreenStream) {
+      const screenTrack = currentScreenStream.getVideoTracks()[0];
+      if (screenTrack && screenTrack.readyState === 'live') {
+        try {
+          const screenShareStream = new MediaStream([screenTrack]);
+          // Use addTransceiver to ensure it's a separate track
+          const transceiver = pc.addTransceiver(screenTrack, {
+            direction: 'sendrecv',
+            streams: [screenShareStream],
+          });
+          console.log(`🖥️ Added existing screen share track to new peer connection for ${targetUserId}`, {
+            trackLabel: screenTrack.label,
+            streamId: screenShareStream.id,
+            transceiverDirection: transceiver.direction,
+            transceiverMid: transceiver.mid,
+          });
+        } catch (error) {
+          console.error(`❌ Failed to add screen share track to new peer ${targetUserId}:`, error);
+          // Fallback: try addTrack
+          try {
+            const screenShareStream = new MediaStream([screenTrack]);
+            pc.addTrack(screenTrack, screenShareStream);
+            console.log(`🖥️ Added screen share track (fallback addTrack) to new peer ${targetUserId}`);
+          } catch (fallbackError) {
+            console.error(`❌ Fallback also failed:`, fallbackError);
+          }
+        }
+      } else {
+        console.warn(`⚠️ Screen share track not available or not live for new peer ${targetUserId}`, {
+          hasScreenStream: !!currentScreenStream,
+          hasScreenTrack: !!screenTrack,
+          trackState: screenTrack?.readyState,
+          isScreenSharing: currentIsScreenSharing,
+        });
+      }
+    } else {
+      console.log(`ℹ️ Not adding screen share to new peer ${targetUserId}`, {
+        isScreenSharing: currentIsScreenSharing,
+        hasScreenStream: !!currentScreenStream,
       });
     }
 
@@ -662,7 +732,7 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
       
       // Method 2: If we already have a video track from this peer, this might be screen share
       const existingPeer = peersRef.current.get(targetUserId);
-      const hasExistingVideo = existingPeer?.stream?.getVideoTracks().length > 0;
+      const hasExistingVideo = existingPeer?.stream?.getVideoTracks().length ? existingPeer.stream.getVideoTracks().length > 0 : false;
       
       // Method 3: Check if stream has only video track (screen share usually has no audio)
       const hasOnlyVideo = remoteStream.getVideoTracks().length > 0 && remoteStream.getAudioTracks().length === 0;
@@ -698,13 +768,13 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
       } else if (event.track.kind === 'audio') {
         // Audio track - merge with existing stream if needed
         const existingPeer = peersRef.current.get(targetUserId);
-        if (existingPeer?.stream) {
+        if (existingPeer && existingPeer.stream) {
           // Audio track might come in a separate stream, merge it
           const audioTracks = remoteStream.getAudioTracks();
           if (audioTracks.length > 0) {
             audioTracks.forEach(track => {
-              if (!existingPeer.stream.getAudioTracks().find(t => t.id === track.id)) {
-                existingPeer.stream.addTrack(track);
+              if (!existingPeer.stream!.getAudioTracks().find(t => t.id === track.id)) {
+                existingPeer.stream!.addTrack(track);
               }
             });
             setPeers(new Map(peersRef.current));
@@ -797,7 +867,7 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
     };
 
     return pc;
-  }, [socket, useNewGateway, meetingId]);
+  }, [socket, useNewGateway, meetingId, isScreenSharing]); // 🔥 FIX: Add isScreenSharing to dependencies
 
   // Handle WebRTC signaling
   useEffect(() => {
@@ -919,12 +989,66 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
         peersRef.current.set(data.userId, peerConnection);
         setPeers(new Map(peersRef.current));
 
+        // 🔥 NEW: Wait a bit to ensure screen share track is added before creating offer
+        // This ensures the offer includes the screen share track
+        if (isScreenSharing && screenStreamRef.current) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
+          // Verify screen share track was added
+          const senders = pc.getSenders();
+          const hasScreenShareSender = senders.some(s => {
+            const track = s.track;
+            return track && track.kind === 'video' && (
+              track.label.toLowerCase().includes('screen') ||
+              track.label.toLowerCase().includes('display') ||
+              track.label.toLowerCase().includes('window') ||
+              track.label.toLowerCase().includes('monitor') ||
+              track.label.toLowerCase().includes('desktop')
+            );
+          });
+          console.log(`🔍 Screen share track verification for new peer ${data.userId}:`, {
+            hasScreenShareSender,
+            totalSenders: senders.length,
+            senderTracks: senders.map(s => ({ kind: s.track?.kind, label: s.track?.label })),
+          });
+          
+          // If screen share track wasn't added, try to add it again
+          if (!hasScreenShareSender) {
+            console.warn(`⚠️ Screen share track not found in senders, attempting to add again...`);
+            const screenTrack = screenStreamRef.current.getVideoTracks()[0];
+            if (screenTrack && screenTrack.readyState === 'live') {
+              try {
+                const screenShareStream = new MediaStream([screenTrack]);
+                pc.addTransceiver(screenTrack, {
+                  direction: 'sendrecv',
+                  streams: [screenShareStream],
+                });
+                console.log(`🖥️ Re-added screen share track for ${data.userId}`);
+                await new Promise(resolve => setTimeout(resolve, 100));
+              } catch (error) {
+                console.error(`❌ Failed to re-add screen share track:`, error);
+              }
+            }
+          }
+        }
+
         // Create and send offer with consistent options
+        // The offer will include all tracks (camera, audio, and screen share if sharing)
         const offer = await pc.createOffer({
           offerToReceiveAudio: true,
           offerToReceiveVideo: true,
         });
         await pc.setLocalDescription(offer);
+        
+        // Check if offer SDP contains screen share track
+        const sdpLines = offer.sdp?.split('\n') || [];
+        const videoMLines = sdpLines.filter(line => line.startsWith('m=video'));
+        console.log(`📤 Created offer for new peer ${data.userId}`, {
+          hasScreenShare: isScreenSharing && !!screenStreamRef.current,
+          videoMLinesCount: videoMLines.length,
+          expectedVideoMLines: isScreenSharing && screenStreamRef.current ? 2 : 1, // 1 for camera, 1 for screen share
+          offerSdpPreview: offer.sdp?.substring(0, 300), // Log first 300 chars of SDP
+        });
 
         // Support both old and new events
         if (useNewGateway) {
@@ -962,12 +1086,23 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
       setRemoteScreenShares(new Map(remoteScreenSharesRef.current));
     };
 
+    // 🔥 NEW: Listen for screen share events to clear remote screen shares
+    const handleRemoteScreenShare = (data: { userId: string; isSharing: boolean }) => {
+      if (!data.isSharing) {
+        // User stopped sharing - clear their screen share
+        console.log(`🖥️ User ${data.userId} stopped screen sharing, clearing remote screen share`);
+        remoteScreenSharesRef.current.delete(data.userId);
+        setRemoteScreenShares(new Map(remoteScreenSharesRef.current));
+      }
+    };
+
     // Support both old and new events based on feature flag
     if (useNewGateway) {
       // New events
       socket.on('media:offer', (data: { fromUserId: string; roomId: string; offer: RTCSessionDescriptionInit }) => {
         handleOffer({ fromUserId: data.fromUserId, offer: data.offer });
       });
+      socket.on('media:user-screen-share', handleRemoteScreenShare);
       socket.on('media:answer', (data: { fromUserId: string; roomId: string; answer: RTCSessionDescriptionInit }) => {
         handleAnswer({ fromUserId: data.fromUserId, answer: data.answer });
       });
@@ -998,6 +1133,7 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
         socket.off('media:answer');
         socket.off('media:ice-candidate');
         socket.off('media:ready');
+        socket.off('media:user-screen-share', handleRemoteScreenShare);
       } else {
         socket.off('webrtc:offer', handleOffer);
         socket.off('webrtc:answer', handleAnswer);

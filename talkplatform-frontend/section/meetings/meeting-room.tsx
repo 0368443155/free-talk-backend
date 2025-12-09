@@ -504,6 +504,8 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
         setSpotlightUserId(data.userId);
       } else if (spotlightUserId === data.userId) {
         setSpotlightUserId(null);
+        // 🔥 NEW: Clear remote screen share when user stops sharing
+        // This will be handled by useWebRTC hook via remoteScreenShares state
       }
     };
     // 🔥 NEW: Handle screen share errors (e.g., someone already sharing)
