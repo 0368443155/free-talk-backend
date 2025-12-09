@@ -5,10 +5,15 @@ import { EventEmitter } from 'events';
 
 /**
  * Remote Stream Info
+ * 🔥 FIX: Separate streams for camera and screen
  */
 export interface RemoteStreamInfo {
   userId: string;
-  stream: MediaStream;
+  // 🔥 UPDATED: Separate streams
+  mainStream: MediaStream | null;   // Camera + Mic
+  screenStream: MediaStream | null; // Screen Share
+  // Legacy: Keep for backward compatibility
+  stream: MediaStream | null; // Alias to mainStream
   audioTrack: MediaStreamTrack | null;
   videoTrack: MediaStreamTrack | null;
   screenTrack: MediaStreamTrack | null;
@@ -47,50 +52,56 @@ export class P2PStreamManager extends BaseP2PManager {
 
   /**
    * Add or update remote stream from peer connection
+   * 🔥 FIX: Separate main stream (camera) and screen stream
    */
   addRemoteStream(userId: string, stream: MediaStream): void {
-    const audioTrack = stream.getAudioTracks()[0] || null;
-    const videoTrack = stream.getVideoTracks().find(t => t.kind === 'video' && !t.label.includes('screen')) || null;
-    const screenTrack = stream.getVideoTracks().find(t => t.label.includes('screen') || t.label.includes('Screen')) || null;
-
-    const existing = this.remoteStreams.get(userId);
+    let info = this.remoteStreams.get(userId);
     
-    if (existing) {
-      // Update existing stream
-      existing.stream = stream;
-      existing.audioTrack = audioTrack;
-      existing.videoTrack = videoTrack;
-      existing.screenTrack = screenTrack;
-      existing.lastUpdated = new Date();
-      
-      this.log('info', `Updated remote stream for ${userId}`, {
-        hasAudio: !!audioTrack,
-        hasVideo: !!videoTrack,
-        hasScreen: !!screenTrack,
-      });
-    } else {
-      // Create new stream info
-      const streamInfo: RemoteStreamInfo = {
+    // Create if not exists
+    if (!info) {
+      info = {
         userId,
-        stream,
-        audioTrack,
-        videoTrack,
-        screenTrack,
+        mainStream: null,
+        screenStream: null,
+        stream: null, // Legacy
+        audioTrack: null,
+        videoTrack: null,
+        screenTrack: null,
         createdAt: new Date(),
-        lastUpdated: new Date(),
+        lastUpdated: new Date()
       };
-      
-      this.remoteStreams.set(userId, streamInfo);
-      
-      this.log('info', `Added remote stream for ${userId}`, {
-        hasAudio: !!audioTrack,
-        hasVideo: !!videoTrack,
-        hasScreen: !!screenTrack,
-      });
+      this.remoteStreams.set(userId, info);
     }
 
-    // Emit event for React components
-    this.emit('stream-added', { userId, stream });
+    // Analyze stream to determine type
+    const videoTracks = stream.getVideoTracks();
+    const audioTracks = stream.getAudioTracks();
+    
+    // Heuristic 1: Check track label
+    const isScreenLabel = videoTracks.some(t => 
+      t.label.toLowerCase().includes('screen') || 
+      t.label.toLowerCase().includes('capture') ||
+      t.label.toLowerCase().includes('display')
+    );
+
+    // Heuristic 2: If we already have main (camera) stream, this must be screen
+    const hasMain = !!info.mainStream;
+    const isScreen = isScreenLabel || (hasMain && videoTracks.length > 0 && !audioTracks.length);
+
+    if (isScreen) {
+      this.log('info', `Set SCREEN stream for ${userId}`);
+      info.screenStream = stream;
+      info.screenTrack = videoTracks[0] || null;
+    } else {
+      this.log('info', `Set MAIN stream for ${userId}`);
+      info.mainStream = stream;
+      info.stream = stream; // Legacy compatibility
+      info.audioTrack = audioTracks[0] || null;
+      info.videoTrack = videoTracks.find(t => !t.label.includes('screen')) || null;
+    }
+    
+    info.lastUpdated = new Date();
+    this.emit('stream-updated', { userId });
   }
 
   /**
@@ -115,11 +126,20 @@ export class P2PStreamManager extends BaseP2PManager {
   }
 
   /**
-   * Get remote stream for a user
+   * Get remote stream for a user (backward compatibility)
+   * 🔥 FIX: Default to main, fallback to screen
    */
   getRemoteStream(userId: string): MediaStream | null {
-    const streamInfo = this.remoteStreams.get(userId);
-    return streamInfo?.stream || null;
+    const info = this.remoteStreams.get(userId);
+    return info?.mainStream || info?.screenStream || null;
+  }
+
+  /**
+   * Get remote screen stream
+   * 🔥 FIX: NEW - Get screen share stream separately
+   */
+  getRemoteScreenStream(userId: string): MediaStream | null {
+    return this.remoteStreams.get(userId)?.screenStream || null;
   }
 
   /**
@@ -151,13 +171,16 @@ export class P2PStreamManager extends BaseP2PManager {
 
   /**
    * Check if user has active stream
+   * 🔥 FIX: Check both main and screen streams
    */
   hasActiveStream(userId: string): boolean {
     const streamInfo = this.remoteStreams.get(userId);
     if (!streamInfo) return false;
     
-    // Check if stream has at least one active track
-    return streamInfo.stream.getTracks().some(track => track.readyState === 'live');
+    // Check if main or screen stream has at least one active track
+    const mainActive = streamInfo.mainStream?.getTracks().some(track => track.readyState === 'live') || false;
+    const screenActive = streamInfo.screenStream?.getTracks().some(track => track.readyState === 'live') || false;
+    return mainActive || screenActive;
   }
 
   /**

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useCallback, useEffect, useMemo } from 'react';
+import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSyncExternalStore } from 'react'; // React 18+ hook for external stores
 import { Socket } from 'socket.io-client';
 import { P2PMediaManager, P2PStreamManager, P2PTrackStateSync, P2PPeerConnectionManager } from '@/services/p2p/core';
@@ -22,7 +22,12 @@ interface PeerConnection {
 
 interface UseWebRTCV2Return {
   localStream: MediaStream | null;
+  screenStream: MediaStream | null; // 🔥 NEW: Separate screen stream
   peers: Map<string, PeerConnection>;
+  connectionStates: Map<string, RTCPeerConnectionState>; // 🔥 FIX 1: Connection states
+  connectedPeersCount: number; // 🔥 FIX 1: Connected peers count
+  reconnectingPeers: Set<string>; // 🔥 FIX 2: Reconnecting peers
+  remoteScreenShares: Map<string, MediaStream>; // 🔥 FIX: Remote screen shares
   isMuted: boolean;
   isVideoOff: boolean;
   isScreenSharing: boolean;
@@ -44,12 +49,15 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
   const streamManagerRef = useRef<P2PStreamManager | null>(null);
   const stateSyncRef = useRef<P2PTrackStateSync | null>(null);
   const peerConnectionManagerRef = useRef<P2PPeerConnectionManager | null>(null);
-  
+
   // Track if cleanup has been called to prevent duplicate cleanup
   const cleanupCalledRef = useRef(false);
 
   // Track current config to detect changes
   const configRef = useRef<{ socket: Socket; meetingId: string; userId: string } | null>(null);
+
+  // 🔥 FIX 1: State for manager readiness to prevent race conditions
+  const [areManagersReady, setAreManagersReady] = useState(false);
 
   // Cleanup function - must be defined before useEffect
   const cleanupManagers = useCallback(() => {
@@ -62,13 +70,13 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
     // Debug: Watch console for:
     // - Expected: "initialized" → "cleaned up" → "initialized" (Strict Mode cycle)
     // - Problem: "initialized" → "initialized" (no cleanup between, check cleanupCalledRef reset)
-    
+
     if (cleanupCalledRef.current) {
       console.log('[useWebRTCV2] Cleanup already called, skipping (Strict Mode protection)');
       return;
     }
     cleanupCalledRef.current = true;
-    
+
     // Log cleanup for debugging Strict Mode
     if (process.env.NODE_ENV === 'development') {
       console.log('[useWebRTCV2] Cleaning up managers (Strict Mode check)');
@@ -91,10 +99,10 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
       peerConnectionManagerRef.current.cleanup();
       peerConnectionManagerRef.current = null;
     }
-    
+
     // Reset config ref
     configRef.current = null;
-    
+
     // Reset cleanup flag (allows re-initialization if needed)
     cleanupCalledRef.current = false;
   }, []);
@@ -111,7 +119,7 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
 
     // Check if config changed (socket ID or meetingId/userId)
     const currentConfig = { socket, meetingId, userId };
-    const configChanged = 
+    const configChanged =
       !configRef.current ||
       configRef.current.socket.id !== socket.id ||
       configRef.current.meetingId !== meetingId ||
@@ -150,11 +158,11 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
       mediaManager.initialize().then(() => {
         mediaManagerRef.current = mediaManager;
         console.log('[useWebRTCV2] P2PMediaManager initialized.');
-        
+
         streamManager.initialize().then(() => {
           streamManagerRef.current = streamManager;
         });
-        
+
         stateSync.initialize().then(() => {
           stateSyncRef.current = stateSync;
         });
@@ -162,7 +170,13 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
         peerConnectionManager.initialize().then(() => {
           peerConnectionManagerRef.current = peerConnectionManager;
           console.log('[useWebRTCV2] P2PPeerConnectionManager initialized.');
-          
+
+          // 🔥 FIX 2: Set media manager reference for reconnection
+          peerConnectionManager.setMediaManager({
+            getLocalStream: () => mediaManagerRef.current?.getLocalStream() || null,
+            getScreenStream: () => mediaManagerRef.current?.getScreenStream() || null,
+          });
+
           // Setup peer connection manager event handlers
           peerConnectionManager.on('track-received', (data: { userId: string; stream: MediaStream; track: MediaStreamTrack }) => {
             // Add remote stream to stream manager
@@ -180,6 +194,10 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
           peerConnectionManager.on('rollback-failed', (data: { userId: string; reason: string }) => {
             console.warn(`[useWebRTCV2] Rollback failed for ${data.userId}, may need to recreate connection`);
           });
+
+          // 🔥 FIX 1: Mark managers as ready
+          console.log('✅ Managers initialized and ready');
+          setAreManagersReady(true);
         });
 
         // Listen to sync errors for Toast notifications
@@ -204,6 +222,7 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
     // No async operations here - all cleanup is synchronous
     return () => {
       console.log('[useWebRTCV2] useEffect cleanup function running.');
+      setAreManagersReady(false); // 🔥 FIX 1: Reset ready state
       cleanupManagers(); // Synchronous cleanup on unmount or effect re-run
     };
   }, [socket, meetingId, userId, cleanupManagers]);
@@ -213,14 +232,14 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
   const localStream = useSyncExternalStore(
     (callback) => {
       // Subscribe function
-      if (!mediaManagerRef.current) return () => {};
-      
+      if (!mediaManagerRef.current) return () => { };
+
       const handleStreamChange = () => {
         callback(); // Trigger re-render
       };
-      
+
       mediaManagerRef.current.on('stream-changed', handleStreamChange);
-      
+
       return () => {
         mediaManagerRef.current?.off('stream-changed', handleStreamChange);
       };
@@ -239,11 +258,11 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
    */
   const isMuted = useSyncExternalStore(
     (callback) => {
-      if (!mediaManagerRef.current) return () => {};
-      
+      if (!mediaManagerRef.current) return () => { };
+
       const handleStateChange = () => callback();
       mediaManagerRef.current.on('mic-state-changed', handleStateChange);
-      
+
       return () => {
         mediaManagerRef.current?.off('mic-state-changed', handleStateChange);
       };
@@ -262,11 +281,11 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
    */
   const isVideoOff = useSyncExternalStore(
     (callback) => {
-      if (!mediaManagerRef.current) return () => {};
-      
+      if (!mediaManagerRef.current) return () => { };
+
       const handleStateChange = () => callback();
       mediaManagerRef.current.on('camera-state-changed', handleStateChange);
-      
+
       return () => {
         mediaManagerRef.current?.off('camera-state-changed', handleStateChange);
       };
@@ -284,11 +303,11 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
    */
   const isScreenSharing = useSyncExternalStore(
     (callback) => {
-      if (!mediaManagerRef.current) return () => {};
-      
+      if (!mediaManagerRef.current) return () => { };
+
       const handleStateChange = () => callback();
       mediaManagerRef.current.on('screen-state-changed', handleStateChange);
-      
+
       return () => {
         mediaManagerRef.current?.off('screen-state-changed', handleStateChange);
       };
@@ -311,13 +330,13 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
 
   const peers = useSyncExternalStore(
     (callback) => {
-      if (!streamManagerRef.current) return () => {};
-      
+      if (!streamManagerRef.current) return () => { };
+
       const handleStreamChange = () => callback();
       streamManagerRef.current.on('stream-added', handleStreamChange);
       streamManagerRef.current.on('stream-removed', handleStreamChange);
       streamManagerRef.current.on('stream-updated', handleStreamChange);
-      
+
       return () => {
         streamManagerRef.current?.off('stream-added', handleStreamChange);
         streamManagerRef.current?.off('stream-removed', handleStreamChange);
@@ -345,14 +364,18 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
           peersMap.set(userId, {
             userId,
             connection,
-            stream: streamInfo.stream,
+            stream: streamInfo.mainStream || streamInfo.stream || undefined, // Only main stream here
           });
         }
       });
 
-      // Serialize data for comparison (simple approach: userIds + stream count)
-      const currentData = Array.from(peersMap.keys()).sort().join(',') + `|${peersMap.size}`;
-      
+      // 🔥 FIX 2: Use JSON.stringify for robust comparison of map keys + stream IDs
+      const stateObject = Array.from(peersMap.entries()).map(([uid, pc]) => ({
+        uid,
+        streamId: pc.stream?.id
+      }));
+      const currentData = JSON.stringify(stateObject);
+
       // Only create new Map if data actually changed
       if (currentData !== peersDataRef.current) {
         peersSnapshotRef.current = peersMap;
@@ -365,6 +388,191 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
     () => new Map<string, PeerConnection>()
   );
 
+  /**
+   * Screen stream (separate from camera)
+   * 🔥 NEW: For displaying screen share in separate tile
+   */
+  const screenStream = useSyncExternalStore(
+    (callback) => {
+      if (!mediaManagerRef.current) return () => { };
+
+      const handleChange = () => callback();
+      mediaManagerRef.current.on('screen-stream-changed', handleChange);
+
+      return () => {
+        mediaManagerRef.current?.off('screen-stream-changed', handleChange);
+      };
+    },
+    () => {
+      return mediaManagerRef.current?.getScreenStream() || null;
+    },
+    () => null
+  );
+
+  /**
+   * Connection states for all peers
+   * 🔥 FIX 1: Track which peers are connected/disconnected/failed
+   * 🔥 FIX: Cache snapshot to avoid infinite loop
+   */
+  const connectionStatesSnapshotRef = useRef<Map<string, RTCPeerConnectionState>>(new Map());
+  const connectionStatesDataRef = useRef<string>(''); // Serialized data for comparison
+
+  const connectionStates = useSyncExternalStore(
+    (callback) => {
+      if (!peerConnectionManagerRef.current) return () => {};
+      
+      const handleChange = () => callback();
+      peerConnectionManagerRef.current.on('connection-state-changed', handleChange);
+      
+      return () => {
+        peerConnectionManagerRef.current?.off('connection-state-changed', handleChange);
+      };
+    },
+    () => {
+      if (!peerConnectionManagerRef.current) {
+        if (connectionStatesSnapshotRef.current.size === 0) {
+          return connectionStatesSnapshotRef.current; // Return cached empty map
+        }
+        connectionStatesSnapshotRef.current = new Map<string, RTCPeerConnectionState>();
+        connectionStatesDataRef.current = '';
+        return connectionStatesSnapshotRef.current;
+      }
+
+      const statesMap = peerConnectionManagerRef.current.getAllConnectionStates();
+      
+      // Serialize data for comparison
+      const currentData = Array.from(statesMap.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([userId, state]) => `${userId}:${state}`)
+        .join(',') + `|${statesMap.size}`;
+
+      // Only create new Map if data actually changed
+      if (currentData !== connectionStatesDataRef.current) {
+        connectionStatesSnapshotRef.current = new Map(statesMap);
+        connectionStatesDataRef.current = currentData;
+      }
+
+      // Always return cached reference to prevent infinite loop
+      return connectionStatesSnapshotRef.current;
+    },
+    () => new Map()
+  );
+
+  /**
+   * Count of connected peers
+   * 🔥 FIX 1: Quick way to check how many peers are connected
+   */
+  const connectedPeersCount = useSyncExternalStore(
+    (callback) => {
+      if (!peerConnectionManagerRef.current) return () => {};
+      
+      const handleChange = () => callback();
+      peerConnectionManagerRef.current.on('connection-state-changed', handleChange);
+      
+      return () => {
+        peerConnectionManagerRef.current?.off('connection-state-changed', handleChange);
+      };
+    },
+    () => {
+      if (!peerConnectionManagerRef.current) return 0;
+      return peerConnectionManagerRef.current.getConnectedPeersCount();
+    },
+    () => 0
+  );
+
+  /**
+   * Reconnection state
+   * 🔥 FIX 2: Track which peers are reconnecting
+   */
+  const [reconnectingPeers, setReconnectingPeers] = useState<Set<string>>(new Set());
+
+  /**
+   * Remote screen shares
+   * 🔥 FIX: Track remote screen shares separately
+   */
+  const remoteScreenSharesSnapshotRef = useRef<Map<string, MediaStream>>(new Map());
+  const remoteScreenSharesDataRef = useRef<string>('');
+
+  const remoteScreenShares = useSyncExternalStore(
+    (callback) => {
+      if (!streamManagerRef.current) return () => {};
+      const handleCheck = () => callback();
+      streamManagerRef.current.on('stream-updated', handleCheck);
+      return () => streamManagerRef.current?.off('stream-updated', handleCheck);
+    },
+    () => {
+      if (!streamManagerRef.current) {
+        if (remoteScreenSharesSnapshotRef.current.size === 0) {
+          return remoteScreenSharesSnapshotRef.current;
+        }
+        remoteScreenSharesSnapshotRef.current = new Map<string, MediaStream>();
+        remoteScreenSharesDataRef.current = '';
+        return remoteScreenSharesSnapshotRef.current;
+      }
+
+      const map = new Map<string, MediaStream>();
+      streamManagerRef.current.getAllRemoteStreamInfos().forEach((info, userId) => {
+        if (info.screenStream) {
+          map.set(userId, info.screenStream);
+        }
+      });
+
+      // Serialize for comparison
+      const stateObject = Array.from(map.entries()).map(([uid, stream]) => ({
+        uid,
+        streamId: stream.id
+      }));
+      const currentData = JSON.stringify(stateObject);
+
+      if (currentData !== remoteScreenSharesDataRef.current) {
+        remoteScreenSharesSnapshotRef.current = new Map(map);
+        remoteScreenSharesDataRef.current = currentData;
+      }
+
+      return remoteScreenSharesSnapshotRef.current;
+    },
+    () => new Map()
+  );
+
+  // 🔥 FIX 2: Listen for reconnection events
+  useEffect(() => {
+    if (!peerConnectionManagerRef.current) return;
+
+    const handleReconnecting = (data: { userId: string }) => {
+      setReconnectingPeers(prev => new Set(prev).add(data.userId));
+    };
+
+    const handleReconnected = (data: { userId: string; attempts: number }) => {
+      setReconnectingPeers(prev => {
+        const next = new Set(prev);
+        next.delete(data.userId);
+        return next;
+      });
+
+      toast.success(`Reconnected to peer`);
+    };
+
+    const handleReconnectFailed = (data: { userId: string; attempts: number }) => {
+      setReconnectingPeers(prev => {
+        const next = new Set(prev);
+        next.delete(data.userId);
+        return next;
+      });
+
+      toast.error(`Failed to reconnect after ${data.attempts} attempts`);
+    };
+
+    peerConnectionManagerRef.current.on('reconnecting', handleReconnecting);
+    peerConnectionManagerRef.current.on('reconnected', handleReconnected);
+    peerConnectionManagerRef.current.on('reconnect-failed', handleReconnectFailed);
+
+    return () => {
+      peerConnectionManagerRef.current?.off('reconnecting', handleReconnecting);
+      peerConnectionManagerRef.current?.off('reconnected', handleReconnected);
+      peerConnectionManagerRef.current?.off('reconnect-failed', handleReconnectFailed);
+    };
+  }, []);
+
   // Start local stream
   const startLocalStream = useCallback(async () => {
     if (!mediaManagerRef.current || !socket) return;
@@ -374,7 +582,7 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
       await mediaManagerRef.current.initializeLocalStream(true, true);
       // State will update automatically via useSyncExternalStore subscription
       mediaManagerRef.current.emit('stream-changed');
-      
+
       // 🔥 FIX: Emit media:ready with userId (like v1)
       if (socket.connected) {
         socket.emit('media:ready', { roomId: meetingId, userId });
@@ -389,7 +597,7 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
   // Stop local stream
   const stopLocalStream = useCallback(() => {
     if (!mediaManagerRef.current) return;
-    
+
     const stream = mediaManagerRef.current.getLocalStream();
     if (stream) {
       stream.getTracks().forEach(track => track.stop());
@@ -400,32 +608,52 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
   // Toggle mute
   const toggleMute = useCallback(async () => {
     if (!mediaManagerRef.current) return;
-    
+
     try {
+      // 🔥 FIX: Check if localStream exists, start it if needed (like v1 hook)
+      const currentLocalStream = mediaManagerRef.current.getLocalStream();
+      if (!currentLocalStream) {
+        console.log('🎤 [toggleMute] Local stream not initialized, starting...');
+        await startLocalStream();
+        // Wait a bit for stream to be ready
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
       // Use getMicState() for primitive value instead of full state
       const micState = mediaManagerRef.current.getMicState();
       await mediaManagerRef.current.enableMicrophone(!micState.enabled);
       // State will update automatically via useSyncExternalStore subscription
       // Manager emits 'mic-state-changed' event which triggers callback()
     } catch (error: any) {
+      console.error('❌ [toggleMute] Failed:', error);
       toast.error(`Failed to toggle microphone: ${error.message}`);
     }
-  }, []);
+  }, [startLocalStream]);
 
   // Toggle video
   const toggleVideo = useCallback(async () => {
     if (!mediaManagerRef.current) return;
-    
+
     try {
+      // 🔥 FIX: Check if localStream exists, start it if needed (like v1 hook)
+      const currentLocalStream = mediaManagerRef.current.getLocalStream();
+      if (!currentLocalStream) {
+        console.log('📹 [toggleVideo] Local stream not initialized, starting...');
+        await startLocalStream();
+        // Wait a bit for stream to be ready
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
       // Use getCameraState() for primitive value instead of full state
       const cameraState = mediaManagerRef.current.getCameraState();
       await mediaManagerRef.current.enableCamera(!cameraState.enabled);
       // State will update automatically via useSyncExternalStore subscription
       // Manager emits 'camera-state-changed' event which triggers callback()
     } catch (error: any) {
+      console.error('❌ [toggleVideo] Failed:', error);
       toast.error(`Failed to toggle camera: ${error.message}`);
     }
-  }, []);
+  }, [startLocalStream]);
 
   // Toggle screen share
   const toggleScreenShare = useCallback(async () => {
@@ -442,37 +670,39 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
           screenTrack.stop();
         }
 
-        // Remove screen track from all peer connections
+        // 🔥 FIX: Remove ONLY screen track, keep camera
         const allConnections = peerConnectionManagerRef.current.getAllPeerConnections();
-        allConnections.forEach((pc, targetUserId) => {
+        allConnections.forEach((pc) => {
           const senders = pc.getSenders();
-          const screenSender = senders.find(s => s.track?.kind === 'video' && s.track?.label.includes('screen'));
-          if (screenSender && screenSender.track) {
-            pc.removeTrack(screenSender);
+          // Find screen sender by label (screen tracks have 'screen' in label)
+          const screenSender = senders.find(s =>
+            s.track?.kind === 'video' &&
+            s.track?.label.includes('screen')
+          );
+          if (screenSender) {
+            pc.removeTrack(screenSender); // Remove only screen, keep camera
           }
         });
 
-        // Restore camera if available
-        const cameraTrack = state.camera.track;
-        if (cameraTrack && cameraTrack.readyState === 'live') {
-          // Re-add camera track to all peers
-          const localStream = mediaManagerRef.current.getLocalStream();
-          if (localStream) {
-            allConnections.forEach((pc) => {
-              pc.addTrack(cameraTrack, localStream);
-            });
-          }
-        }
-
-        // Update state
+        // Clear screen stream
+        mediaManagerRef.current.setScreenStream(null);
         mediaManagerRef.current.emit('screen-state-changed');
+
         if (socket) {
-          socket.emit('media:screen-share', { roomId: meetingId, isSharing: false });
+          socket.emit('media:screen-share', {
+            roomId: meetingId,
+            userId,
+            isSharing: false
+          });
         }
       } else {
         // Start screen sharing
         const displayStream = await navigator.mediaDevices.getDisplayMedia({
-          video: { frameRate: 30 } as MediaTrackConstraints,
+          video: {
+            frameRate: 30,
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          } as MediaTrackConstraints,
           audio: false,
         });
 
@@ -481,46 +711,39 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
           throw new Error('No screen track available');
         }
 
-        // Add screen track to all peer connections
+        // 🔥 FIX: Add screen track WITHOUT replacing camera
         const allConnections = peerConnectionManagerRef.current.getAllPeerConnections();
-        const localStream = mediaManagerRef.current.getLocalStream();
-        
-        if (localStream) {
-          // Replace video track with screen track
-          allConnections.forEach((pc, targetUserId) => {
-            const senders = pc.getSenders();
-            const videoSender = senders.find(s => s.track?.kind === 'video');
-            if (videoSender) {
-              videoSender.replaceTrack(screenTrack);
-            } else {
-              pc.addTrack(screenTrack, displayStream);
-            }
-          });
-        }
 
-        // Update local stream to show screen
-        const audioTracks = localStream?.getAudioTracks() || [];
-        const newLocalStream = new MediaStream([...audioTracks, screenTrack]);
-        // Note: P2PMediaManager doesn't have setLocalStream method, so we'll handle this differently
-        // For now, emit event to update state
-        mediaManagerRef.current.emit('screen-state-changed');
-        mediaManagerRef.current.emit('stream-changed');
+        allConnections.forEach((pc) => {
+          // Add screen track as ADDITIONAL track (don't replace camera)
+          pc.addTrack(screenTrack, displayStream);
+        });
+
+        // Store screen stream separately (this will also update state.screen.isSharing)
+        mediaManagerRef.current.setScreenStream(displayStream);
 
         // Auto-stop when user clicks "Stop sharing"
         screenTrack.onended = () => {
-          if (state.screen.isSharing) {
-            toggleScreenShare().catch(() => {});
+          // Check current state (may have changed)
+          const currentState = mediaManagerRef.current?.getState();
+          if (currentState?.screen.isSharing) {
+            toggleScreenShare().catch(() => { });
           }
         };
 
         if (socket) {
-          socket.emit('media:screen-share', { roomId: meetingId, isSharing: true });
+          socket.emit('media:screen-share', {
+            roomId: meetingId,
+            userId,
+            isSharing: true
+          });
         }
       }
     } catch (error: any) {
+      console.error('❌ [Screen Share] Failed:', error);
       toast.error(`Failed to toggle screen share: ${error.message}`);
     }
-  }, [socket, meetingId]);
+  }, [socket, meetingId, userId]);
 
   // 🔥 FIX: AUTO-START local stream when socket connects
   useEffect(() => {
@@ -543,8 +766,14 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
   }, [socket?.connected, localStream, startLocalStream]);
 
   // Handle peer connections (offer, answer, ICE candidate)
+  // 🔥 FIX 1: Only run when managers are ready to prevent race conditions
+  const hasRequestedPeersRef = useRef(false);
+  
   useEffect(() => {
-    if (!socket?.connected || !peerConnectionManagerRef.current) return;
+    // Guard: Only run if everything is ready
+    if (!socket?.connected || !areManagersReady || !peerConnectionManagerRef.current) {
+      return;
+    }
 
     // Handle new peer ready
     const handlePeerReady = async (data: { userId: string }) => {
@@ -640,18 +869,78 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
     socket.on('media:answer', handleAnswer);  // ✅ NEW
     socket.on('media:ice-candidate', handleIceCandidate);  // ✅ NEW
 
-    // Request existing peers when we join
-    socket.emit('meeting:request-peers');
+    // 🔥 FIX 1: Debounce/Guard request-peers - Only request once when effect runs
+    if (!hasRequestedPeersRef.current) {
+      console.log('📡 Requesting peers (One-time check)...');
+      socket.emit('meeting:request-peers');
+      hasRequestedPeersRef.current = true;
+    }
 
     return () => {
+      // Cleanup
       socket.off('media:peer-ready', handlePeerReady);
       socket.off('meeting:user-joined', handleUserJoined);
       socket.off('meeting:user-left', handleUserLeft);
       socket.off('media:offer', handleOffer);  // ✅ NEW
       socket.off('media:answer', handleAnswer);  // ✅ NEW
       socket.off('media:ice-candidate', handleIceCandidate);  // ✅ NEW
+      hasRequestedPeersRef.current = false; // Reset for next run
     };
-  }, [socket, userId]);
+  }, [socket, userId, areManagersReady]); // 🔥 FIX 1: Stable dependencies
+
+  // 🔥 FIX 3: Handle socket reconnection
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleSocketReconnect = async () => {
+      console.log('🔄 Socket reconnected, syncing states...');
+
+      // 1. Sync media states
+      if (mediaManagerRef.current) {
+        await mediaManagerRef.current.syncAllStatesToServer();
+      }
+
+      // 2. Re-emit media:ready
+      if (localStream && socket.connected) {
+        console.log('📡 Re-emitting media:ready after reconnect');
+        socket.emit('media:ready', {
+          roomId: meetingId,
+          userId
+        });
+      }
+
+      // 3. Request peers again
+      console.log('📡 Requesting peers after reconnect');
+      socket.emit('meeting:request-peers');
+
+      toast.success('Reconnected to server');
+    };
+
+    socket.on('connect', handleSocketReconnect);
+
+    return () => {
+      socket.off('connect', handleSocketReconnect);
+    };
+  }, [socket, meetingId, userId, localStream]);
+
+  // 🔥 FIX 4: Track screen share state
+  useEffect(() => {
+    if (!socket) return;
+    
+    const handleRemoteScreenShare = (data: { userId: string, isSharing: boolean }) => {
+      if (data.isSharing) {
+        toast.info(`User started screen sharing`);
+      } else {
+        // Clean up if needed - stream manager will handle it
+      }
+    };
+    
+    socket.on('media:user-screen-share', handleRemoteScreenShare);
+    
+    return () => {
+      socket.off('media:user-screen-share', handleRemoteScreenShare);
+    };
+  }, [socket]);
 
   // Helper to get first peer connection for bandwidth monitoring
   const getFirstPeerConnection = useCallback((): RTCPeerConnection | null => {
@@ -663,7 +952,12 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
 
   return {
     localStream,
+    screenStream, // 🔥 NEW: Separate screen stream
     peers,
+    connectionStates, // 🔥 FIX 1: Connection states
+    connectedPeersCount, // 🔥 FIX 1: Connected peers count
+    reconnectingPeers, // 🔥 FIX 2: Reconnecting peers
+    remoteScreenShares, // 🔥 FIX: Remote screen shares
     isMuted,
     isVideoOff,
     isScreenSharing,

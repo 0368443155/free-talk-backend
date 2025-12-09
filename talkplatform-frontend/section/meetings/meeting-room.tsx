@@ -21,7 +21,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useMeetingSocket } from "@/hooks/use-meeting-socket";
-import { useWebRTC } from "@/hooks/use-webrtc";
+import { useWebRTCV2 as useWebRTC } from "@/hooks/use-webrtc-v2";
 import { useWebRTCStatsWorker } from "@/hooks/useWebRTCStatsWorker";
 import { useThrottledMetrics } from "@/hooks/useThrottledMetrics";
 import { VideoGrid } from "./video-grid";
@@ -319,6 +319,7 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
 
   const [showConnectionBanner, setShowConnectionBanner] = useState(false);
 
+  // 🔥 FIX 4: Show reconnecting banner
   useEffect(() => {
     setShowConnectionBanner(!isConnected && isOnline);
   }, [isConnected, isOnline]);
@@ -334,7 +335,12 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   // WebRTC
   const {
     localStream,
+    screenStream, // 🔥 NEW: Separate screen stream from V2
     peers,
+    connectionStates, // 🔥 FIX 1: Connection states
+    connectedPeersCount, // 🔥 FIX 1: Connected peers count
+    reconnectingPeers, // 🔥 FIX 2: Reconnecting peers
+    remoteScreenShares, // 🔥 FIX: Remote screen shares
     isMuted,
     isVideoOff,
     isScreenSharing,
@@ -350,6 +356,9 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     userId: user.id,
     isOnline,
   });
+
+  // 🔥 FIX 4: Show reconnecting state (after reconnectingPeers is declared)
+  const showReconnecting = reconnectingPeers.size > 0 || !isConnected;
 
   // Helper function to determine connection quality
   const getConnectionQuality = useCallback((
@@ -1044,9 +1053,18 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
             setShowFunctions(false);
           }}
         />
-        {showConnectionBanner && (
+        {/* 🔥 FIX 4: Reconnecting banner */}
+        {showReconnecting && (
           <div className="bg-yellow-600 text-white px-4 py-2 text-sm flex items-center justify-between">
-            <span>⚠️ Connection lost. Reconnecting...</span>
+            <div className="flex items-center gap-2">
+              <RefreshCw className="w-4 h-4 animate-spin" />
+              <span>
+                {!isConnected
+                  ? '⚠️ Reconnecting to server...'
+                  : `⚠️ Reconnecting to ${reconnectingPeers.size} peer(s)...`
+                }
+              </span>
+            </div>
           </div>
         )}
 
@@ -1073,7 +1091,10 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
                     <div className={showVideoGrid ? "h-full" : "hidden"}>
                       <VideoGrid
                         localStream={localStream}
+                        screenStream={screenStream}
                         peers={peers}
+                        connectionStates={connectionStates} // 🔥 FIX 1: Connection states
+                        remoteScreenShares={remoteScreenShares} // 🔥 FIX: Remote screen shares
                         participants={participants}
                         currentUserId={user.id}
                         isMuted={isMuted}
@@ -1240,9 +1261,9 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
           <div className="flex items-center gap-3 text-sm text-gray-300">
             <div className="flex items-center gap-1">
               <div className={`w-2 h-2 rounded-full ${aggregatedMetrics.quality === 'excellent' ? 'bg-green-500' :
-                  aggregatedMetrics.quality === 'good' ? 'bg-blue-500' :
-                    aggregatedMetrics.quality === 'fair' ? 'bg-yellow-500' :
-                      'bg-red-500'
+                aggregatedMetrics.quality === 'good' ? 'bg-blue-500' :
+                  aggregatedMetrics.quality === 'fair' ? 'bg-yellow-500' :
+                    'bg-red-500'
                 }`} />
               <span className="text-xs">Quality</span>
             </div>
@@ -1290,8 +1311,8 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
             <Button
               onClick={toggleMute}
               className={`rounded-full w-10 h-10 p-0 flex items-center justify-center shadow-lg transition-all ${isMuted
-                  ? 'bg-red-600 hover:bg-red-700 text-white'
-                  : 'bg-white hover:bg-gray-100 text-gray-900'
+                ? 'bg-red-600 hover:bg-red-700 text-white'
+                : 'bg-white hover:bg-gray-100 text-gray-900'
                 }`}
               aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
             >
@@ -1302,8 +1323,8 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
             <Button
               onClick={toggleVideo}
               className={`rounded-full w-10 h-10 p-0 flex items-center justify-center shadow-lg transition-all ${isVideoOff
-                  ? 'bg-red-600 hover:bg-red-700 text-white'
-                  : 'bg-white hover:bg-gray-100 text-gray-900'
+                ? 'bg-red-600 hover:bg-red-700 text-white'
+                : 'bg-white hover:bg-gray-100 text-gray-900'
                 }`}
               aria-label={isVideoOff ? "Turn on camera" : "Turn off camera"}
             >
@@ -1314,8 +1335,8 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
             <Button
               onClick={toggleScreenShare}
               className={`rounded-full w-10 h-10 p-0 flex items-center justify-center shadow-lg transition-all ${isScreenSharing
-                  ? 'bg-green-600 hover:bg-green-700 text-white'
-                  : 'bg-white hover:bg-gray-100 text-gray-900'
+                ? 'bg-green-600 hover:bg-green-700 text-white'
+                : 'bg-white hover:bg-gray-100 text-gray-900'
                 }`}
               aria-label={isScreenSharing ? "Stop screen share" : "Start screen share"}
             >

@@ -60,13 +60,34 @@ export class P2PPeerConnectionManager extends BaseP2PManager {
   private peers: Map<string, PeerConnectionInfo> = new Map();
   private negotiationDebounceTimer: Map<string, NodeJS.Timeout> = new Map();
   
+  // 🔥 FIX 1: Track connection states
+  private connectionStates = new Map<string, RTCPeerConnectionState>();
+  private iceConnectionStates = new Map<string, RTCIceConnectionState>();
+  
+  // 🔥 FIX 2: Reconnection tracking
+  private reconnectAttempts = new Map<string, number>();
+  private reconnectTimeouts = new Map<string, NodeJS.Timeout>();
+  private readonly MAX_RECONNECT_ATTEMPTS = 3;
+  private readonly RECONNECT_DELAYS = [1000, 2000, 4000]; // Exponential backoff
+  
   private readonly MAX_ICE_CANDIDATES = MAX_ICE_CANDIDATES_QUEUE;
   private readonly MAX_RETRIES = MAX_CONNECTION_RETRY_ATTEMPTS;
   private readonly INITIAL_RETRY_DELAY = INITIAL_RETRY_DELAY_MS;
   private readonly NEGOTIATION_DEBOUNCE = NEGOTIATION_DEBOUNCE_MS;
+  
+  // 🔥 FIX 2: Reference to media manager for reconnection
+  private mediaManager?: { getLocalStream: () => MediaStream | null; getScreenStream: () => MediaStream | null };
 
   constructor(config: MediaManagerConfig) {
     super(config.socket, config.meetingId, config.userId);
+  }
+
+  /**
+   * Set media manager reference for reconnection
+   * 🔥 FIX 2: NEW - Allow access to media streams during reconnection
+   */
+  public setMediaManager(mediaManager: { getLocalStream: () => MediaStream | null; getScreenStream: () => MediaStream | null }): void {
+    this.mediaManager = mediaManager;
   }
 
   /**
@@ -302,6 +323,7 @@ export class P2PPeerConnectionManager extends BaseP2PManager {
 
   /**
    * Setup connection state handler with recovery logic
+   * 🔥 FIX 1: Enhanced with connection state tracking and events
    */
   private setupConnectionStateHandler(targetUserId: string, pc: RTCPeerConnection): void {
     pc.onconnectionstatechange = () => {
@@ -309,20 +331,59 @@ export class P2PPeerConnectionManager extends BaseP2PManager {
       if (!peerInfo) return;
 
       const state = pc.connectionState;
-      const previousState = peerInfo.lastConnectionState;
+      const previousState = peerInfo.lastConnectionState || this.connectionStates.get(targetUserId) || 'new';
       peerInfo.lastConnectionState = state;
+      
+      // 🔥 FIX 1: Update connection states map
+      this.connectionStates.set(targetUserId, state);
 
-      this.log('info', `Connection state changed for ${targetUserId}`, {
-        previous: previousState,
-        current: state,
+      this.log('info', `Connection state changed for ${targetUserId}: ${previousState} → ${state}`);
+
+      // 🔥 FIX 1: Emit event for React to listen
+      this.emit('connection-state-changed', {
+        userId: targetUserId,
+        state,
+        prevState: previousState
       });
 
-      if (state === 'failed') {
-        this.handleConnectionFailed(targetUserId, pc);
-      } else if (state === 'connected') {
-        // Reset retry count on successful connection
-        peerInfo.connectionRetryCount = 0;
+      // Handle different states
+      switch (state) {
+        case 'connected':
+          this.log('info', `✅ Connected to ${targetUserId}`);
+          this.handleConnectionConnected(targetUserId);
+          break;
+          
+        case 'disconnected':
+          this.log('warn', `⚠️ Disconnected from ${targetUserId}`);
+          this.emit('peer-disconnected', { userId: targetUserId });
+          break;
+          
+        case 'failed':
+          this.log('error', `❌ Connection to ${targetUserId} failed`);
+          this.handleConnectionFailed(targetUserId, pc);
+          break;
+          
+        case 'closed':
+          this.log('info', `Connection to ${targetUserId} closed`);
+          this.connectionStates.delete(targetUserId);
+          this.iceConnectionStates.delete(targetUserId);
+          break;
       }
+    };
+
+    // 🔥 FIX 1: Track ICE connection state (more granular)
+    pc.oniceconnectionstatechange = () => {
+      const iceState = pc.iceConnectionState;
+      const prevIceState = this.iceConnectionStates.get(targetUserId) || 'new';
+      
+      this.log('info', `ICE connection to ${targetUserId}: ${prevIceState} → ${iceState}`);
+      this.iceConnectionStates.set(targetUserId, iceState);
+      
+      this.emit('ice-connection-state-changed', {
+        userId: targetUserId,
+        state: iceState,
+        prevState: prevIceState
+      });
     };
   }
 
@@ -808,58 +869,127 @@ export class P2PPeerConnectionManager extends BaseP2PManager {
   }
 
   /**
-   * Handle connection failed with exponential backoff retry
+   * Handle successful connection
+   * 🔥 FIX 1 + 2: UPDATED - Reset reconnect attempts
+   */
+  private handleConnectionConnected(userId: string): void {
+    const peerInfo = this.peers.get(userId);
+    if (peerInfo) {
+      // Reset retry count on successful connection
+      peerInfo.connectionRetryCount = 0;
+    }
+
+    // 🔥 FIX 2: Reset reconnect tracking
+    const attempts = this.reconnectAttempts.get(userId);
+    if (attempts && attempts > 0) {
+      this.log('info', `✅ Reconnected to ${userId} after ${attempts} attempt(s)`);
+      this.emit('reconnected', { userId, attempts });
+    }
+
+    this.reconnectAttempts.delete(userId);
+
+    // Clear any pending reconnect timeout
+    const timeout = this.reconnectTimeouts.get(userId);
+    if (timeout) {
+      clearTimeout(timeout);
+      this.reconnectTimeouts.delete(userId);
+    }
+
+    this.emit('peer-connected', { userId });
+  }
+
+  /**
+   * Handle connection failed with auto-reconnection
+   * 🔥 FIX 2: UPDATED - Auto-reconnect with exponential backoff
    */
   private async handleConnectionFailed(
     targetUserId: string,
     pc: RTCPeerConnection
   ): Promise<void> {
-    const peerInfo = this.peers.get(targetUserId);
-    if (!peerInfo) return;
+    // 🔥 FIX 1: Emit event for React to listen
+    this.emit('peer-connection-failed', { userId: targetUserId });
 
-    if (peerInfo.connectionRetryCount >= this.MAX_RETRIES) {
-      this.log('error', `Connection failed after ${this.MAX_RETRIES} retries for ${targetUserId}`);
-      this.emit('connection-failed', {
-        userId: targetUserId,
-        retryCount: peerInfo.connectionRetryCount,
-      });
+    const attempts = this.reconnectAttempts.get(targetUserId) || 0;
+
+    if (attempts >= this.MAX_RECONNECT_ATTEMPTS) {
+      this.log('error', `❌ Max reconnect attempts (${this.MAX_RECONNECT_ATTEMPTS}) reached for ${targetUserId}`);
+      this.emit('reconnect-failed', { userId: targetUserId, attempts });
+      this.reconnectAttempts.delete(targetUserId);
       return;
     }
 
-    peerInfo.connectionRetryCount++;
+    const delay = this.RECONNECT_DELAYS[attempts] || 4000;
+    this.log('warn', `🔄 Will reconnect to ${targetUserId} in ${delay}ms (attempt ${attempts + 1}/${this.MAX_RECONNECT_ATTEMPTS})`);
 
-    // Exponential backoff: 1s, 2s, 4s, max 10s
-    const delay = Math.min(
-      this.INITIAL_RETRY_DELAY * Math.pow(2, peerInfo.connectionRetryCount - 1),
-      10000
-    );
+    this.reconnectAttempts.set(targetUserId, attempts + 1);
+    this.emit('reconnecting', { userId: targetUserId, attempt: attempts + 1, maxAttempts: this.MAX_RECONNECT_ATTEMPTS });
 
-    this.log('info', `Attempting connection recovery for ${targetUserId}`, {
-      retryCount: peerInfo.connectionRetryCount,
-      delay,
+    // Clear any existing timeout
+    const existingTimeout = this.reconnectTimeouts.get(targetUserId);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+    }
+
+    // Schedule reconnection
+    const timeout = setTimeout(async () => {
+      try {
+        await this.reconnectToPeer(targetUserId);
+      } catch (error: any) {
+        this.log('error', `Failed to reconnect to ${targetUserId}:`, error);
+        // Will retry again if attempts < MAX
+        const pc = this.peers.get(targetUserId)?.connection;
+        if (pc) {
+          this.handleConnectionFailed(targetUserId, pc);
+        }
+      }
+    }, delay);
+
+    this.reconnectTimeouts.set(targetUserId, timeout);
+  }
+
+  /**
+   * Reconnect to a peer
+   * 🔥 FIX 2: NEW - Complete reconnection logic
+   */
+  private async reconnectToPeer(userId: string): Promise<void> {
+    this.log('info', `🔄 Reconnecting to ${userId}...`);
+
+    // 1. Close old connection
+    this.closePeerConnection(userId);
+
+    // 2. Create new connection
+    const localStream = this.mediaManager?.getLocalStream();
+    const pc = this.getOrCreatePeerConnection({
+      targetUserId: userId,
+      localStream: localStream || undefined,
     });
 
-    await new Promise(resolve => setTimeout(resolve, delay));
-
-    try {
-      // Try ICE restart first
-      if (pc.restartIce) {
-        pc.restartIce();
-        this.log('info', `ICE restart initiated for ${targetUserId}`);
-      } else {
-        // Fallback: recreate connection
-        this.log('warn', `ICE restart not available, recreating connection for ${targetUserId}`);
-        this.closePeerConnection(targetUserId);
-        this.emit('connection-recreate-needed', { userId: targetUserId });
-      }
-    } catch (error: any) {
-      this.log('error', `Connection recovery failed for ${targetUserId}`, {
-        error: error.message,
-      });
-      // Fallback: recreate connection
-      this.closePeerConnection(targetUserId);
-      this.emit('connection-recreate-needed', { userId: targetUserId });
+    if (!pc) {
+      throw new Error(`Failed to create peer connection for ${userId}`);
     }
+
+    // 3. Re-add local tracks
+    if (localStream) {
+      localStream.getTracks().forEach(track => {
+        this.log('info', `Adding ${track.kind} track to ${userId}`);
+        pc.addTrack(track, localStream);
+      });
+    }
+
+    // Add screen share track if sharing
+    const screenStream = this.mediaManager?.getScreenStream();
+    if (screenStream) {
+      const screenTrack = screenStream.getVideoTracks()[0];
+      if (screenTrack) {
+        this.log('info', `Adding screen track to ${userId}`);
+        pc.addTrack(screenTrack, screenStream);
+      }
+    }
+
+    // 4. Create new offer (will be triggered by negotiation needed event)
+    // The negotiation will be handled automatically by setupNegotiationNeededHandler
+
+    this.log('info', `✅ Reconnection initiated for ${userId}`);
   }
 
   /**
@@ -977,7 +1107,53 @@ export class P2PPeerConnectionManager extends BaseP2PManager {
   }
 
   /**
+   * Get connection state for a specific peer
+   * 🔥 FIX 1: NEW - Get connection state
+   */
+  public getConnectionState(userId: string): RTCPeerConnectionState {
+    return this.connectionStates.get(userId) || 'new';
+  }
+
+  /**
+   * Get all connection states
+   * 🔥 FIX 1: NEW - Get all connection states
+   */
+  public getAllConnectionStates(): Map<string, RTCPeerConnectionState> {
+    return new Map(this.connectionStates);
+  }
+
+  /**
+   * Get ICE connection state for a specific peer
+   * 🔥 FIX 1: NEW - Get ICE connection state
+   */
+  public getIceConnectionState(userId: string): RTCIceConnectionState {
+    return this.iceConnectionStates.get(userId) || 'new';
+  }
+
+  /**
+   * Check if peer is connected
+   * 🔥 FIX 1: NEW - Check connection status
+   */
+  public isPeerConnected(userId: string): boolean {
+    const state = this.connectionStates.get(userId);
+    return state === 'connected';
+  }
+
+  /**
+   * Get count of connected peers
+   * 🔥 FIX 1: NEW - Get connected peers count
+   */
+  public getConnectedPeersCount(): number {
+    let count = 0;
+    this.connectionStates.forEach(state => {
+      if (state === 'connected') count++;
+    });
+    return count;
+  }
+
+  /**
    * Cleanup
+   * 🔥 FIX 1: UPDATED - Clear connection states maps
    */
   cleanup(): void {
     // Close all peer connections
@@ -986,6 +1162,10 @@ export class P2PPeerConnectionManager extends BaseP2PManager {
     });
     this.peers.clear();
     this.negotiationDebounceTimer.clear();
+    
+    // 🔥 FIX 1: Clear connection states
+    this.connectionStates.clear();
+    this.iceConnectionStates.clear();
     
     this.cleanupTrackedListeners();
     this.isInitialized = false;

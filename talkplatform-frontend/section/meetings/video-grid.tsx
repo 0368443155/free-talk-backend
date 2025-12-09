@@ -4,12 +4,15 @@ import { useEffect, useRef, memo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Mic, MicOff, Video as VideoIcon, VideoOff, Crown, Shield, Maximize2 } from "lucide-react";
+import { Mic, MicOff, Video as VideoIcon, VideoOff, Crown, Shield, Maximize2, Loader2 } from "lucide-react";
 import { IMeetingParticipant, ParticipantRole } from "@/api/meeting.rest";
 
 interface VideoGridProps {
   localStream: MediaStream | null;
+  screenStream: MediaStream | null; // 🔥 NEW: Separate screen stream from V2
   peers: Map<string, { userId: string; connection: RTCPeerConnection; stream?: MediaStream }>;
+  connectionStates: Map<string, RTCPeerConnectionState>; // 🔥 FIX 1: Connection states
+  remoteScreenShares?: Map<string, MediaStream>; // 🔥 FIX: Remote screen shares
   participants: IMeetingParticipant[];
   currentUserId: string;
   isMuted: boolean;
@@ -50,7 +53,7 @@ const LocalVideo = memo(({ localStream, currentParticipant, isMuted, isVideoOff,
         streamId: localStream.id,
         videoTracks: localStream.getVideoTracks().length,
       });
-      
+
       videoRef.current.srcObject = localStream;
       videoRef.current
         .play()
@@ -124,7 +127,7 @@ const LocalVideo = memo(({ localStream, currentParticipant, isMuted, isVideoOff,
 
         {/* Fullscreen button */}
         <button
-          onClick={() => videoRef.current?.requestFullscreen().catch(() => {})}
+          onClick={() => videoRef.current?.requestFullscreen().catch(() => { })}
           className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white rounded p-1"
           aria-label="Fullscreen"
         >
@@ -141,9 +144,10 @@ LocalVideo.displayName = 'LocalVideo';
 interface RemoteVideoProps {
   stream?: MediaStream;
   participant: IMeetingParticipant;
+  connectionState?: RTCPeerConnectionState; // 🔥 FIX 1: Connection state
 }
 
-const RemoteVideo = memo(({ stream, participant }: RemoteVideoProps) => {
+const RemoteVideo = memo(({ stream, participant, connectionState }: RemoteVideoProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [hasVideo, setHasVideo] = useState(false);
 
@@ -161,7 +165,7 @@ const RemoteVideo = memo(({ stream, participant }: RemoteVideoProps) => {
             console.error('[RemoteVideo] Failed to play video:', err);
           });
       }
-      
+
       const videoTracks = stream.getVideoTracks();
       setHasVideo(videoTracks.length > 0 && videoTracks[0].enabled);
 
@@ -217,7 +221,7 @@ const RemoteVideo = memo(({ stream, participant }: RemoteVideoProps) => {
         {/* Fullscreen button */}
         {stream && (
           <button
-            onClick={() => videoRef.current?.requestFullscreen().catch(() => {})}
+            onClick={() => videoRef.current?.requestFullscreen().catch(() => { })}
             className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white rounded p-1"
             aria-label="Fullscreen"
           >
@@ -225,14 +229,30 @@ const RemoteVideo = memo(({ stream, participant }: RemoteVideoProps) => {
           </button>
         )}
 
-        {/* Connection status */}
-        {!stream && (
-          <div className="absolute top-2 right-2">
+        {/* 🔥 FIX 1: Connection state badge */}
+        <div className="absolute top-2 right-2">
+          {connectionState === 'connecting' && (
+            <Badge variant="secondary" className="text-xs animate-pulse">
+              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+              Connecting...
+            </Badge>
+          )}
+          {connectionState === 'failed' && (
+            <Badge variant="destructive" className="text-xs">
+              ❌ Failed
+            </Badge>
+          )}
+          {connectionState === 'disconnected' && (
+            <Badge variant="secondary" className="text-xs">
+              ⚠️ Reconnecting...
+            </Badge>
+          )}
+          {!connectionState && !stream && (
             <Badge variant="secondary" className="text-xs">
               Connecting...
             </Badge>
-          </div>
-        )}
+          )}
+        </div>
       </CardContent>
     </Card>
   );
@@ -242,7 +262,10 @@ RemoteVideo.displayName = 'RemoteVideo';
 
 export function VideoGrid({
   localStream,
+  screenStream, // 🔥 NEW: Separate screen stream from V2
   peers,
+  connectionStates, // 🔥 FIX 1: Connection states
+  remoteScreenShares, // 🔥 FIX: Remote screen shares
   participants,
   currentUserId,
   isMuted,
@@ -251,15 +274,15 @@ export function VideoGrid({
   isScreenSharing
 }: VideoGridProps) {
   const getParticipantInfo = (userId: string) => {
-    return participants.find(p => 
-      p.user.user_id === userId || 
+    return participants.find(p =>
+      p.user.user_id === userId ||
       p.user.id === userId
     );
   };
 
   const onlineParticipants = participants.filter(p => p.is_online);
-  const currentParticipant = participants.find(p => 
-    p.user.user_id === currentUserId || 
+  const currentParticipant = participants.find(p =>
+    p.user.user_id === currentUserId ||
     p.user.id === currentUserId
   );
 
@@ -277,6 +300,63 @@ export function VideoGrid({
 
   return (
     <div className="p-4 space-y-4">
+      {/* 🔥 NEW: Screen share section (full width, above everything) */}
+      {screenStream && (
+        <div className="w-full mb-4">
+          <Card className="bg-gray-800 border-gray-700">
+            <CardContent className="p-0 aspect-video relative">
+              <video
+                ref={(el) => {
+                  if (el && screenStream) {
+                    el.srcObject = screenStream;
+                    el.play().catch(console.error);
+                  }
+                }}
+                autoPlay
+                playsInline
+                className="w-full h-full object-contain rounded bg-black"
+              />
+              <div className="absolute bottom-2 left-2 bg-black/70 px-3 py-1 rounded">
+                <span className="text-white text-sm font-medium">
+                  🖥️ Your Screen
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* 🔥 FIX: REMOTE SCREENS */}
+      {remoteScreenShares && Array.from(remoteScreenShares.entries()).map(([userId, stream]) => {
+        const participant = getParticipantInfo(userId);
+        if (!participant) return null;
+        
+        return (
+          <div key={`screen-${userId}`} className="w-full mb-4">
+            <Card className="bg-gray-800 border-gray-700">
+              <CardContent className="p-0 aspect-video relative">
+                <video
+                  ref={(el) => {
+                    if (el && stream) {
+                      el.srcObject = stream;
+                      el.play().catch(console.error);
+                    }
+                  }}
+                  autoPlay
+                  playsInline
+                  className="w-full h-full object-contain bg-black rounded"
+                />
+                <div className="absolute bottom-2 left-2 bg-black/70 px-3 py-1 rounded flex items-center gap-2">
+                  <span className="text-white text-sm font-medium">
+                    🖥️ {participant.user.name}'s Screen
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      })}
+
       {/* Spotlight section */}
       {spotlightUserId && spotlightParticipant && (
         <div className="w-full">
@@ -294,6 +374,7 @@ export function VideoGrid({
               key={`spotlight-${spotlightUserId}`}
               stream={spotlightPeer?.stream}
               participant={spotlightParticipant}
+              connectionState={connectionStates.get(spotlightUserId)} // 🔥 FIX 1
             />
           )}
         </div>
@@ -321,11 +402,13 @@ export function VideoGrid({
             return null;
           }
           if (spotlightUserId && userId === spotlightUserId) return null; // skip duplicate spotlight tile
+          const connectionState = connectionStates.get(userId); // 🔥 FIX 1
           return (
             <RemoteVideo
               key={`peer-${userId}`}
               stream={peer.stream}
               participant={participant}
+              connectionState={connectionState} // 🔥 FIX 1
             />
           );
         })}
@@ -345,6 +428,7 @@ export function VideoGrid({
               <RemoteVideo
                 key={`waiting-${userId}`}
                 participant={participant}
+                connectionState={connectionStates.get(userId)} // 🔥 FIX 1
               />
             );
           })}

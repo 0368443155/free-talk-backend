@@ -17,17 +17,22 @@ import { EventEmitter } from 'events';
 export class P2PMediaManager extends BaseP2PManager {
   private state: P2PMediaState;
   private localStream: MediaStream | null = null;
+  private screenStream: MediaStream | null = null; // 🔥 NEW: Separate screen stream
   private peers: Map<string, RTCPeerConnection> = new Map();
   private currentVideoDeviceId: string | null = null;
   private currentAudioDeviceId: string | null = null;
-  
+
   // Retry configuration
   private readonly MAX_RETRY_ATTEMPTS = 3;
   private readonly RETRY_DELAY = 500; // ms
 
+  // Throttle configuration for state fetching
+  private lastFetchMicStateTime = 0;
+  private readonly FETCH_STATE_THROTTLE_MS = 1000; // 1 second
+
   constructor(config: MediaManagerConfig) {
     super(config.socket, config.meetingId, config.userId);
-    
+
     this.state = {
       mic: {
         enabled: false,
@@ -62,7 +67,7 @@ export class P2PMediaManager extends BaseP2PManager {
 
     // Setup socket event listeners
     this.setupSocketListeners();
-    
+
     this.isInitialized = true;
     this.log('info', 'P2PMediaManager initialized');
   }
@@ -115,7 +120,7 @@ export class P2PMediaManager extends BaseP2PManager {
       // Extract device IDs
       const audioTrack = stream.getAudioTracks()[0];
       const videoTrack = stream.getVideoTracks()[0];
-      
+
       if (audioTrack) {
         this.currentAudioDeviceId = audioTrack.getSettings().deviceId || null;
         this.state.mic.deviceId = this.currentAudioDeviceId;
@@ -269,10 +274,10 @@ export class P2PMediaManager extends BaseP2PManager {
       this.state.camera.isVideoOff = false;
 
       // Emit state change immediately for React (Optimistic UI)
-      this.emit('camera-state-changed', { 
-        enabled: true, 
+      this.emit('camera-state-changed', {
+        enabled: true,
         isVideoOff: false,
-        isForced: this.state.camera.isForced 
+        isForced: this.state.camera.isForced
       });
 
       // Update database (async, don't block - Optimistic UI pattern)
@@ -322,10 +327,10 @@ export class P2PMediaManager extends BaseP2PManager {
       // this.localStream.removeTrack(videoTrack);
 
       // Emit state change immediately for React (Optimistic UI)
-      this.emit('camera-state-changed', { 
-        enabled: false, 
+      this.emit('camera-state-changed', {
+        enabled: false,
         isVideoOff: true,
-        isForced: this.state.camera.isForced 
+        isForced: this.state.camera.isForced
       });
 
       // Update database (async, don't block - Optimistic UI pattern)
@@ -393,7 +398,7 @@ export class P2PMediaManager extends BaseP2PManager {
 
     // Use allSettled to not fail all if one fails
     const results = await Promise.allSettled(replacePromises);
-    
+
     const failed = results.filter(r => r.status === 'rejected').length;
     if (failed > 0) {
       this.log('warn', `${failed} peer(s) failed to receive video track update`);
@@ -427,39 +432,27 @@ export class P2PMediaManager extends BaseP2PManager {
    * - If timeout, don't reject - just log warning and fetch latest state
    * - Rejecting on timeout causes state mismatch: Client shows error but Server actually updated
    */
+  /**
+   * Sync mic state to database (optimistic UI pattern)
+   * - UI operation (mic toggle) already succeeded
+   * - Backend doesn't send response callback, only broadcasts media:user-muted
+   * - This is fire-and-forget - just emit and resolve immediately
+   * - We listen to media:user-muted broadcast to confirm state
+   */
   private async syncMicToDatabase(isMuted: boolean): Promise<void> {
-    if (!this.socket) return;
+    if (!this.socket || !this.socket.connected) {
+      this.log('debug', 'Skipping syncMicToDatabase: socket not connected');
+      return;
+    }
 
-    return new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        // ⚠️ Don't reject - just log warning and fetch latest state
-        this.log('warn', 'Timeout syncing mic state to database, fetching latest state', {
-          attemptedState: isMuted,
-        });
-        
-        // Fetch latest state from server to reconcile
-        this.fetchLatestMicState().catch(err => {
-          this.log('error', 'Failed to fetch latest mic state', { error: err.message });
-        });
-        
-        // Resolve anyway - UI operation already succeeded (optimistic)
-        resolve();
-      }, 5000);
-
-      this.emitSocketEvent('media:toggle-mic', { isMuted }, (response: { success?: boolean }) => {
-        clearTimeout(timeout);
-        if (response?.success) {
-          resolve();
-        } else {
-          // Server rejected - fetch latest state to reconcile
-          this.log('warn', 'Server rejected mic state change, fetching latest state');
-          this.fetchLatestMicState().catch(err => {
-            this.log('error', 'Failed to fetch latest mic state', { error: err.message });
-          });
-          resolve(); // Still resolve - don't block UI
-        }
-      });
-    });
+    // 🔥 FIX: Backend doesn't support response callback for media:toggle-mic
+    // Just emit and resolve immediately (fire-and-forget)
+    // Backend will broadcast media:user-muted which we already listen to
+    this.emitSocketEvent('media:toggle-mic', { isMuted });
+    
+    // Resolve immediately - optimistic UI pattern
+    // If backend rejects, it will broadcast media:user-muted with correct state
+    return Promise.resolve();
   }
 
   /**
@@ -492,13 +485,13 @@ export class P2PMediaManager extends BaseP2PManager {
         if (data.userId === this.userId) {
           clearTimeout(timeout);
           this.offSocketEvent('media:user-muted', handleStateUpdate);
-          
+
           // Update local state to match server
           if (this.state.mic.isMuted !== data.isMuted) {
             this.log('info', 'Reconciling mic state from server', { serverState: data.isMuted });
             this.state.mic.isMuted = data.isMuted;
             this.state.mic.enabled = !data.isMuted;
-            
+
             // Update MediaStream track to match
             if (this.localStream) {
               const audioTrack = this.localStream.getAudioTracks()[0];
@@ -506,22 +499,22 @@ export class P2PMediaManager extends BaseP2PManager {
                 audioTrack.enabled = !data.isMuted;
               }
             }
-            
+
             this.emit('mic-state-changed', {
               enabled: !data.isMuted,
               isMuted: data.isMuted,
               isForced: this.state.mic.isForced,
             });
           }
-          
+
           resolve();
         }
       };
 
       this.onSocketEvent('media:user-muted', handleStateUpdate);
-      
+
       // Request latest state (only if socket is connected)
-      if (this.socket.connected) {
+      if (this.socket && this.socket.connected) {
         this.emitSocketEvent('room:request-participant-state', { userId: this.userId });
       } else {
         clearTimeout(timeout);
@@ -531,46 +524,26 @@ export class P2PMediaManager extends BaseP2PManager {
   }
 
   /**
-   * Sync camera state to database
-   * 
-   * ⚠️ CRITICAL: Uses Optimistic UI pattern (same as syncMicToDatabase)
+   * Sync camera state to database (optimistic UI pattern)
    * - UI operation (camera toggle) already succeeded
-   * - This sync is fire-and-forget
-   * - If timeout, don't reject - just log warning and fetch latest state
+   * - Backend doesn't send response callback, only broadcasts media:user-video-off
+   * - This is fire-and-forget - just emit and resolve immediately
+   * - We listen to media:user-video-off broadcast to confirm state
    */
   private async syncCameraToDatabase(isVideoOff: boolean): Promise<void> {
-    if (!this.socket) return;
+    if (!this.socket || !this.socket.connected) {
+      this.log('debug', 'Skipping syncCameraToDatabase: socket not connected');
+      return;
+    }
 
-    return new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        // ⚠️ Don't reject - just log warning and fetch latest state
-        this.log('warn', 'Timeout syncing camera state to database, fetching latest state', {
-          attemptedState: isVideoOff,
-        });
-        
-        // Fetch latest state from server to reconcile
-        this.fetchLatestCameraState().catch(err => {
-          this.log('error', 'Failed to fetch latest camera state', { error: err.message });
-        });
-        
-        // Resolve anyway - UI operation already succeeded (optimistic)
-        resolve();
-      }, 5000);
-
-      this.emitSocketEvent('media:toggle-video', { isVideoOff }, (response: { success?: boolean }) => {
-        clearTimeout(timeout);
-        if (response?.success) {
-          resolve();
-        } else {
-          // Server rejected - fetch latest state to reconcile
-          this.log('warn', 'Server rejected camera state change, fetching latest state');
-          this.fetchLatestCameraState().catch(err => {
-            this.log('error', 'Failed to fetch latest camera state', { error: err.message });
-          });
-          resolve(); // Still resolve - don't block UI
-        }
-      });
-    });
+    // 🔥 FIX: Backend doesn't support response callback for media:toggle-video
+    // Just emit and resolve immediately (fire-and-forget)
+    // Backend will broadcast media:user-video-off which we already listen to
+    this.emitSocketEvent('media:toggle-video', { isVideoOff });
+    
+    // Resolve immediately - optimistic UI pattern
+    // If backend rejects, it will broadcast media:user-video-off with correct state
+    return Promise.resolve();
   }
 
   /**
@@ -594,17 +567,17 @@ export class P2PMediaManager extends BaseP2PManager {
         if (data.userId === this.userId) {
           clearTimeout(timeout);
           this.offSocketEvent('media:user-video-off', handleStateUpdate);
-          
+
           // Update local state to match server (reconciliation)
           if (this.state.camera.isVideoOff !== data.isVideoOff) {
-            this.log('info', 'Reconciling camera state from server', { 
+            this.log('info', 'Reconciling camera state from server', {
               localState: this.state.camera.isVideoOff,
-              serverState: data.isVideoOff 
+              serverState: data.isVideoOff
             });
-            
+
             this.state.camera.isVideoOff = data.isVideoOff;
             this.state.camera.enabled = !data.isVideoOff;
-            
+
             // Update MediaStream track to match server state
             if (this.localStream) {
               const videoTrack = this.localStream.getVideoTracks()[0];
@@ -612,7 +585,7 @@ export class P2PMediaManager extends BaseP2PManager {
                 videoTrack.enabled = !data.isVideoOff;
               }
             }
-            
+
             // Emit state change to trigger React re-render via useSyncExternalStore
             this.emit('camera-state-changed', {
               enabled: !data.isVideoOff,
@@ -620,13 +593,13 @@ export class P2PMediaManager extends BaseP2PManager {
               isForced: this.state.camera.isForced,
             });
           }
-          
+
           resolve();
         }
       };
 
       this.onSocketEvent('media:user-video-off', handleStateUpdate);
-      
+
       // Request latest state from server
       // Backend should respond with current participant state
       this.emitSocketEvent('room:request-participant-state', { userId: this.userId });
@@ -689,6 +662,37 @@ export class P2PMediaManager extends BaseP2PManager {
    */
   getLocalStream(): MediaStream | null {
     return this.localStream;
+  }
+
+  /**
+   * Get screen stream (separate from camera)
+   * 🔥 NEW: For displaying screen share separately
+   */
+  getScreenStream(): MediaStream | null {
+    return this.screenStream;
+  }
+
+  /**
+   * Set screen stream (separate from camera)
+   * 🔥 NEW: Called when starting/stopping screen share
+   */
+  setScreenStream(stream: MediaStream | null): void {
+    this.screenStream = stream;
+    
+    // Update state
+    if (stream) {
+      const screenTrack = stream.getVideoTracks()[0] || null;
+      this.state.screen.isSharing = true;
+      this.state.screen.track = screenTrack;
+      this.state.screen.stream = stream;
+    } else {
+      this.state.screen.isSharing = false;
+      this.state.screen.track = null;
+      this.state.screen.stream = null;
+    }
+    
+    this.emit('screen-stream-changed', stream);
+    this.emit('screen-state-changed');
   }
 
   /**
@@ -758,6 +762,46 @@ export class P2PMediaManager extends BaseP2PManager {
   }
 
   /**
+   * Sync all media states to server
+   * 🔥 FIX 3: NEW - Call this after reconnection
+   */
+  public async syncAllStatesToServer(): Promise<void> {
+    if (!this.socket || !this.socket.connected) {
+      this.log('warn', 'Cannot sync states: socket not connected');
+      return;
+    }
+
+    const state = this.getState();
+
+    this.log('info', 'Syncing all media states to server', {
+      isMuted: state.mic.isMuted,
+      isVideoOff: state.camera.isVideoOff,
+      isScreenSharing: state.screen.isSharing
+    });
+
+    try {
+      // Sync mic state
+      await this.syncMicToDatabase(state.mic.isMuted);
+
+      // Sync camera state
+      await this.syncCameraToDatabase(state.camera.isVideoOff);
+
+      // Sync screen share state
+      if (this.socket) {
+        this.emitSocketEvent('media:screen-share', {
+          roomId: this.meetingId,
+          userId: this.userId,
+          isSharing: state.screen.isSharing
+        });
+      }
+
+      this.log('info', '✅ All media states synced to server');
+    } catch (error) {
+      this.log('error', 'Failed to sync media states:', error);
+    }
+  }
+
+  /**
    * Cleanup
    * CRITICAL: Must cleanup all tracked listeners to prevent duplicate listeners
    */
@@ -766,6 +810,12 @@ export class P2PMediaManager extends BaseP2PManager {
     if (this.localStream) {
       this.localStream.getTracks().forEach(track => track.stop());
       this.localStream = null;
+    }
+
+    // 🔥 NEW: Stop screen stream tracks
+    if (this.screenStream) {
+      this.screenStream.getTracks().forEach(track => track.stop());
+      this.screenStream = null;
     }
 
     // Cleanup state
