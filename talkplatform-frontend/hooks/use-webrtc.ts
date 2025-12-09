@@ -84,13 +84,30 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
       localStreamRef.current = stream;
       setLocalStream(stream);
 
+      // 🔥 FIX: Sync initial hardware state with database
+      // When user starts stream, emit current hardware state to ensure database matches reality
+      const audioTrack = stream.getAudioTracks()[0];
+      const videoTrack = stream.getVideoTracks()[0];
+      const hardwareIsMuted = audioTrack ? !audioTrack.enabled : false;
+      const hardwareIsVideoOff = videoTrack ? !videoTrack.enabled : false;
+      
+      // Update local state to match hardware
+      setIsMuted(hardwareIsMuted);
+      setIsVideoOff(hardwareIsVideoOff);
+
       // 🔥 FIX: Notify other peers AND update existing peer connections
       if (socket && isOnline) {
         // Support both old and new events based on feature flag
         if (useNewGateway) {
           socket.emit('media:ready', { roomId: meetingId, userId });
+          // Sync initial state with database
+          socket.emit('media:toggle-mic', { isMuted: hardwareIsMuted });
+          socket.emit('media:toggle-video', { isVideoOff: hardwareIsVideoOff });
         } else {
           socket.emit('webrtc:ready', { userId });
+          // Sync initial state with database (old events)
+          socket.emit('toggle-audio', { enabled: !hardwareIsMuted });
+          socket.emit('toggle-video', { enabled: !hardwareIsVideoOff });
         }
 
         // 🔥 NEW: Add tracks to existing peer connections in consistent order

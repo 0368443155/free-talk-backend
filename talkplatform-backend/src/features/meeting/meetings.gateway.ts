@@ -251,6 +251,8 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
       console.log(`📢 Broadcasting user-joined to room ${meetingId}:`, {
         userId: participant.user.id,
         userName: participant.user.username, // 🔥 FIX: Use username instead of name
+        isMuted: participant.is_muted,
+        isVideoOff: participant.is_video_off,
       });
       client.to(meetingId).emit('meeting:user-joined', {
         userId: participant.user.id,
@@ -258,6 +260,17 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
         avatarUrl: participant.user.avatar_url,
         role: participant.role,
         timestamp: new Date(),
+      });
+
+      // 🔥 FIX: Broadcast initial media state to all participants
+      // This ensures everyone sees the correct state when a user joins
+      this.server.to(meetingId).emit('media:user-muted', {
+        userId: participant.user.id,
+        isMuted: participant.is_muted,
+      });
+      this.server.to(meetingId).emit('media:user-video-off', {
+        userId: participant.user.id,
+        isVideoOff: participant.is_video_off,
       });
 
       // Send current participants to new user
