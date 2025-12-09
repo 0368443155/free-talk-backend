@@ -1187,7 +1187,7 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
         )}
 
         {/* Main Content - Between header and controls */}
-        <div className="flex-1 flex overflow-hidden min-h-0">
+        <div className="flex-1 flex overflow-hidden min-h-0 relative">
           {/* Video Area - clean without overlay buttons */}
           <div className="flex-1 bg-gray-900 flex flex-col min-w-0">
             <div className="flex-1 overflow-auto p-4 min-h-0">
@@ -1238,18 +1238,18 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
             </div>
           </div>
 
-          {/* Sidebar Toggle Button - Always visible, positioned outside sidebar */}
+          {/* Sidebar Toggle Button - Always visible, positioned relative to sidebar */}
           <button
             onClick={() => setSidebarVisible(!sidebarVisible)}
-            className={`fixed right-0 top-1/2 transform -translate-y-1/2 z-50 bg-gray-800 hover:bg-gray-700 text-white p-2 rounded-l-lg border-l border-t border-b border-gray-700 transition-all ${
-              sidebarVisible ? 'translate-x-80' : 'translate-x-0'
+            className={`absolute top-1/2 transform -translate-y-1/2 z-50 bg-gray-800 hover:bg-gray-700 text-white p-2 rounded-l-lg border-l border-t border-b border-gray-700 transition-all duration-300 ${
+              sidebarVisible ? 'right-80' : 'right-0'
             }`}
             aria-label={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
           >
             {sidebarVisible ? (
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowLeft className="w-4 h-4 rotate-180" /> // Sidebar mở -> mũi tên phải (để đóng)
             ) : (
-              <ArrowLeft className="w-4 h-4 rotate-180" />
+              <ArrowLeft className="w-4 h-4" /> // Sidebar đóng -> mũi tên trái (để mở)
             )}
           </button>
 

@@ -58,6 +58,7 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
   const peersRef = useRef<Map<string, PeerConnection>>(new Map());
   const pendingCandidates = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const screenStreamRef = useRef<MediaStream | null>(null);
+  const processingOffers = useRef<Set<string>>(new Set()); // 🔥 NEW: Track offers being processed
   const lastCameraTrackRef = useRef<MediaStreamTrack | null>(null);
   const isReplacingTracksRef = useRef(false);
   const remoteScreenSharesRef = useRef<Map<string, MediaStream>>(new Map()); // 🔥 NEW: Ref for remote screen shares
@@ -910,6 +911,14 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
     const handleOffer = async (data: { fromUserId: string; offer: RTCSessionDescriptionInit }) => {
       console.log(`📨 Received offer from ${data.fromUserId}`);
 
+      // 🔥 FIX: Prevent processing the same offer multiple times
+      if (processingOffers.current.has(data.fromUserId)) {
+        console.warn(`⚠️ Already processing offer from ${data.fromUserId}, skipping...`);
+        return;
+      }
+
+      processingOffers.current.add(data.fromUserId);
+
       try {
         let pc = peersRef.current.get(data.fromUserId)?.connection;
         
@@ -921,6 +930,31 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
           };
           peersRef.current.set(data.fromUserId, peerConnection);
           setPeers(new Map(peersRef.current));
+        }
+
+        // 🔥 FIX: Check current state before setting remote description
+        const currentState = pc.signalingState;
+        console.log(`🔍 Current signaling state for ${data.fromUserId}:`, currentState);
+        
+        // If already stable or have-local-offer, we might need to handle this differently
+        if (currentState === 'stable') {
+          // Normal case - can proceed
+        } else if (currentState === 'have-local-offer') {
+          // We already sent an offer, this is a race condition
+          console.warn(`⚠️ Race condition: already have local offer from ${data.fromUserId}, closing and recreating connection`);
+          pc.close();
+          pc = createPeerConnection(data.fromUserId);
+          const peerConnection: PeerConnection = {
+            userId: data.fromUserId,
+            connection: pc,
+          };
+          peersRef.current.set(data.fromUserId, peerConnection);
+          setPeers(new Map(peersRef.current));
+        } else if (currentState === 'have-remote-offer' || currentState === 'have-local-pranswer') {
+          // Already processing an offer, skip this one
+          console.warn(`⚠️ Already processing offer from ${data.fromUserId} in state ${currentState}, skipping...`);
+          processingOffers.current.delete(data.fromUserId);
+          return;
         }
 
         await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
@@ -936,6 +970,17 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
           }
         }
         pendingCandidates.current.delete(data.fromUserId);
+
+        // 🔥 FIX: Check connection state before creating answer
+        const connectionState = pc.signalingState;
+        console.log(`🔍 PeerConnection signaling state for ${data.fromUserId} after setRemoteDescription:`, connectionState);
+        
+        // Only create answer if in correct state
+        if (connectionState !== 'have-remote-offer' && connectionState !== 'have-local-pranswer') {
+          console.warn(`⚠️ Cannot create answer in state: ${connectionState}. Skipping...`);
+          processingOffers.current.delete(data.fromUserId);
+          return;
+        }
 
         const answer = await pc.createAnswer({
           offerToReceiveAudio: true,
@@ -960,6 +1005,9 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
         console.log(`📤 Sent answer to ${data.fromUserId}`);
       } catch (error) {
         console.error(`❌ Error handling offer from ${data.fromUserId}:`, error);
+      } finally {
+        // Always remove from processing set
+        processingOffers.current.delete(data.fromUserId);
       }
     };
 
