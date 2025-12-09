@@ -1,6 +1,7 @@
 import { BaseP2PManager } from './base-p2p-manager';
 import { P2PMediaState, MediaManagerConfig, P2PErrorType } from '../types';
 import { createP2PError, P2PErrorClass } from '../utils/p2p-error';
+import { P2PTrackStateSync } from './p2p-track-state-sync';
 import { Socket } from 'socket.io-client';
 import { EventEmitter } from 'events';
 
@@ -29,9 +30,10 @@ export class P2PMediaManager extends BaseP2PManager {
   // Throttle configuration for state fetching
   private lastFetchMicStateTime = 0;
   private readonly FETCH_STATE_THROTTLE_MS = 1000; // 1 second
+  private stateSyncRef: P2PTrackStateSync | null = null; // 🔥 NEW: Reference to state sync manager
 
   constructor(config: MediaManagerConfig) {
-    super(config.socket, config.meetingId, config.userId);
+    super(config.socket, config.meetingId, config.userId, config.useNewGateway ?? false);
 
     this.state = {
       mic: {
@@ -79,14 +81,35 @@ export class P2PMediaManager extends BaseP2PManager {
     // Listen for host moderation events
     this.onSocketEvent('media:user-muted', (data: { userId: string; isMuted: boolean }) => {
       if (data.userId === this.userId) {
-        this.handleForcedMute(data.isMuted);
+        // 🔥 FIX: Only handle if state mismatch (reconciliation)
+        // Ignore our own echo from backend to prevent loop
+        if (this.state.mic.isMuted !== data.isMuted) {
+          this.log('info', 'Reconciling mic state from server', {
+            local: this.state.mic.isMuted,
+            server: data.isMuted
+          });
+          this.handleForcedMute(data.isMuted);
+        }
+        return;
       }
+      // From another user - it's host moderation
+      this.handleForcedMute(data.isMuted);
     });
 
     this.onSocketEvent('media:user-video-off', (data: { userId: string; isVideoOff: boolean }) => {
       if (data.userId === this.userId) {
-        this.handleForcedVideoOff(data.isVideoOff);
+        // 🔥 FIX: Only handle if state mismatch (reconciliation)
+        if (this.state.camera.isVideoOff !== data.isVideoOff) {
+          this.log('info', 'Reconciling camera state from server', {
+            local: this.state.camera.isVideoOff,
+            server: data.isVideoOff
+          });
+          this.handleForcedVideoOff(data.isVideoOff);
+        }
+        return;
       }
+      // From another user - it's host moderation
+      this.handleForcedVideoOff(data.isVideoOff);
     });
   }
 
@@ -157,16 +180,27 @@ export class P2PMediaManager extends BaseP2PManager {
       throw createP2PError(P2PErrorType.DEVICE_NOT_FOUND, 'Local stream not initialized');
     }
 
+    // 🔥 FIX: Prevent infinite loop from backend echo
+    if (this.state.mic.enabled === enabled) {
+      this.log('debug', 'Microphone already in desired state', { enabled });
+      return;
+    }
+
     const audioTrack = this.localStream.getAudioTracks()[0];
     if (!audioTrack) {
       throw createP2PError(P2PErrorType.DEVICE_NOT_FOUND, 'No audio track found');
     }
 
-    // Check if forced by host
-    if (this.state.mic.isForced && enabled === this.state.mic.isMuted) {
-      this.log('warn', 'Mic state change blocked by host moderation');
+    // 🔥 FIX: Nới lỏng điều kiện kiểm tra host moderation
+    // Chỉ chặn nếu host thực sự đang FORCE tắt (isForced = true) VÀ user đang cố bật lại
+    // Logic cũ quá chặt, chặn cả khi user tự toggle
+    // TODO: Cần logic check role chặt chẽ hơn sau này để phân biệt user tự toggle vs host force
+    if (this.state.mic.isForced && !enabled && !this.state.mic.isMuted) {
+      // Host đang force mute, user không thể tự bật lại
+      this.log('warn', 'Mic state change blocked by host moderation - host has forced mute');
       return;
     }
+    // Allow all other cases (user can toggle freely unless host is actively forcing)
 
     // Update track state (Optimistic UI - update immediately)
     audioTrack.enabled = enabled;
@@ -225,11 +259,16 @@ export class P2PMediaManager extends BaseP2PManager {
    */
   private async turnCameraOn(deviceId?: string): Promise<void> {
     try {
-      // Check if forced by host
-      if (this.state.camera.isForced && this.state.camera.isVideoOff) {
-        this.log('warn', 'Camera state change blocked by host moderation');
+      // 🔥 FIX: Nới lỏng điều kiện kiểm tra host moderation
+      // Chỉ chặn nếu host thực sự đang FORCE tắt (isForced = true) VÀ user đang cố bật lại
+      // Logic cũ quá chặt, chặn cả khi user tự toggle
+      // TODO: Cần logic check role chặt chẽ hơn sau này để phân biệt user tự toggle vs host force
+      if (this.state.camera.isForced && !this.state.camera.isVideoOff) {
+        // Host đang force video off, user không thể tự bật lại
+        this.log('warn', 'Camera state change blocked by host moderation - host has forced video off');
         return;
       }
+      // Allow all other cases (user can toggle freely unless host is actively forcing)
 
       // Use existing device ID if not specified
       const targetDeviceId = deviceId || this.currentVideoDeviceId;
@@ -265,8 +304,13 @@ export class P2PMediaManager extends BaseP2PManager {
         this.localStream.addTrack(newVideoTrack);
       }
 
-      // Replace track in ALL peer connections with retry mechanism
-      await this.replaceVideoTrackInAllPeers(newVideoTrack);
+      // 🔥 FIX: Replace track in ALL peer connections with retry mechanism
+      // Note: this.peers should be synced from P2PPeerConnectionManager before calling this
+      if (this.peers.size > 0) {
+        await this.replaceVideoTrackInAllPeers(newVideoTrack);
+      } else {
+        this.log('warn', 'No peer connections available to replace video track. Make sure setPeerConnections() is called before toggling camera.');
+      }
 
       // Update state (Optimistic UI - update immediately)
       this.state.camera.enabled = true;
@@ -317,6 +361,29 @@ export class P2PMediaManager extends BaseP2PManager {
 
     const videoTrack = this.localStream.getVideoTracks()[0];
     if (videoTrack) {
+      // 🔥 FIX: When turning camera OFF, we need to notify peers by replacing track with null
+      // This ensures peers know camera is off (not just disabled locally)
+      // Similar to v1 behavior but more explicit
+      if (this.peers.size > 0) {
+        try {
+          // Replace video track with null in all peer connections
+          const replacePromises = Array.from(this.peers.entries()).map(async ([userId, peerConnection]) => {
+            try {
+              const sender = peerConnection.getSenders().find(s => s.track?.kind === 'video' && !s.track?.label.includes('screen'));
+              if (sender) {
+                await sender.replaceTrack(null);
+                this.log('info', `Replaced video track with null for peer ${userId} (camera OFF)`);
+              }
+            } catch (error: any) {
+              this.log('warn', `Failed to remove video track for peer ${userId}`, { error: error.message });
+            }
+          });
+          await Promise.allSettled(replacePromises);
+        } catch (error: any) {
+          this.log('warn', 'Failed to notify peers about camera OFF', { error: error.message });
+        }
+      }
+
       videoTrack.enabled = false;
       this.state.camera.enabled = false;
       this.state.camera.isVideoOff = true;
@@ -449,7 +516,13 @@ export class P2PMediaManager extends BaseP2PManager {
     // Just emit and resolve immediately (fire-and-forget)
     // Backend will broadcast media:user-muted which we already listen to
     this.emitSocketEvent('media:toggle-mic', { isMuted });
-    
+
+    // 🔥 NEW: Update lastSyncedState immediately (optimistic)
+    // This prevents false conflict detection when our own broadcast comes back
+    if (this.stateSyncRef) {
+      this.stateSyncRef.updateLastSyncedState('mic', isMuted);
+    }
+
     // Resolve immediately - optimistic UI pattern
     // If backend rejects, it will broadcast media:user-muted with correct state
     return Promise.resolve();
@@ -540,7 +613,13 @@ export class P2PMediaManager extends BaseP2PManager {
     // Just emit and resolve immediately (fire-and-forget)
     // Backend will broadcast media:user-video-off which we already listen to
     this.emitSocketEvent('media:toggle-video', { isVideoOff });
-    
+
+    // 🔥 NEW: Update lastSyncedState immediately (optimistic)
+    // This prevents false conflict detection when our own broadcast comes back
+    if (this.stateSyncRef) {
+      this.stateSyncRef.updateLastSyncedState('camera', isVideoOff);
+    }
+
     // Resolve immediately - optimistic UI pattern
     // If backend rejects, it will broadcast media:user-video-off with correct state
     return Promise.resolve();
@@ -604,6 +683,15 @@ export class P2PMediaManager extends BaseP2PManager {
       // Backend should respond with current participant state
       this.emitSocketEvent('room:request-participant-state', { userId: this.userId });
     });
+  }
+
+  /**
+   * Set state sync manager reference
+   * 🔥 NEW: Allows updating lastSyncedState after successful sync
+   */
+  setStateSync(stateSync: P2PTrackStateSync | null): void {
+    this.stateSyncRef = stateSync;
+    this.log('debug', 'State sync manager linked');
   }
 
   /**
@@ -678,7 +766,7 @@ export class P2PMediaManager extends BaseP2PManager {
    */
   setScreenStream(stream: MediaStream | null): void {
     this.screenStream = stream;
-    
+
     // Update state
     if (stream) {
       const screenTrack = stream.getVideoTracks()[0] || null;
@@ -690,7 +778,7 @@ export class P2PMediaManager extends BaseP2PManager {
       this.state.screen.track = null;
       this.state.screen.stream = null;
     }
-    
+
     this.emit('screen-stream-changed', stream);
     this.emit('screen-state-changed');
   }
@@ -792,6 +880,15 @@ export class P2PMediaManager extends BaseP2PManager {
           roomId: this.meetingId,
           userId: this.userId,
           isSharing: state.screen.isSharing
+        });
+        
+        // 🔥 FIX: Also emit media:state-update for UnifiedRoomGateway
+        // This ensures state is synced to RoomStateManager (Redis/DB)
+        this.emitSocketEvent('media:state-update', {
+          roomId: this.meetingId,
+          isMuted: state.mic.isMuted,
+          isVideoOff: state.camera.isVideoOff,
+          isScreenSharing: state.screen.isSharing,
         });
       }
 

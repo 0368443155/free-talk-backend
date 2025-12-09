@@ -56,6 +56,7 @@ export interface MediaManagerConfig {
   meetingId: string;
   userId: string;
   iceServers?: ICEServerConfig;
+  useNewGateway?: boolean; // 🔥 NEW: Support both old and new gateway events
 }
 
 /**

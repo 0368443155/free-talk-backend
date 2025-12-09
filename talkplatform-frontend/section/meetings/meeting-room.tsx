@@ -21,7 +21,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useMeetingSocket } from "@/hooks/use-meeting-socket";
-import { useWebRTCV2 as useWebRTC } from "@/hooks/use-webrtc-v2";
+import { useWebRTC } from "@/hooks/use-webrtc";
 import { useWebRTCStatsWorker } from "@/hooks/useWebRTCStatsWorker";
 import { useThrottledMetrics } from "@/hooks/useThrottledMetrics";
 import { VideoGrid } from "./video-grid";
@@ -332,15 +332,10 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     setYoutubeCurrentTime(meeting.youtube_current_time ?? 0);
   }, [isHost, meeting.youtube_video_id, meeting.youtube_is_playing, meeting.youtube_current_time]);
 
-  // WebRTC
+  // WebRTC (V1 - LiveKit compatible)
   const {
     localStream,
-    screenStream, // 🔥 NEW: Separate screen stream from V2
     peers,
-    connectionStates, // 🔥 FIX 1: Connection states
-    connectedPeersCount, // 🔥 FIX 1: Connected peers count
-    reconnectingPeers, // 🔥 FIX 2: Reconnecting peers
-    remoteScreenShares, // 🔥 FIX: Remote screen shares
     isMuted,
     isVideoOff,
     isScreenSharing,
@@ -357,8 +352,15 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     isOnline,
   });
 
-  // 🔥 FIX 4: Show reconnecting state (after reconnectingPeers is declared)
-  const showReconnecting = reconnectingPeers.size > 0 || !isConnected;
+  // V1 hook provides basic functionality - no need for P2P-specific features
+  // Calculate simple connection info from peers
+  const connectedPeersCount = useMemo(() => {
+    let count = 0;
+    peers.forEach((peer) => {
+      if (peer.connection.connectionState === 'connected') count++;
+    });
+    return count;
+  }, [peers]);
 
   // Helper function to determine connection quality
   const getConnectionQuality = useCallback((
@@ -561,7 +563,50 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
       }));
     };
 
+    // 🔥 CRITICAL FIX: Handle media state updates from backend
+    // This ensures UI stays in sync when participants toggle mic/camera/screen
+    // IMPORTANT: This ONLY updates state in participants list, does NOT call toggle functions
+    const handleParticipantStateUpdate = (data: {
+      userId: string;
+      isMuted?: boolean;
+      isVideoOff?: boolean;
+      isScreenSharing?: boolean;
+      isHandRaised?: boolean;
+    }) => {
+      // 🔥 FIX: Only update state, NEVER call toggle functions here
+      // This is for OTHER participants' state changes, not local user
+      console.log('📡 [MeetingRoom] Received participant state update:', {
+        userId: data.userId,
+        currentUserId: user.id,
+        isMuted: data.isMuted,
+        isVideoOff: data.isVideoOff,
+        isScreenSharing: data.isScreenSharing,
+      });
+
+      setParticipants(prev => prev.map(p => {
+        const pid = p.user.id || (p.user as any).user_id;
+        if (pid === data.userId) {
+          const updated = { ...p };
+          if (data.isMuted !== undefined) updated.is_muted = data.isMuted;
+          if (data.isVideoOff !== undefined) updated.is_video_off = data.isVideoOff;
+          if (data.isScreenSharing !== undefined) updated.is_screen_sharing = data.isScreenSharing;
+          if (data.isHandRaised !== undefined) updated.is_hand_raised = data.isHandRaised;
+          console.log('✅ [MeetingRoom] Updated participant state:', {
+            userId: pid,
+            newState: {
+              is_muted: updated.is_muted,
+              is_video_off: updated.is_video_off,
+              is_screen_sharing: updated.is_screen_sharing,
+            },
+          });
+          return updated as IMeetingParticipant;
+        }
+        return p;
+      }));
+    };
+
     socket.on('meeting:user-joined', handleUserJoined);
+    socket.on('media:participant-state-updated', handleParticipantStateUpdate);
     socket.on('meeting:user-left', handleUserLeft);
 
     return () => {
@@ -577,22 +622,38 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     const handleForceMute = (data: { userId: string; isMuted: boolean }) => {
       if (data.userId === user.id) {
         // Host changed my mute state - enforce it
-        if (data.isMuted && !isMuted) {
-          // Host muted me - force mute if not already muted
+        const shouldBeMuted = data.isMuted;
+        const currentlyMuted = isMuted;
+        
+        // Only toggle if state doesn't match
+        if (shouldBeMuted !== currentlyMuted) {
+          // Toggle hardware first
           toggleMute();
+          
+          // Emit state update to backend to sync
+          if (socket?.connected) {
+            socket.emit('media:state-update', {
+              roomId: meeting.id,
+              isMuted: shouldBeMuted,
+            });
+          }
+          
           toast({
-            title: "You have been muted by the host",
-            description: "Your microphone has been turned off.",
+            title: shouldBeMuted ? "You have been muted by the host" : "You have been unmuted by the host",
+            description: shouldBeMuted 
+              ? "Your microphone has been turned off." 
+              : "Your microphone has been turned on.",
             variant: "default"
           });
-        } else if (!data.isMuted && isMuted) {
-          // Host unmuted me - force unmute if currently muted
-          toggleMute();
-          toast({
-            title: "You have been unmuted by the host",
-            description: "Your microphone has been turned on.",
-            variant: "default"
-          });
+          
+          // Also update local state immediately
+          setParticipants(prev => prev.map(p => {
+            const pid = p.user.id || (p.user as any).user_id;
+            if (pid === user.id) {
+              return { ...p, is_muted: shouldBeMuted } as IMeetingParticipant;
+            }
+            return p;
+          }));
         }
       }
     };
@@ -600,22 +661,38 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     const handleForceVideoOff = (data: { userId: string; isVideoOff: boolean }) => {
       if (data.userId === user.id) {
         // Host changed my video state - enforce it
-        if (data.isVideoOff && !isVideoOff) {
-          // Host turned off my camera - force video off if not already off
+        const shouldBeVideoOff = data.isVideoOff;
+        const currentlyVideoOff = isVideoOff;
+        
+        // Only toggle if state doesn't match
+        if (shouldBeVideoOff !== currentlyVideoOff) {
+          // Toggle hardware first
           toggleVideo();
+          
+          // Emit state update to backend to sync
+          if (socket?.connected) {
+            socket.emit('media:state-update', {
+              roomId: meeting.id,
+              isVideoOff: shouldBeVideoOff,
+            });
+          }
+          
           toast({
-            title: "Your camera has been turned off",
-            description: "The host has disabled your camera.",
+            title: shouldBeVideoOff ? "Your camera has been turned off" : "Your camera has been turned on",
+            description: shouldBeVideoOff 
+              ? "The host has disabled your camera." 
+              : "The host has enabled your camera.",
             variant: "default"
           });
-        } else if (!data.isVideoOff && isVideoOff) {
-          // Host turned on my camera - force video on if currently off
-          toggleVideo();
-          toast({
-            title: "Your camera has been turned on",
-            description: "The host has enabled your camera.",
-            variant: "default"
-          });
+          
+          // Also update local state immediately
+          setParticipants(prev => prev.map(p => {
+            const pid = p.user.id || (p.user as any).user_id;
+            if (pid === user.id) {
+              return { ...p, is_video_off: shouldBeVideoOff } as IMeetingParticipant;
+            }
+            return p;
+          }));
         }
       }
     };
@@ -1053,17 +1130,12 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
             setShowFunctions(false);
           }}
         />
-        {/* 🔥 FIX 4: Reconnecting banner */}
-        {showReconnecting && (
+        {/* Reconnecting banner */}
+        {!isConnected && (
           <div className="bg-yellow-600 text-white px-4 py-2 text-sm flex items-center justify-between">
             <div className="flex items-center gap-2">
               <RefreshCw className="w-4 h-4 animate-spin" />
-              <span>
-                {!isConnected
-                  ? '⚠️ Reconnecting to server...'
-                  : `⚠️ Reconnecting to ${reconnectingPeers.size} peer(s)...`
-                }
-              </span>
+              <span>⚠️ Reconnecting to server...</span>
             </div>
           </div>
         )}
@@ -1091,10 +1163,10 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
                     <div className={showVideoGrid ? "h-full" : "hidden"}>
                       <VideoGrid
                         localStream={localStream}
-                        screenStream={screenStream}
+                        screenStream={null}
                         peers={peers}
-                        connectionStates={connectionStates} // 🔥 FIX 1: Connection states
-                        remoteScreenShares={remoteScreenShares} // 🔥 FIX: Remote screen shares
+                        connectionStates={new Map()}
+                        remoteScreenShares={new Map()}
                         participants={participants}
                         currentUserId={user.id}
                         isMuted={isMuted}
@@ -1157,6 +1229,15 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
                   socket={socket}
                   onKickParticipant={handleKickParticipant}
                   onBlockParticipant={handleBlockParticipant}
+                  onMuteParticipant={(participantUserId) => {
+                    // Handled via socket events in MeetingParticipantsPanel
+                  }}
+                  onVideoOffParticipant={(participantUserId) => {
+                    // Handled via socket events in MeetingParticipantsPanel
+                  }}
+                  onStopScreenShare={(participantUserId) => {
+                    // Handled via socket events in MeetingParticipantsPanel
+                  }}
                 />
               )}
 

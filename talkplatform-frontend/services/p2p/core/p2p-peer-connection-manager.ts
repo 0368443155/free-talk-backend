@@ -59,27 +59,27 @@ const SIGNALING_STATE_TIMEOUT_MS = 10000;
 export class P2PPeerConnectionManager extends BaseP2PManager {
   private peers: Map<string, PeerConnectionInfo> = new Map();
   private negotiationDebounceTimer: Map<string, NodeJS.Timeout> = new Map();
-  
+
   // 🔥 FIX 1: Track connection states
   private connectionStates = new Map<string, RTCPeerConnectionState>();
   private iceConnectionStates = new Map<string, RTCIceConnectionState>();
-  
+
   // 🔥 FIX 2: Reconnection tracking
   private reconnectAttempts = new Map<string, number>();
   private reconnectTimeouts = new Map<string, NodeJS.Timeout>();
   private readonly MAX_RECONNECT_ATTEMPTS = 3;
   private readonly RECONNECT_DELAYS = [1000, 2000, 4000]; // Exponential backoff
-  
+
   private readonly MAX_ICE_CANDIDATES = MAX_ICE_CANDIDATES_QUEUE;
   private readonly MAX_RETRIES = MAX_CONNECTION_RETRY_ATTEMPTS;
   private readonly INITIAL_RETRY_DELAY = INITIAL_RETRY_DELAY_MS;
   private readonly NEGOTIATION_DEBOUNCE = NEGOTIATION_DEBOUNCE_MS;
-  
+
   // 🔥 FIX 2: Reference to media manager for reconnection
   private mediaManager?: { getLocalStream: () => MediaStream | null; getScreenStream: () => MediaStream | null };
 
   constructor(config: MediaManagerConfig) {
-    super(config.socket, config.meetingId, config.userId);
+    super(config.socket, config.meetingId, config.userId, config.useNewGateway ?? false);
   }
 
   /**
@@ -175,12 +175,12 @@ export class P2PPeerConnectionManager extends BaseP2PManager {
    */
   getOrCreatePeerConnection(config: PeerConnectionConfig): RTCPeerConnection {
     const { targetUserId, isPolite, iceServers, localStream } = config;
-    
+
     // Determine isPolite if not provided
     const determinedIsPolite = isPolite ?? P2PPeerConnectionManager.determineIsPolite(this.userId, targetUserId);
-    
+
     let peerInfo = this.peers.get(targetUserId);
-    
+
     // Check if connection is still valid (not closed or failed)
     if (peerInfo) {
       const state = peerInfo.connection.connectionState;
@@ -333,7 +333,7 @@ export class P2PPeerConnectionManager extends BaseP2PManager {
       const state = pc.connectionState;
       const previousState = peerInfo.lastConnectionState || this.connectionStates.get(targetUserId) || 'new';
       peerInfo.lastConnectionState = state;
-      
+
       // 🔥 FIX 1: Update connection states map
       this.connectionStates.set(targetUserId, state);
 
@@ -352,17 +352,17 @@ export class P2PPeerConnectionManager extends BaseP2PManager {
           this.log('info', `✅ Connected to ${targetUserId}`);
           this.handleConnectionConnected(targetUserId);
           break;
-          
+
         case 'disconnected':
           this.log('warn', `⚠️ Disconnected from ${targetUserId}`);
           this.emit('peer-disconnected', { userId: targetUserId });
           break;
-          
+
         case 'failed':
           this.log('error', `❌ Connection to ${targetUserId} failed`);
           this.handleConnectionFailed(targetUserId, pc);
           break;
-          
+
         case 'closed':
           this.log('info', `Connection to ${targetUserId} closed`);
           this.connectionStates.delete(targetUserId);
@@ -375,10 +375,10 @@ export class P2PPeerConnectionManager extends BaseP2PManager {
     pc.oniceconnectionstatechange = () => {
       const iceState = pc.iceConnectionState;
       const prevIceState = this.iceConnectionStates.get(targetUserId) || 'new';
-      
+
       this.log('info', `ICE connection to ${targetUserId}: ${prevIceState} → ${iceState}`);
       this.iceConnectionStates.set(targetUserId, iceState);
-      
+
       this.emit('ice-connection-state-changed', {
         userId: targetUserId,
         state: iceState,
@@ -534,10 +534,10 @@ export class P2PPeerConnectionManager extends BaseP2PManager {
           });
         } catch (error: any) {
           task.reject(error);
-          
+
           // ⚠️ CRITICAL: Check if error is connection-related
           const currentConnectionState = peerInfo.connection.connectionState;
-          const isConnectionError = 
+          const isConnectionError =
             error.message?.includes('Connection closed') ||
             error.message?.includes('closed') ||
             error.message?.includes('failed') ||
@@ -849,7 +849,7 @@ export class P2PPeerConnectionManager extends BaseP2PManager {
     }
 
     const candidates = peerInfo.pendingCandidates.splice(0);
-    
+
     for (const candidate of candidates) {
       try {
         await pc.addIceCandidate(candidate);
@@ -1067,8 +1067,36 @@ export class P2PPeerConnectionManager extends BaseP2PManager {
     const peerInfo = this.peers.get(targetUserId);
     if (!peerInfo) return;
 
-    peerInfo.connection.addTrack(track, stream);
-    this.log('info', `Added ${track.kind} track to peer ${targetUserId}`);
+    // 🔥 FIX: Check if sender already exists for this track
+    const senders = peerInfo.connection.getSenders();
+    const existingSender = senders.find(sender => sender.track === track);
+
+    if (existingSender) {
+      this.log('debug', `Track already added to peer ${targetUserId}, skipping`, {
+        kind: track.kind,
+        trackId: track.id,
+      });
+      return;
+    }
+
+    try {
+      peerInfo.connection.addTrack(track, stream);
+      this.log('info', `Added ${track.kind} track to peer ${targetUserId}`);
+    } catch (error: any) {
+      // Handle case where track was added between check and addTrack call
+      if (error.name === 'InvalidAccessError' && error.message.includes('sender already exists')) {
+        this.log('debug', `Track was already added (race condition), ignoring`, {
+          kind: track.kind,
+          trackId: track.id,
+        });
+      } else {
+        this.log('error', `Failed to add track to peer ${targetUserId}`, {
+          error: error.message,
+          kind: track.kind,
+        });
+        throw error;
+      }
+    }
   }
 
   /**
@@ -1162,11 +1190,11 @@ export class P2PPeerConnectionManager extends BaseP2PManager {
     });
     this.peers.clear();
     this.negotiationDebounceTimer.clear();
-    
+
     // 🔥 FIX 1: Clear connection states
     this.connectionStates.clear();
     this.iceConnectionStates.clear();
-    
+
     this.cleanupTrackedListeners();
     this.isInitialized = false;
     this.log('info', 'P2PPeerConnectionManager cleaned up');

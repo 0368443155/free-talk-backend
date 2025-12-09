@@ -249,23 +249,30 @@ export function useMeetingSocket({
     return () => {
       console.log('🧹 Cleaning up socket connection...');
       
-      if (newSocket.connected) {
-        console.log('📤 Emitting leave before disconnect');
-        // Support both old and new events
-        if (useNewGateway) {
-          newSocket.emit('room:leave', { roomId: meetingId, userId });
-        } else {
-          newSocket.emit('meeting:leave', { meetingId, userId });
+      // Only cleanup if this is still the current socket
+      // This prevents cleanup in React Strict Mode double invocation
+      if (socketRef.current === newSocket) {
+        if (newSocket.connected) {
+          console.log('📤 Emitting leave before disconnect');
+          // Support both old and new events
+          if (useNewGateway) {
+            newSocket.emit('room:leave', { roomId: meetingId, userId });
+          } else {
+            newSocket.emit('meeting:leave', { meetingId, userId });
+          }
         }
+        
+        newSocket.removeAllListeners();
+        // Only disconnect if actually connected (avoid "WebSocket is closed before connection" error)
+        if (newSocket.connected) {
+          newSocket.disconnect();
+        }
+        
+        socketRef.current = null;
+        setSocket(null);
+        setIsConnected(false);
+        setConnectionError(null);
       }
-      
-      newSocket.removeAllListeners();
-      newSocket.disconnect();
-      
-      socketRef.current = null;
-      setSocket(null);
-      setIsConnected(false);
-      setConnectionError(null);
     };
   }, [meetingId, userId]); // Remove isOnline from dependencies
 

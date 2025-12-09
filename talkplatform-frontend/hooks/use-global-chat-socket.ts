@@ -206,9 +206,13 @@ export function useGlobalChatSocket({ enabled = true }: UseGlobalChatSocketProps
       console.log('🧹 Cleaning up global chat socket connection...');
       
       // Only cleanup if this is the current socket
+      // This prevents cleanup in React Strict Mode double invocation
       if (socketRef.current === newSocket) {
         newSocket.removeAllListeners();
-        newSocket.disconnect();
+        // Only disconnect if actually connected (avoid "WebSocket is closed before connection" error)
+        if (newSocket.connected) {
+          newSocket.disconnect();
+        }
         socketRef.current = null;
         setSocket(null);
         setIsConnected(false);

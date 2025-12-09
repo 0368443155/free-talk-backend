@@ -34,7 +34,7 @@ export class P2PStreamManager extends BaseP2PManager {
   private remoteStreams: Map<string, RemoteStreamInfo> = new Map();
 
   constructor(config: MediaManagerConfig) {
-    super(config.socket, config.meetingId, config.userId);
+    super(config.socket, config.meetingId, config.userId, config.useNewGateway ?? false);
   }
 
   /**
@@ -106,15 +106,32 @@ export class P2PStreamManager extends BaseP2PManager {
 
   /**
    * Remove remote stream
+   * 🔥 FIX: Handle null streams
    */
   removeRemoteStream(userId: string): void {
     const streamInfo = this.remoteStreams.get(userId);
     
     if (streamInfo) {
-      // Stop all tracks
-      streamInfo.stream.getTracks().forEach(track => {
-        track.stop();
-      });
+      // Stop all tracks from main stream
+      if (streamInfo.mainStream) {
+        streamInfo.mainStream.getTracks().forEach(track => {
+          track.stop();
+        });
+      }
+      
+      // Stop all tracks from screen stream
+      if (streamInfo.screenStream) {
+        streamInfo.screenStream.getTracks().forEach(track => {
+          track.stop();
+        });
+      }
+      
+      // Legacy: Stop tracks from stream if exists
+      if (streamInfo.stream) {
+        streamInfo.stream.getTracks().forEach(track => {
+          track.stop();
+        });
+      }
       
       this.remoteStreams.delete(userId);
       
@@ -144,12 +161,17 @@ export class P2PStreamManager extends BaseP2PManager {
 
   /**
    * Get all remote streams
+   * 🔥 FIX: Handle null streams - prioritize mainStream
    */
   getAllRemoteStreams(): Map<string, MediaStream> {
     const streams = new Map<string, MediaStream>();
     
     this.remoteStreams.forEach((info, userId) => {
-      streams.set(userId, info.stream);
+      // Prioritize mainStream, fallback to screenStream, then legacy stream
+      const stream = info.mainStream || info.screenStream || info.stream;
+      if (stream) {
+        streams.set(userId, stream);
+      }
     });
     
     return streams;
@@ -223,13 +245,31 @@ export class P2PStreamManager extends BaseP2PManager {
 
   /**
    * Cleanup all streams
+   * 🔥 FIX: Handle null streams
    */
   cleanup(): void {
     // Stop all tracks in all streams
     this.remoteStreams.forEach((streamInfo) => {
-      streamInfo.stream.getTracks().forEach(track => {
-        track.stop();
-      });
+      // Stop main stream tracks
+      if (streamInfo.mainStream) {
+        streamInfo.mainStream.getTracks().forEach(track => {
+          track.stop();
+        });
+      }
+      
+      // Stop screen stream tracks
+      if (streamInfo.screenStream) {
+        streamInfo.screenStream.getTracks().forEach(track => {
+          track.stop();
+        });
+      }
+      
+      // Legacy: Stop stream tracks if exists
+      if (streamInfo.stream) {
+        streamInfo.stream.getTracks().forEach(track => {
+          track.stop();
+        });
+      }
     });
 
     this.remoteStreams.clear();

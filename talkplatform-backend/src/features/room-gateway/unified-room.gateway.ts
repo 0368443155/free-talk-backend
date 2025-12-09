@@ -18,6 +18,7 @@ import { UserSocketManagerService } from '../../core/room/services/user-socket-m
 import { AccessValidatorService } from '../../core/access-control/services/access-validator.service';
 import { JoinRoomDto, LeaveRoomDto } from './dto';
 import { Meeting } from '../meeting/entities/meeting.entity';
+import { MeetingParticipant } from '../meeting/entities/meeting-participant.entity';
 import { User } from '../../users/user.entity';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -54,6 +55,8 @@ export class UnifiedRoomGateway
     private readonly accessValidator: AccessValidatorService,
     @InjectRepository(Meeting)
     private readonly meetingRepository: Repository<Meeting>,
+    @InjectRepository(MeetingParticipant)
+    private readonly participantRepository: Repository<MeetingParticipant>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     private readonly jwtService: JwtService,
@@ -292,6 +295,388 @@ export class UnifiedRoomGateway
       id: roomId,
       type: roomTypeMap[meeting.meeting_type] || 'FREE_TALK',
     };
+  }
+
+  /**
+   * === WEBRTC SIGNALING HANDLERS (CRITICAL FOR P2P CONNECTION) ===
+   * These handlers forward WebRTC signaling messages between peers
+   */
+
+  @SubscribeMessage('media:offer')
+  async handleMediaOffer(
+    @ConnectedSocket() client: SocketWithUser,
+    @MessageBody() data: { targetUserId: string; roomId: string; offer: any },
+  ) {
+    try {
+      const fromUserId = this.getUserId(client);
+      if (!fromUserId) {
+        throw new WsException('User not authenticated');
+      }
+
+      this.logger.debug(`Forwarding media:offer from ${fromUserId} to ${data.targetUserId}`);
+
+      // Find target user's socket and forward offer
+      // Try default namespace first, then media namespace
+      let targetSocketId = await this.userSocketManager.getUserSocket(data.targetUserId);
+      if (!targetSocketId) {
+        targetSocketId = await this.userSocketManager.getUserSocket(data.targetUserId, 'media');
+      }
+      
+      if (targetSocketId) {
+        this.sendToClient(targetSocketId, 'media:offer', {
+          fromUserId,
+          roomId: data.roomId,
+          offer: data.offer,
+        });
+        this.logger.debug(`Successfully forwarded media:offer to ${data.targetUserId} via socket ${targetSocketId}`);
+      } else {
+        this.logger.warn(`Target user ${data.targetUserId} not found in socket map`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to handle media:offer: ${error.message}`);
+    }
+  }
+
+  @SubscribeMessage('media:answer')
+  async handleMediaAnswer(
+    @ConnectedSocket() client: SocketWithUser,
+    @MessageBody() data: { targetUserId: string; roomId: string; answer: any },
+  ) {
+    try {
+      const fromUserId = this.getUserId(client);
+      if (!fromUserId) {
+        throw new WsException('User not authenticated');
+      }
+
+      this.logger.debug(`Forwarding media:answer from ${fromUserId} to ${data.targetUserId}`);
+
+      // Find target user's socket and forward answer
+      // Try default namespace first, then media namespace
+      let targetSocketId = await this.userSocketManager.getUserSocket(data.targetUserId);
+      if (!targetSocketId) {
+        targetSocketId = await this.userSocketManager.getUserSocket(data.targetUserId, 'media');
+      }
+      
+      if (targetSocketId) {
+        this.sendToClient(targetSocketId, 'media:answer', {
+          fromUserId,
+          roomId: data.roomId,
+          answer: data.answer,
+        });
+        this.logger.debug(`Successfully forwarded media:answer to ${data.targetUserId} via socket ${targetSocketId}`);
+      } else {
+        this.logger.warn(`Target user ${data.targetUserId} not found in socket map`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to handle media:answer: ${error.message}`);
+    }
+  }
+
+  @SubscribeMessage('media:ice-candidate')
+  async handleMediaCandidate(
+    @ConnectedSocket() client: SocketWithUser,
+    @MessageBody() data: { targetUserId: string; roomId: string; candidate: any },
+  ) {
+    try {
+      const fromUserId = this.getUserId(client);
+      if (!fromUserId) {
+        throw new WsException('User not authenticated');
+      }
+
+      this.logger.debug(`Forwarding media:ice-candidate from ${fromUserId} to ${data.targetUserId}`);
+
+      // Find target user's socket and forward ICE candidate
+      // Try default namespace first, then media namespace
+      let targetSocketId = await this.userSocketManager.getUserSocket(data.targetUserId);
+      if (!targetSocketId) {
+        targetSocketId = await this.userSocketManager.getUserSocket(data.targetUserId, 'media');
+      }
+      
+      if (targetSocketId) {
+        this.sendToClient(targetSocketId, 'media:ice-candidate', {
+          fromUserId,
+          roomId: data.roomId,
+          candidate: data.candidate,
+        });
+        this.logger.debug(`Successfully forwarded media:ice-candidate to ${data.targetUserId} via socket ${targetSocketId}`);
+      } else {
+        this.logger.warn(`Target user ${data.targetUserId} not found in socket map`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to handle media:ice-candidate: ${error.message}`);
+    }
+  }
+
+  @SubscribeMessage('media:ready')
+  async handleMediaReady(
+    @ConnectedSocket() client: SocketWithUser,
+    @MessageBody() data: { roomId: string },
+  ) {
+    try {
+      const userId = this.getUserId(client);
+      if (!userId) {
+        throw new WsException('User not authenticated');
+      }
+
+      const roomId = data.roomId || client.data.meetingId;
+      if (!roomId) {
+        throw new WsException('Room ID required');
+      }
+
+      this.logger.log(`User ${userId} is ready for WebRTC in room ${roomId}`);
+
+      // Broadcast to all other participants in the room that this user is ready
+      this.broadcastToRoomExcept(roomId, client.id, 'media:peer-ready', {
+        userId,
+      });
+    } catch (error) {
+      this.logger.error(`Failed to handle media:ready: ${error.message}`);
+    }
+  }
+
+  /**
+   * Handle Media State Updates (Mic/Cam/Screen)
+   * V2 Hook cần gọi event này để đồng bộ state với DB/Redis
+   */
+  @SubscribeMessage('media:state-update')
+  async handleMediaStateUpdate(
+    @ConnectedSocket() client: SocketWithUser,
+    @MessageBody() data: {
+      roomId: string;
+      isMuted?: boolean;
+      isVideoOff?: boolean;
+      isScreenSharing?: boolean;
+      isHandRaised?: boolean;
+    },
+  ) {
+    try {
+      const userId = this.getUserId(client);
+      if (!userId) {
+        throw new WsException('User not authenticated');
+      }
+
+      const roomId = data.roomId || client.data.meetingId;
+      if (!roomId) {
+        throw new WsException('Room ID required');
+      }
+
+      this.logger.log(`Media state update from user ${userId} in room ${roomId}`, data);
+
+      // 🔥 CRITICAL: Update database first (source of truth for frontend)
+      const dbUpdates: Partial<MeetingParticipant> = {};
+      if (data.isMuted !== undefined) dbUpdates.is_muted = data.isMuted;
+      if (data.isVideoOff !== undefined) dbUpdates.is_video_off = data.isVideoOff;
+      // Note: is_screen_sharing and is_hand_raised are not in MeetingParticipant entity
+
+      if (Object.keys(dbUpdates).length > 0) {
+        await this.participantRepository.update(
+          { meeting: { id: roomId }, user: { id: userId } },
+          dbUpdates,
+        );
+        this.logger.log(`Updated database for user ${userId}:`, dbUpdates);
+      }
+
+      // 2. Update state trong Redis/Memory thông qua RoomStateManager
+      const updates: Partial<ParticipantState> = {};
+      if (data.isMuted !== undefined) updates.isMuted = data.isMuted;
+      if (data.isVideoOff !== undefined) updates.isVideoOff = data.isVideoOff;
+      if (data.isScreenSharing !== undefined) updates.isScreenSharing = data.isScreenSharing;
+      if (data.isHandRaised !== undefined) updates.isHandRaised = data.isHandRaised;
+
+      if (Object.keys(updates).length > 0) {
+        await this.roomStateManager.updateParticipant(roomId, userId, updates);
+      } else {
+        this.logger.warn(`No updates provided for media state update from user ${userId}`);
+        return;
+      }
+
+      // 2. Broadcast cho tất cả mọi người trong phòng (trừ người gửi) để cập nhật UI ngay lập tức
+      // Frontend V2 sẽ hứng event này để cập nhật list participants
+      this.broadcastToRoomExcept(roomId, client.id, 'media:participant-state-updated', {
+        userId,
+        ...data,
+      });
+
+      // 3. Also emit to the sender for confirmation (optional)
+      client.emit('media:state-updated', {
+        success: true,
+        ...data,
+      });
+    } catch (error) {
+      this.logger.error(`Media state update failed: ${error.message}`);
+      client.emit('media:state-update-error', {
+        message: error.message || 'Failed to update media state',
+      });
+    }
+  }
+
+  /**
+   * Host moderation controls - Mute participant
+   */
+  @SubscribeMessage('admin:mute-user')
+  async handleAdminMuteUser(
+    @ConnectedSocket() client: SocketWithUser,
+    @MessageBody() data: { targetUserId: string; mute?: boolean },
+  ) {
+    try {
+      const userId = this.getUserId(client);
+      const roomId = client.data.meetingId;
+      
+      if (!userId || !roomId) {
+        throw new WsException('User or room not found');
+      }
+
+      // TODO: Verify host permission
+      // For now, allow if user is in the room
+      
+      // Get current state from database (source of truth)
+      const participant = await this.participantRepository.findOne({
+        where: { meeting: { id: roomId }, user: { id: data.targetUserId } },
+      });
+
+      if (!participant) {
+        throw new WsException('Participant not found');
+      }
+
+      const currentMuted = participant.is_muted || false;
+      const isMuted = data.mute !== undefined ? data.mute : !currentMuted;
+
+      // Update database (source of truth)
+      await this.participantRepository.update(
+        { meeting: { id: roomId }, user: { id: data.targetUserId } },
+        { is_muted: isMuted },
+      );
+
+      // Also update RoomStateManager for real-time sync
+      await this.roomStateManager.updateParticipant(roomId, data.targetUserId, {
+        isMuted,
+      });
+
+      // Broadcast force mute event to target user
+      const targetSocketId = await this.userSocketManager.getUserSocket(data.targetUserId);
+      if (targetSocketId) {
+        this.sendToClient(targetSocketId, 'media:user-muted', {
+          userId: data.targetUserId,
+          isMuted,
+        });
+      }
+
+      // Broadcast state update to all participants
+      this.broadcastToRoom(roomId, 'media:participant-state-updated', {
+        userId: data.targetUserId,
+        isMuted,
+      });
+
+      this.logger.log(`Host ${userId} ${isMuted ? 'muted' : 'unmuted'} user ${data.targetUserId} in room ${roomId}`);
+    } catch (error) {
+      this.logger.error(`Failed to handle admin mute: ${error.message}`);
+    }
+  }
+
+  /**
+   * Host moderation controls - Turn off video
+   */
+  @SubscribeMessage('admin:video-off-user')
+  async handleAdminVideoOffUser(
+    @ConnectedSocket() client: SocketWithUser,
+    @MessageBody() data: { targetUserId: string; videoOff?: boolean },
+  ) {
+    try {
+      const userId = this.getUserId(client);
+      const roomId = client.data.meetingId;
+      
+      if (!userId || !roomId) {
+        throw new WsException('User or room not found');
+      }
+
+      // TODO: Verify host permission
+      
+      // Get current state from database (source of truth)
+      const participant = await this.participantRepository.findOne({
+        where: { meeting: { id: roomId }, user: { id: data.targetUserId } },
+      });
+
+      if (!participant) {
+        throw new WsException('Participant not found');
+      }
+
+      const currentVideoOff = participant.is_video_off || false;
+      const isVideoOff = data.videoOff !== undefined ? data.videoOff : !currentVideoOff;
+
+      // Update database (source of truth)
+      await this.participantRepository.update(
+        { meeting: { id: roomId }, user: { id: data.targetUserId } },
+        { is_video_off: isVideoOff },
+      );
+
+      // Also update RoomStateManager for real-time sync
+      await this.roomStateManager.updateParticipant(roomId, data.targetUserId, {
+        isVideoOff,
+      });
+
+      // Broadcast force video off event to target user
+      const targetSocketId = await this.userSocketManager.getUserSocket(data.targetUserId);
+      if (targetSocketId) {
+        this.sendToClient(targetSocketId, 'media:user-video-off', {
+          userId: data.targetUserId,
+          isVideoOff,
+        });
+      }
+
+      // Broadcast state update to all participants
+      this.broadcastToRoom(roomId, 'media:participant-state-updated', {
+        userId: data.targetUserId,
+        isVideoOff,
+      });
+
+      this.logger.log(`Host ${userId} ${isVideoOff ? 'turned off' : 'turned on'} video for user ${data.targetUserId} in room ${roomId}`);
+    } catch (error) {
+      this.logger.error(`Failed to handle admin video off: ${error.message}`);
+    }
+  }
+
+  /**
+   * Host moderation controls - Stop screen share
+   */
+  @SubscribeMessage('admin:stop-share-user')
+  async handleAdminStopShareUser(
+    @ConnectedSocket() client: SocketWithUser,
+    @MessageBody() data: { targetUserId: string },
+  ) {
+    try {
+      const userId = this.getUserId(client);
+      const roomId = client.data.meetingId;
+      
+      if (!userId || !roomId) {
+        throw new WsException('User or room not found');
+      }
+
+      // TODO: Verify host permission
+      
+      // Update state
+      await this.roomStateManager.updateParticipant(roomId, data.targetUserId, {
+        isScreenSharing: false,
+      });
+
+      // Broadcast force stop share event to target user
+      const targetSocketId = await this.userSocketManager.getUserSocket(data.targetUserId);
+      if (targetSocketId) {
+        this.sendToClient(targetSocketId, 'media:user-screen-share', {
+          userId: data.targetUserId,
+          isSharing: false,
+        });
+      }
+
+      // Broadcast state update to all participants
+      this.broadcastToRoom(roomId, 'media:participant-state-updated', {
+        userId: data.targetUserId,
+        isScreenSharing: false,
+      });
+
+      this.logger.log(`Host ${userId} stopped screen share for user ${data.targetUserId} in room ${roomId}`);
+    } catch (error) {
+      this.logger.error(`Failed to handle admin stop share: ${error.message}`);
+    }
   }
 
   /**

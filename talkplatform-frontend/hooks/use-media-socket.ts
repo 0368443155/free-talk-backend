@@ -37,7 +37,11 @@ export function useMediaSocket({
     if (!useNewGateway) {
       // If old gateway, don't create separate media socket
       if (socketRef.current) {
-        socketRef.current.disconnect();
+        // Only disconnect if actually connected (avoid React Strict Mode issues)
+        if (socketRef.current.connected) {
+          socketRef.current.disconnect();
+        }
+        socketRef.current.removeAllListeners();
         socketRef.current = null;
         setMediaSocket(null);
         setIsConnected(false);
@@ -47,7 +51,11 @@ export function useMediaSocket({
 
     if (!meetingId || !userId) {
       if (socketRef.current) {
-        socketRef.current.disconnect();
+        // Only disconnect if actually connected (avoid React Strict Mode issues)
+        if (socketRef.current.connected) {
+          socketRef.current.disconnect();
+        }
+        socketRef.current.removeAllListeners();
         socketRef.current = null;
         setMediaSocket(null);
         setIsConnected(false);
@@ -111,7 +119,9 @@ export function useMediaSocket({
 
       if (connectionAttempts.current >= maxAttempts) {
         console.error('🛑 Max connection attempts reached for media socket');
-        newSocket.disconnect();
+        if (newSocket.connected) {
+          newSocket.disconnect();
+        }
       }
     });
 
@@ -126,14 +136,21 @@ export function useMediaSocket({
     // Cleanup function
     return () => {
       console.log('🧹 Cleaning up media socket connection...');
-      if (newSocket.connected) {
-        newSocket.disconnect();
+      
+      // Only cleanup if this is still the current socket
+      // This prevents cleanup in React Strict Mode double invocation
+      if (socketRef.current === newSocket) {
+        // Only disconnect if actually connected
+        // Avoid "WebSocket is closed before the connection is established" error
+        if (newSocket.connected) {
+          newSocket.disconnect();
+        }
+        newSocket.removeAllListeners();
+        socketRef.current = null;
+        setMediaSocket(null);
+        setIsConnected(false);
+        setConnectionError(null);
       }
-      newSocket.removeAllListeners();
-      socketRef.current = null;
-      setMediaSocket(null);
-      setIsConnected(false);
-      setConnectionError(null);
     };
   }, [meetingId, userId, useNewGateway]);
 

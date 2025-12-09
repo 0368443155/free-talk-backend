@@ -79,7 +79,7 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
     @InjectRepository(BlockedParticipant)
     private readonly blockedParticipantRepository: Repository<BlockedParticipant>,
     private readonly featureFlagService: FeatureFlagService,
-  ) {}
+  ) { }
 
   async handleConnection(client: SocketWithUser) {
     // Check if new gateway is enabled
@@ -198,7 +198,7 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
 
       // 🔥 FIX: Check if already in room to handle duplicate joins gracefully
       const wasInRoom = client.rooms.has(meetingId);
-      
+
       // Join room (idempotent - safe to call multiple times)
       client.join(meetingId);
       client.meetingId = meetingId;
@@ -208,7 +208,7 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
       // Map userId to socketId for direct messaging
       userSocketMap.set(userId, client.id);
       peerConnectionMap.set(userId, new Set());
-      
+
       if (wasInRoom) {
         console.log(`ℹ️ User ${userId} already in room ${meetingId}, skipping duplicate join`);
         // Still emit success to acknowledge
@@ -220,7 +220,7 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
         });
         return;
       }
-      
+
       console.log(`User ${userId} mapped to socket ${client.id}`);
 
       // Optimized: Update participant status with single query
@@ -296,7 +296,7 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
       console.error(`❌ Error in handleJoinMeeting:`, error);
       // 🔥 FIX: Emit more detailed error
       const errorMessage = error instanceof Error ? error.message : 'Failed to join meeting';
-      client.emit('meeting:join-error', { 
+      client.emit('meeting:join-error', {
         message: errorMessage,
         meetingId,
         userId,
@@ -468,9 +468,9 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   @SubscribeMessage('webrtc:ready')
-  handleWebRTCReady(@ConnectedSocket() client: SocketWithUser){
-    if(!client.meetingId || !client.userId) return;
-    
+  handleWebRTCReady(@ConnectedSocket() client: SocketWithUser) {
+    if (!client.meetingId || !client.userId) return;
+
     console.log(`📡 ${client.userId} is ready for WebRTC`);
 
     // Notify all others in the room
@@ -541,6 +541,25 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
     });
   }
 
+  /**
+   * Handle Media ready signal (New Gateway)
+   * When a user's media stream is ready, broadcast to others so they can initiate connections
+   */
+  @SubscribeMessage('media:ready')
+  handleMediaReady(
+    @ConnectedSocket() client: SocketWithUser,
+    @MessageBody() data: { roomId: string; userId: string }
+  ) {
+    if (!client.meetingId) return;
+
+    console.log(`📡 User ${data.userId} is ready for media (new gateway) in meeting ${client.meetingId}`);
+
+    // Broadcast to room (excluding sender) that user is ready for P2P connections
+    client.to(client.meetingId).emit('media:peer-ready', {
+      userId: data.userId,
+    });
+  }
+
   // Host moderation controls
   private async ensureHost(client: SocketWithUser) {
     if (!client.meetingId || !client.user) return false;
@@ -563,24 +582,24 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
       this.logger.warn('admin:mute-user received on old gateway but new gateway is enabled. Event should be sent to /media namespace.');
       // Still handle it for backward compatibility during migration
     }
-    
+
     if (!(await this.ensureHost(client))) return;
-    
+
     // Get current state from database
     const participant = await this.participantRepository.findOne({
       where: { meeting: { id: client.meetingId }, user: { id: data.targetUserId } },
     });
-    
+
     if (!participant) return;
-    
+
     // Toggle: if mute is explicitly provided, use it; otherwise toggle current state
     const isMuted = data.mute !== undefined ? data.mute : !participant.is_muted;
-    
+
     await this.participantRepository.update(
       { meeting: { id: client.meetingId }, user: { id: data.targetUserId } },
       { is_muted: isMuted },
     );
-    
+
     this.server.to(client.meetingId!).emit('media:user-muted', {
       userId: data.targetUserId,
       isMuted,
@@ -593,22 +612,22 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
     @MessageBody() data: { targetUserId: string; videoOff?: boolean },
   ) {
     if (!(await this.ensureHost(client))) return;
-    
+
     // Get current state from database
     const participant = await this.participantRepository.findOne({
       where: { meeting: { id: client.meetingId }, user: { id: data.targetUserId } },
     });
-    
+
     if (!participant) return;
-    
+
     // Toggle: if videoOff is explicitly provided, use it; otherwise toggle current state
     const isVideoOff = data.videoOff !== undefined ? data.videoOff : !participant.is_video_off;
-    
+
     await this.participantRepository.update(
       { meeting: { id: client.meetingId }, user: { id: data.targetUserId } },
       { is_video_off: isVideoOff },
     );
-    
+
     this.server.to(client.meetingId!).emit('media:user-video-off', {
       userId: data.targetUserId,
       isVideoOff,
@@ -659,7 +678,7 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
     @MessageBody() data: { targetUserId: string; reason?: string },
   ) {
     if (!(await this.ensureHost(client))) return;
-    
+
     // Add to blocked list first
     const blockedParticipant = this.blockedParticipantRepository.create({
       meeting_id: client.meetingId!,
@@ -668,20 +687,20 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
       reason: data.reason || 'Blocked by host',
     });
     await this.blockedParticipantRepository.save(blockedParticipant);
-    
+
     // Remove participant from DB
     await this.participantRepository.delete({
       meeting: { id: client.meetingId },
       user: { id: data.targetUserId }
     });
-    
+
     // Notify the blocked user and others
     this.server.to(client.meetingId!).emit('user:blocked', {
       userId: data.targetUserId,
       reason: data.reason || 'Blocked by host',
       timestamp: new Date(),
     });
-    
+
     // Notify others about user leaving
     this.server.to(client.meetingId!).emit('meeting:user-left', {
       userId: data.targetUserId,
@@ -690,69 +709,69 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   @SubscribeMessage('chat:message')
-async handleChatMessage(
-  @ConnectedSocket() client: SocketWithUser,
-  @MessageBody() data: { message: string; replyTo?: string },
-) {
-  console.log('💬 [GATEWAY] Received chat:message:', {
-    socketId: client.id,
-    userId: client.userId,
-    userName: client.user?.name,
-    meetingId: client.meetingId,
-    messagePreview: data.message.substring(0, 50),
-    hasUser: !!client.user,
-    hasMeetingId: !!client.meetingId,
-    fullData: data,
-  });
+  async handleChatMessage(
+    @ConnectedSocket() client: SocketWithUser,
+    @MessageBody() data: { message: string; replyTo?: string },
+  ) {
+    console.log('💬 [GATEWAY] Received chat:message:', {
+      socketId: client.id,
+      userId: client.userId,
+      userName: client.user?.name,
+      meetingId: client.meetingId,
+      messagePreview: data.message.substring(0, 50),
+      hasUser: !!client.user,
+      hasMeetingId: !!client.meetingId,
+      fullData: data,
+    });
 
-  if (!client.meetingId || !client.user) {
-    console.error('❌ Cannot send message: No meeting or user');
-    return;
-  }
+    if (!client.meetingId || !client.user) {
+      console.error('❌ Cannot send message: No meeting or user');
+      return;
+    }
 
-  console.log('💬 Processing chat message:', {
-    from: client.user.username,
-    message: data.message,
-    meetingId: client.meetingId,
-  });
-
-  try {
-    // Save message to database
-    const chatMessage = this.chatMessageRepository.create({
-      meeting: { id: client.meetingId },
-      sender: client.user,
+    console.log('💬 Processing chat message:', {
+      from: client.user.username,
       message: data.message,
-      type: MessageType.TEXT,
-      metadata: data.replyTo ? { reply_to: data.replyTo } : null,
+      meetingId: client.meetingId,
     });
 
-    const savedMessage = await this.chatMessageRepository.save(chatMessage);
+    try {
+      // Save message to database
+      const chatMessage = this.chatMessageRepository.create({
+        meeting: { id: client.meetingId },
+        sender: client.user,
+        message: data.message,
+        type: MessageType.TEXT,
+        metadata: data.replyTo ? { reply_to: data.replyTo } : null,
+      });
 
-    // Broadcast to ALL participants in the room (including sender)
-    const broadcastData = {
-      id: savedMessage.id,
-      message: savedMessage.message,
-      senderId: client.user.id, // Use id as senderId
-      senderName: client.user.username, // 🔥 FIX: Use username (User entity doesn't have name field)
-      senderAvatar: client.user.avatar_url,
-      replyTo: data.replyTo,
-      timestamp: savedMessage.created_at.toISOString(),
-      type: MessageType.TEXT,
-    };
+      const savedMessage = await this.chatMessageRepository.save(chatMessage);
 
-    console.log('📢 Broadcasting message to room:', client.meetingId, {
-      from: broadcastData.senderName,
-      toRoom: client.meetingId,
-    });
-    
-    // Broadcast to entire room (including sender)
-    this.server.to(client.meetingId).emit('chat:message', broadcastData);
+      // Broadcast to ALL participants in the room (including sender)
+      const broadcastData = {
+        id: savedMessage.id,
+        message: savedMessage.message,
+        senderId: client.user.id, // Use id as senderId
+        senderName: client.user.username, // 🔥 FIX: Use username (User entity doesn't have name field)
+        senderAvatar: client.user.avatar_url,
+        replyTo: data.replyTo,
+        timestamp: savedMessage.created_at.toISOString(),
+        type: MessageType.TEXT,
+      };
 
-  } catch (error) {
-    console.error('❌ Error saving chat message:', error);
-    client.emit('chat:error', { message: 'Failed to send message' });
+      console.log('📢 Broadcasting message to room:', client.meetingId, {
+        from: broadcastData.senderName,
+        toRoom: client.meetingId,
+      });
+
+      // Broadcast to entire room (including sender)
+      this.server.to(client.meetingId).emit('chat:message', broadcastData);
+
+    } catch (error) {
+      console.error('❌ Error saving chat message:', error);
+      client.emit('chat:error', { message: 'Failed to send message' });
+    }
   }
-}
 
   @SubscribeMessage('youtube:play')
   async handleYouTubePlay(

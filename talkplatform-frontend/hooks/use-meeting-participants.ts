@@ -107,30 +107,19 @@ export function useMeetingParticipants({
     }
   }, [meetingId, isPublicMeeting, fetchParticipants, toast]);
 
-  // Mute participant
+  // Mute participant - This is handled via socket events in meeting-room.tsx
+  // This function is kept for API compatibility but actual control is via socket
   const handleMuteParticipant = useCallback(async (participantId: string, participantUserId: string) => {
-    try {
-      if (isPublicMeeting) {
-        await mutePublicMeetingParticipantApi(meetingId, participantId);
-      } else {
-        await muteParticipantApi(classroomId!, meetingId, participantId);
-      }
-      await fetchParticipants();
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to mute participant",
-        variant: "destructive",
-      });
-    }
-  }, [meetingId, isPublicMeeting, classroomId, fetchParticipants, toast]);
+    // Note: Actual mute/unmute is handled via socket events (admin:mute-user)
+    // This function is kept for backward compatibility
+    console.log('Mute participant (handled via socket):', participantId, participantUserId);
+  }, []);
 
-  // Video off participant (placeholder - actual implementation depends on meeting type)
+  // Video off participant - This is handled via socket events in meeting-room.tsx
   const handleVideoOffParticipant = useCallback(async (participantId: string, participantUserId: string) => {
-    // This is handled differently in Traditional vs LiveKit
-    // Traditional uses socket events, LiveKit uses API calls
-    // Implementation will be in the respective components
-    console.log('Video off participant:', participantId, participantUserId);
+    // Note: Actual video off/on is handled via socket events (admin:video-off-user)
+    // This function is kept for backward compatibility
+    console.log('Video off participant (handled via socket):', participantId, participantUserId);
   }, []);
 
   return {

@@ -49,7 +49,7 @@ export class P2PTrackStateSync extends BaseP2PManager {
       conflictResolution: 'server-wins', // Server is source of truth
     }
   ) {
-    super(config.socket, config.meetingId, config.userId);
+    super(config.socket, config.meetingId, config.userId, config.useNewGateway ?? false);
     this.config = syncConfig;
   }
 
@@ -95,8 +95,17 @@ export class P2PTrackStateSync extends BaseP2PManager {
 
   /**
    * Start periodic sync
+   * 🔥 FIX: Disabled until backend supports room:request-participant-state
    */
   private startPeriodicSync(): void {
+    // 🔥 FIX: Backend doesn't support room:request-participant-state yet
+    // Disable periodic sync to avoid unnecessary logs
+    // State sync happens via broadcasts (media:user-muted, media:user-video-off)
+    this.log('debug', 'Periodic sync disabled - backend not implemented yet');
+    return;
+
+    // Commented out until backend supports it:
+    /*
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
     }
@@ -108,6 +117,7 @@ export class P2PTrackStateSync extends BaseP2PManager {
     }, this.config.syncInterval);
 
     this.log('info', 'Periodic sync started', { interval: this.config.syncInterval });
+    */
   }
 
   /**
@@ -167,6 +177,7 @@ export class P2PTrackStateSync extends BaseP2PManager {
 
   /**
    * Handle server state update
+   * 🔥 FIX: Only detect conflict if state actually differs AND it's not from our own action
    */
   private handleServerStateUpdate(
     type: 'mic' | 'camera',
@@ -177,12 +188,48 @@ export class P2PTrackStateSync extends BaseP2PManager {
       ? this.lastSyncedState.isMuted 
       : this.lastSyncedState.isVideoOff;
 
-    // Check for conflict (client state differs from server)
-    if (lastState !== null && lastState !== serverValue) {
+    // 🔥 FIX: If lastState is null, this is first sync - just update
+    if (lastState === null) {
+      if (type === 'mic') {
+        this.lastSyncedState.isMuted = serverValue;
+      } else {
+        this.lastSyncedState.isVideoOff = serverValue;
+      }
+      this.lastSyncedState.timestamp = timestamp;
+      this.log('debug', `Initial state sync for ${type}`, { value: serverValue });
+      return;
+    }
+
+    // 🔥 FIX: Check for conflict only if state actually differs
+    // AND the timestamp is significantly different (not from our own recent action)
+    const timeDiff = Math.abs(timestamp - this.lastSyncedState.timestamp);
+    const isRecentAction = timeDiff < 2000; // Within 2 seconds = likely our own action
+
+    if (lastState !== serverValue) {
+      // If this is from our own recent action (self-echo), just update state silently
+      if (isRecentAction) {
+        this.log('debug', `State update from own action for ${type}`, {
+          oldState: lastState,
+          newState: serverValue,
+          timeDiff,
+        });
+        // Update state without conflict resolution
+        if (type === 'mic') {
+          this.lastSyncedState.isMuted = serverValue;
+        } else {
+          this.lastSyncedState.isVideoOff = serverValue;
+        }
+        this.lastSyncedState.timestamp = timestamp;
+        this.emit('state-synced', { type, value: serverValue, timestamp });
+        return;
+      }
+
+      // Real conflict - different state and not from our own action
       this.log('warn', `State conflict detected for ${type}`, {
         clientState: lastState,
         serverState: serverValue,
         timestamp,
+        timeDiff,
       });
 
       // Resolve conflict based on config

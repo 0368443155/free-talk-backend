@@ -5,6 +5,8 @@ import { useSyncExternalStore } from 'react'; // React 18+ hook for external sto
 import { Socket } from 'socket.io-client';
 import { P2PMediaManager, P2PStreamManager, P2PTrackStateSync, P2PPeerConnectionManager } from '@/services/p2p/core';
 import { MediaManagerConfig } from '@/services/p2p/types';
+import { useFeatureFlag } from './use-feature-flag';
+import { useMediaSocket } from './use-media-socket';
 import { toast } from 'sonner';
 
 interface UseWebRTCV2Props {
@@ -44,6 +46,22 @@ interface UseWebRTCV2Return {
  * This prevents "tearing" issues in React 18/19 StrictMode and ensures state consistency
  */
 export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2Props): UseWebRTCV2Return {
+  // 🔥 NEW: Check feature flag for gateway version
+  const useNewGateway = useFeatureFlag('use_new_gateway');
+  
+  // 🔥 FIX: When useNewGateway=true, use mediaSocket for WebRTC signaling
+  // Default socket is still used for meeting events (meeting:request-peers, etc.)
+  const { mediaSocket } = useMediaSocket({
+    meetingId,
+    userId,
+    isOnline,
+  });
+  
+  // Determine which socket to use for WebRTC signaling
+  // - Old gateway: use default socket
+  // - New gateway: use mediaSocket (connects to /media namespace)
+  const webrtcSocket = useNewGateway && mediaSocket ? mediaSocket : socket;
+
   // Managers - stored in ref to persist across renders
   const mediaManagerRef = useRef<P2PMediaManager | null>(null);
   const streamManagerRef = useRef<P2PStreamManager | null>(null);
@@ -54,7 +72,7 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
   const cleanupCalledRef = useRef(false);
 
   // Track current config to detect changes
-  const configRef = useRef<{ socket: Socket; meetingId: string; userId: string } | null>(null);
+  const configRef = useRef<{ socket: Socket; meetingId: string; userId: string; useNewGateway: boolean } | null>(null);
 
   // 🔥 FIX 1: State for manager readiness to prevent race conditions
   const [areManagersReady, setAreManagersReady] = useState(false);
@@ -103,6 +121,9 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
     // Reset config ref
     configRef.current = null;
 
+    // 🔥 FIX: Reset ready state
+    setAreManagersReady(false);
+
     // Reset cleanup flag (allows re-initialization if needed)
     cleanupCalledRef.current = false;
   }, []);
@@ -117,13 +138,23 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
       return;
     }
 
-    // Check if config changed (socket ID or meetingId/userId)
-    const currentConfig = { socket, meetingId, userId };
+    // 🔥 FIX: Determine which socket to use for P2P managers
+    // When useNewGateway=true, use webrtcSocket (mediaSocket), otherwise use default socket
+    const socketForManagers = webrtcSocket || socket;
+    if (!socketForManagers) {
+      console.warn('[useWebRTCV2] No socket available for managers');
+      return;
+    }
+
+    // Check if config changed (socket ID or meetingId/userId or gateway version)
+    // 🔥 FIX: Track both socket and webrtcSocket in config
+    const currentConfig = { socket: socketForManagers, meetingId, userId, useNewGateway };
     const configChanged =
       !configRef.current ||
-      configRef.current.socket.id !== socket.id ||
+      (configRef.current.socket && socketForManagers && configRef.current.socket.id !== socketForManagers.id) ||
       configRef.current.meetingId !== meetingId ||
-      configRef.current.userId !== userId;
+      configRef.current.userId !== userId ||
+      configRef.current.useNewGateway !== useNewGateway;
 
     // If config changed, cleanup old managers first (CRITICAL to prevent duplicate listeners)
     // ⚠️ CRITICAL: Cleanup is synchronous - no need for await/delay
@@ -139,11 +170,13 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
     }
 
     // Initialize managers if not exists or config changed
+
     if (!mediaManagerRef.current || configChanged) {
       const mediaConfig: MediaManagerConfig = {
-        socket,
+        socket: socketForManagers, // Use mediaSocket for new gateway, default socket for old gateway
         meetingId,
         userId,
+        useNewGateway, // 🔥 NEW: Pass gateway version to managers
       };
 
       const mediaManager = new P2PMediaManager(mediaConfig);
@@ -165,6 +198,11 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
 
         stateSync.initialize().then(() => {
           stateSyncRef.current = stateSync;
+
+          // 🔥 NEW: Link stateSync to mediaManager for state updates
+          if (mediaManagerRef.current) {
+            mediaManagerRef.current.setStateSync(stateSync);
+          }
         });
 
         peerConnectionManager.initialize().then(() => {
@@ -225,7 +263,7 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
       setAreManagersReady(false); // 🔥 FIX 1: Reset ready state
       cleanupManagers(); // Synchronous cleanup on unmount or effect re-run
     };
-  }, [socket, meetingId, userId, cleanupManagers]);
+  }, [socket, webrtcSocket, meetingId, userId, useNewGateway, cleanupManagers]); // 🔥 FIX: Add webrtcSocket to dependencies
 
   // Use useSyncExternalStore to subscribe to manager state changes
   // This is the React 18+ recommended way to bind external stores (like our class managers)
@@ -419,11 +457,11 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
 
   const connectionStates = useSyncExternalStore(
     (callback) => {
-      if (!peerConnectionManagerRef.current) return () => {};
-      
+      if (!peerConnectionManagerRef.current) return () => { };
+
       const handleChange = () => callback();
       peerConnectionManagerRef.current.on('connection-state-changed', handleChange);
-      
+
       return () => {
         peerConnectionManagerRef.current?.off('connection-state-changed', handleChange);
       };
@@ -439,7 +477,7 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
       }
 
       const statesMap = peerConnectionManagerRef.current.getAllConnectionStates();
-      
+
       // Serialize data for comparison
       const currentData = Array.from(statesMap.entries())
         .sort(([a], [b]) => a.localeCompare(b))
@@ -464,11 +502,11 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
    */
   const connectedPeersCount = useSyncExternalStore(
     (callback) => {
-      if (!peerConnectionManagerRef.current) return () => {};
-      
+      if (!peerConnectionManagerRef.current) return () => { };
+
       const handleChange = () => callback();
       peerConnectionManagerRef.current.on('connection-state-changed', handleChange);
-      
+
       return () => {
         peerConnectionManagerRef.current?.off('connection-state-changed', handleChange);
       };
@@ -495,7 +533,7 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
 
   const remoteScreenShares = useSyncExternalStore(
     (callback) => {
-      if (!streamManagerRef.current) return () => {};
+      if (!streamManagerRef.current) return () => { };
       const handleCheck = () => callback();
       streamManagerRef.current.on('stream-updated', handleCheck);
       return () => streamManagerRef.current?.off('stream-updated', handleCheck);
@@ -583,16 +621,53 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
       // State will update automatically via useSyncExternalStore subscription
       mediaManagerRef.current.emit('stream-changed');
 
-      // 🔥 FIX: Emit media:ready with userId (like v1)
-      if (socket.connected) {
-        socket.emit('media:ready', { roomId: meetingId, userId });
-        console.log('✅ [useWebRTCV2] Emitted media:ready');
+      // 🔥 FIX: Emit media:ready with userId (like v1) - support both gateways
+      // When useNewGateway=true, use webrtcSocket (mediaSocket) which connects to /media namespace
+      // When useNewGateway=false, use default socket
+      const socketToUse = useNewGateway ? webrtcSocket : socket;
+      if (socketToUse?.connected && isOnline) {
+        if (useNewGateway) {
+          socketToUse.emit('media:ready', { roomId: meetingId, userId });
+        } else {
+          socketToUse.emit('webrtc:ready', { userId });
+        }
+        console.log(`✅ [useWebRTCV2] Emitted ${useNewGateway ? 'media:ready' : 'webrtc:ready'}`, {
+          socketConnected: socketToUse.connected,
+          isOnline,
+          socketType: useNewGateway ? 'mediaSocket' : 'defaultSocket',
+        });
+
+        // 🔥 CRITICAL FIX: Emit initial state to backend/database
+        // This ensures new participants see correct state when joining
+        if (socket?.connected) {
+          const micState = mediaManagerRef.current.getMicState();
+          const cameraState = mediaManagerRef.current.getCameraState();
+          const screenState = mediaManagerRef.current.getState().screen;
+          
+          socket.emit('media:state-update', {
+            roomId: meetingId,
+            isMuted: micState.isMuted,
+            isVideoOff: cameraState.isVideoOff,
+            isScreenSharing: screenState.isSharing,
+          });
+          console.log('✅ [useWebRTCV2] Emitted initial media state to backend', {
+            isMuted: micState.isMuted,
+            isVideoOff: cameraState.isVideoOff,
+            isScreenSharing: screenState.isSharing,
+          });
+        }
+      } else {
+        console.warn('⚠️ [useWebRTCV2] Cannot emit ready - socket not connected or user not online', {
+          socketConnected: socketToUse?.connected,
+          isOnline,
+          socketType: useNewGateway ? 'mediaSocket' : 'defaultSocket',
+        });
       }
     } catch (error: any) {
       console.error('❌ [useWebRTCV2] Failed:', error);
       toast.error(`Failed to start local stream: ${error.message}`);
     }
-  }, [socket, meetingId, userId]);
+  }, [socket, meetingId, userId, isOnline, useNewGateway]);
 
   // Stop local stream
   const stopLocalStream = useCallback(() => {
@@ -607,7 +682,7 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
 
   // Toggle mute
   const toggleMute = useCallback(async () => {
-    if (!mediaManagerRef.current) return;
+    if (!mediaManagerRef.current || !socket) return;
 
     try {
       // 🔥 FIX: Check if localStream exists, start it if needed (like v1 hook)
@@ -621,18 +696,32 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
 
       // Use getMicState() for primitive value instead of full state
       const micState = mediaManagerRef.current.getMicState();
-      await mediaManagerRef.current.enableMicrophone(!micState.enabled);
+      const newEnabledState = !micState.enabled; // Toggle: if currently enabled, will be disabled (muted)
+
+      // 1. Local hardware toggle
+      await mediaManagerRef.current.enableMicrophone(newEnabledState);
       // State will update automatically via useSyncExternalStore subscription
       // Manager emits 'mic-state-changed' event which triggers callback()
+
+      // 2. 🔥 CRITICAL FIX: Sync DB/Backend State
+      // Get updated state after toggle (isMuted = !enabled)
+      const updatedMicState = mediaManagerRef.current.getMicState();
+      if (socket.connected) {
+        socket.emit('media:state-update', {
+          roomId: meetingId,
+          isMuted: updatedMicState.isMuted, // true = muted
+        });
+        console.log('✅ [toggleMute] Emitted state update to backend', { isMuted: updatedMicState.isMuted });
+      }
     } catch (error: any) {
       console.error('❌ [toggleMute] Failed:', error);
       toast.error(`Failed to toggle microphone: ${error.message}`);
     }
-  }, [startLocalStream]);
+  }, [startLocalStream, socket, meetingId]);
 
   // Toggle video
   const toggleVideo = useCallback(async () => {
-    if (!mediaManagerRef.current) return;
+    if (!mediaManagerRef.current || !socket) return;
 
     try {
       // 🔥 FIX: Check if localStream exists, start it if needed (like v1 hook)
@@ -644,16 +733,45 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
+      // 🔥 CRITICAL FIX: Sync peer connections from P2PPeerConnectionManager to P2PMediaManager
+      // This ensures replaceVideoTrackInAllPeers() has access to all peer connections
+      if (peerConnectionManagerRef.current && mediaManagerRef.current) {
+        const allConnections = peerConnectionManagerRef.current.getAllPeerConnections();
+        mediaManagerRef.current.setPeerConnections(allConnections);
+        console.log(`📡 [toggleVideo] Synced ${allConnections.size} peer connection(s) to media manager`);
+      }
+
       // Use getCameraState() for primitive value instead of full state
       const cameraState = mediaManagerRef.current.getCameraState();
-      await mediaManagerRef.current.enableCamera(!cameraState.enabled);
+      const newEnabledState = !cameraState.enabled; // Toggle: if currently enabled, will be disabled (video off)
+
+      // 1. Local hardware toggle
+      await mediaManagerRef.current.enableCamera(newEnabledState);
       // State will update automatically via useSyncExternalStore subscription
       // Manager emits 'camera-state-changed' event which triggers callback()
+      
+      // 🔥 FIX: After camera toggle, sync peer connections again to ensure state is consistent
+      // This is especially important when turning camera ON to replace tracks in all peers
+      if (peerConnectionManagerRef.current && mediaManagerRef.current) {
+        const allConnections = peerConnectionManagerRef.current.getAllPeerConnections();
+        mediaManagerRef.current.setPeerConnections(allConnections);
+      }
+
+      // 2. 🔥 CRITICAL FIX: Sync DB/Backend State
+      // Get updated state after toggle (isVideoOff = !enabled)
+      const updatedCameraState = mediaManagerRef.current.getCameraState();
+      if (socket?.connected) {
+        socket.emit('media:state-update', {
+          roomId: meetingId,
+          isVideoOff: updatedCameraState.isVideoOff, // true = video off
+        });
+        console.log('✅ [toggleVideo] Emitted state update to backend', { isVideoOff: updatedCameraState.isVideoOff });
+      }
     } catch (error: any) {
       console.error('❌ [toggleVideo] Failed:', error);
       toast.error(`Failed to toggle camera: ${error.message}`);
     }
-  }, [startLocalStream]);
+  }, [startLocalStream, socket, meetingId]);
 
   // Toggle screen share
   const toggleScreenShare = useCallback(async () => {
@@ -688,12 +806,19 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
         mediaManagerRef.current.setScreenStream(null);
         mediaManagerRef.current.emit('screen-state-changed');
 
-        if (socket) {
+        // 🔥 CRITICAL FIX: Sync DB/Backend State
+        if (socket?.connected) {
+          socket.emit('media:state-update', {
+            roomId: meetingId,
+            isScreenSharing: false,
+          });
+          // Also emit legacy event for backward compatibility
           socket.emit('media:screen-share', {
             roomId: meetingId,
             userId,
-            isSharing: false
+            isSharing: false,
           });
+          console.log('✅ [toggleScreenShare] Emitted stop screen share to backend');
         }
       } else {
         // Start screen sharing
@@ -731,12 +856,19 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
           }
         };
 
-        if (socket) {
+        // 🔥 CRITICAL FIX: Sync DB/Backend State
+        if (socket?.connected) {
+          socket.emit('media:state-update', {
+            roomId: meetingId,
+            isScreenSharing: true,
+          });
+          // Also emit legacy event for backward compatibility
           socket.emit('media:screen-share', {
             roomId: meetingId,
             userId,
-            isSharing: true
+            isSharing: true,
           });
+          console.log('✅ [toggleScreenShare] Emitted start screen share to backend');
         }
       }
     } catch (error: any) {
@@ -745,16 +877,23 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
     }
   }, [socket, meetingId, userId]);
 
-  // 🔥 FIX: AUTO-START local stream when socket connects
+  // 🔥 FIX: AUTO-START local stream when socket connects and user is online
   useEffect(() => {
-    if (socket?.connected && !localStream && mediaManagerRef.current) {
+    console.log('🔍 [Auto-Start Effect] Checking conditions:', {
+      socketConnected: socket?.connected,
+      isOnline,
+      hasLocalStream: !!localStream,
+      hasMediaManager: !!mediaManagerRef.current,
+    });
+
+    if (socket?.connected && isOnline && !localStream && mediaManagerRef.current) {
       console.log('🎥 [useWebRTCV2] Auto-starting local stream...');
       startLocalStream()
         .then(() => {
-          console.log('✅ [useWebRTCV2] Stream started');
+          console.log('✅ [useWebRTCV2] Stream started successfully');
         })
         .catch((error: any) => {
-          console.error('❌ [useWebRTCV2] Failed:', error);
+          console.error('❌ [useWebRTCV2] Failed to start stream:', error);
           toast.error(
             error?.message?.includes('permission')
               ? error.message
@@ -762,38 +901,86 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
             { duration: 5000 }
           );
         });
+    } else {
+      console.log('⏭️ [Auto-Start Effect] Conditions not met, skipping');
     }
-  }, [socket?.connected, localStream, startLocalStream]);
+  }, [socket?.connected, isOnline, localStream, startLocalStream]);
 
   // Handle peer connections (offer, answer, ICE candidate)
   // 🔥 FIX 1: Only run when managers are ready to prevent race conditions
   const hasRequestedPeersRef = useRef(false);
-  
+
   useEffect(() => {
+    // 🔥 FIX: Use correct socket for checks
+    // For new gateway, we use webrtcSocket (mediaSocket), otherwise default socket
+    const socketForCheck = webrtcSocket || socket;
+    
+    console.log('🔍 [Socket Listeners Effect] Checking guards:', {
+      socketConnected: socket?.connected,
+      webrtcSocketConnected: webrtcSocket?.connected,
+      socketForCheckConnected: socketForCheck?.connected,
+      areManagersReady,
+      hasPeerConnectionManager: !!peerConnectionManagerRef.current,
+      useNewGateway,
+    });
+
     // Guard: Only run if everything is ready
-    if (!socket?.connected || !areManagersReady || !peerConnectionManagerRef.current) {
+    // Note: We check socket.connected for meeting events (user-joined, etc.)
+    // and socketForCheck.connected for WebRTC signaling events
+    if (!socket?.connected || !socketForCheck?.connected || !areManagersReady || !peerConnectionManagerRef.current) {
+      console.warn('⚠️ [Socket Listeners Effect] Guards not met, skipping', {
+        socketConnected: socket?.connected,
+        socketForCheckConnected: socketForCheck?.connected,
+        areManagersReady,
+        hasPeerConnectionManager: !!peerConnectionManagerRef.current,
+      });
       return;
     }
 
+    console.log('✅ [Socket Listeners Effect] All guards passed, setting up listeners');
+
     // Handle new peer ready
     const handlePeerReady = async (data: { userId: string }) => {
-      if (data.userId === userId) return;
+      console.log('🔔 [Peer Ready] Event received:', {
+        fromUser: data.userId,
+        myUserId: userId,
+        hasLocalStream: !!mediaManagerRef.current?.getLocalStream(),
+        hasManager: !!peerConnectionManagerRef.current,
+      });
+
+      if (data.userId === userId) {
+        console.log('⏭️ [Peer Ready] Skipping self');
+        return;
+      }
 
       const localStream = mediaManagerRef.current?.getLocalStream();
-      if (!localStream) return;
+      if (!localStream) {
+        console.error('❌ [Peer Ready] No local stream available');
+        return;
+      }
 
-      if (!peerConnectionManagerRef.current) return;
+      if (!peerConnectionManagerRef.current) {
+        console.error('❌ [Peer Ready] No peer connection manager');
+        return;
+      }
 
       try {
+        console.log('📞 [Peer Ready] Creating peer connection for:', data.userId);
+
         const pc = peerConnectionManagerRef.current.getOrCreatePeerConnection({
           targetUserId: data.userId,
           localStream,
         });
 
+        console.log('📤 [Peer Ready] Adding local tracks to peer connection');
+
         // Add local tracks to peer connection
         localStream.getTracks().forEach(track => {
+          console.log(`  ➕ Adding ${track.kind} track:`, track.label);
           peerConnectionManagerRef.current!.addTrackToPeer(data.userId, track, localStream);
         });
+
+        console.log('✅ [Peer Ready] Tracks added, negotiation should trigger automatically');
 
         // Sync peer connections to media manager after adding new peer
         if (mediaManagerRef.current) {
@@ -801,7 +988,7 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
           mediaManagerRef.current.setPeerConnections(allConnections);
         }
       } catch (error: any) {
-        console.error(`Failed to create peer connection for ${data.userId}:`, error);
+        console.error(`❌ [Peer Ready] Failed to create peer connection for ${data.userId}:`, error);
       }
     };
 
@@ -822,7 +1009,8 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
     };
 
     // 🔥 FIX: Add WebRTC signaling handlers (CRITICAL!)
-    const handleOffer = async (data: { fromUserId: string; roomId: string; offer: RTCSessionDescriptionInit }) => {
+    // Support both old and new event formats
+    const handleOffer = async (data: { fromUserId: string; roomId?: string; offer: RTCSessionDescriptionInit }) => {
       if (!peerConnectionManagerRef.current) return;
       console.log(`📨 [useWebRTCV2] Received offer from ${data.fromUserId}`);
       try {
@@ -833,7 +1021,7 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
       }
     };
 
-    const handleAnswer = async (data: { fromUserId: string; roomId: string; answer: RTCSessionDescriptionInit }) => {
+    const handleAnswer = async (data: { fromUserId: string; roomId?: string; answer: RTCSessionDescriptionInit }) => {
       if (!peerConnectionManagerRef.current) return;
       console.log(`📨 [useWebRTCV2] Received answer from ${data.fromUserId}`);
       try {
@@ -844,7 +1032,7 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
       }
     };
 
-    const handleIceCandidate = async (data: { fromUserId: string; roomId: string; candidate: RTCIceCandidateInit }) => {
+    const handleIceCandidate = async (data: { fromUserId: string; roomId?: string; candidate: RTCIceCandidateInit }) => {
       if (!peerConnectionManagerRef.current) return;
       try {
         await peerConnectionManagerRef.current.handleRemoteIceCandidate(data.fromUserId, data.candidate);
@@ -861,15 +1049,39 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
       await handlePeerReady({ userId: data.userId });
     };
 
-    // Register all handlers
-    socket.on('media:peer-ready', handlePeerReady);
+    // Register all handlers - support both old and new gateway events
+    // 🔥 CRITICAL FIX: 
+    // - When useNewGateway=true: WebRTC signaling events come from webrtcSocket (mediaSocket, /media namespace)
+    //   Meeting events (user-joined, request-peers) come from default socket
+    // - When useNewGateway=false: All events come from default socket
+    if (useNewGateway) {
+      // New gateway: WebRTC signaling events from webrtcSocket (mediaSocket)
+      // P2PPeerConnectionManager also listens to these, but we keep this for backward compatibility
+      if (webrtcSocket) {
+        webrtcSocket.on('media:peer-ready', handlePeerReady);
+      }
+      // Note: media:offer, media:answer, media:ice-candidate are handled by P2PPeerConnectionManager
+      // which uses webrtcSocket (mediaSocket)
+    } else {
+      // Traditional gateway events - all from default socket
+      socket.on('webrtc:peer-ready', handlePeerReady);
+      socket.on('webrtc:offer', (data: { fromUserId: string; offer: RTCSessionDescriptionInit }) => {
+        handleOffer({ fromUserId: data.fromUserId, offer: data.offer });
+      });
+      socket.on('webrtc:answer', (data: { fromUserId: string; answer: RTCSessionDescriptionInit }) => {
+        handleAnswer({ fromUserId: data.fromUserId, answer: data.answer });
+      });
+      socket.on('webrtc:ice-candidate', (data: { fromUserId: string; candidate: RTCIceCandidateInit }) => {
+        handleIceCandidate({ fromUserId: data.fromUserId, candidate: data.candidate });
+      });
+    }
+
+    // Common events (same for both gateways) - these always use default namespace
     socket.on('meeting:user-joined', handleUserJoined);
     socket.on('meeting:user-left', handleUserLeft);
-    socket.on('media:offer', handleOffer);  // ✅ NEW
-    socket.on('media:answer', handleAnswer);  // ✅ NEW
-    socket.on('media:ice-candidate', handleIceCandidate);  // ✅ NEW
 
     // 🔥 FIX 1: Debounce/Guard request-peers - Only request once when effect runs
+    // This works on default namespace for both old and new gateway
     if (!hasRequestedPeersRef.current) {
       console.log('📡 Requesting peers (One-time check)...');
       socket.emit('meeting:request-peers');
@@ -877,56 +1089,93 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
     }
 
     return () => {
-      // Cleanup
-      socket.off('media:peer-ready', handlePeerReady);
+      // Cleanup - support both old and new gateway events
+      if (useNewGateway) {
+        if (webrtcSocket) {
+          webrtcSocket.off('media:peer-ready', handlePeerReady);
+        }
+        // Note: media:offer, media:answer, media:ice-candidate are handled by P2PPeerConnectionManager
+        // and will be cleaned up when manager is cleaned up
+      } else {
+        socket.off('webrtc:peer-ready', handlePeerReady);
+        socket.off('webrtc:offer');
+        socket.off('webrtc:answer');
+        socket.off('webrtc:ice-candidate');
+      }
       socket.off('meeting:user-joined', handleUserJoined);
       socket.off('meeting:user-left', handleUserLeft);
-      socket.off('media:offer', handleOffer);  // ✅ NEW
-      socket.off('media:answer', handleAnswer);  // ✅ NEW
-      socket.off('media:ice-candidate', handleIceCandidate);  // ✅ NEW
       hasRequestedPeersRef.current = false; // Reset for next run
     };
-  }, [socket, userId, areManagersReady]); // 🔥 FIX 1: Stable dependencies
+  }, [socket, webrtcSocket, userId, areManagersReady, useNewGateway]); // 🔥 FIX: Add webrtcSocket to dependencies
 
   // 🔥 FIX 3: Handle socket reconnection
   useEffect(() => {
-    if (!socket) return;
+    // Handle default socket reconnection (for meeting events)
+    const handleDefaultSocketReconnect = async () => {
+      console.log('🔄 Default socket reconnected, requesting peers...');
+      if (socket?.connected && isOnline) {
+        socket.emit('meeting:request-peers');
+      }
+    };
 
-    const handleSocketReconnect = async () => {
-      console.log('🔄 Socket reconnected, syncing states...');
+    // Handle WebRTC socket reconnection (for WebRTC signaling)
+    const handleWebRTCSocketReconnect = async () => {
+      console.log('🔄 WebRTC socket reconnected, syncing states...');
 
       // 1. Sync media states
       if (mediaManagerRef.current) {
         await mediaManagerRef.current.syncAllStatesToServer();
       }
 
-      // 2. Re-emit media:ready
-      if (localStream && socket.connected) {
+      // 2. Re-emit media:ready (support both old and new gateway)
+      const socketToUse = useNewGateway ? webrtcSocket : socket;
+      if (localStream && socketToUse?.connected && isOnline) {
         console.log('📡 Re-emitting media:ready after reconnect');
-        socket.emit('media:ready', {
-          roomId: meetingId,
-          userId
-        });
+        if (useNewGateway) {
+          socketToUse.emit('media:ready', { roomId: meetingId, userId });
+        } else {
+          socketToUse.emit('webrtc:ready', { userId });
+        }
       }
 
-      // 3. Request peers again
-      console.log('📡 Requesting peers after reconnect');
-      socket.emit('meeting:request-peers');
-
-      toast.success('Reconnected to server');
+      // 3. 🔥 CRITICAL FIX: Re-sync media state to backend after reconnect
+      if (socket?.connected && mediaManagerRef.current) {
+        const micState = mediaManagerRef.current.getMicState();
+        const cameraState = mediaManagerRef.current.getCameraState();
+        const screenState = mediaManagerRef.current.getState().screen;
+        
+        socket.emit('media:state-update', {
+          roomId: meetingId,
+          isMuted: micState.isMuted,
+          isVideoOff: cameraState.isVideoOff,
+          isScreenSharing: screenState.isSharing,
+        });
+        console.log('✅ [Reconnect] Re-synced media state to backend', {
+          isMuted: micState.isMuted,
+          isVideoOff: cameraState.isVideoOff,
+          isScreenSharing: screenState.isSharing,
+        });
+      }
     };
 
-    socket.on('connect', handleSocketReconnect);
+    if (socket) {
+      socket.on('connect', handleDefaultSocketReconnect);
+    }
+    
+    if (webrtcSocket) {
+      webrtcSocket.on('connect', handleWebRTCSocketReconnect);
+    }
 
     return () => {
-      socket.off('connect', handleSocketReconnect);
+      socket?.off('connect', handleDefaultSocketReconnect);
+      webrtcSocket?.off('connect', handleWebRTCSocketReconnect);
     };
-  }, [socket, meetingId, userId, localStream]);
+  }, [socket, webrtcSocket, meetingId, userId, localStream, isOnline, useNewGateway]);
 
   // 🔥 FIX 4: Track screen share state
   useEffect(() => {
     if (!socket) return;
-    
+
     const handleRemoteScreenShare = (data: { userId: string, isSharing: boolean }) => {
       if (data.isSharing) {
         toast.info(`User started screen sharing`);
@@ -934,9 +1183,9 @@ export function useWebRTCV2({ socket, meetingId, userId, isOnline }: UseWebRTCV2
         // Clean up if needed - stream manager will handle it
       }
     };
-    
+
     socket.on('media:user-screen-share', handleRemoteScreenShare);
-    
+
     return () => {
       socket.off('media:user-screen-share', handleRemoteScreenShare);
     };

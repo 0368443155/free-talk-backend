@@ -4,7 +4,7 @@ import { useEffect, useRef, memo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Mic, MicOff, Video as VideoIcon, VideoOff, Crown, Shield, Maximize2, Loader2 } from "lucide-react";
+import { Mic, MicOff, Video as VideoIcon, VideoOff, Crown, Shield, Maximize2, Loader2, MonitorUp } from "lucide-react";
 import { IMeetingParticipant, ParticipantRole } from "@/api/meeting.rest";
 
 interface VideoGridProps {
@@ -104,25 +104,32 @@ const LocalVideo = memo(({ localStream, currentParticipant, isMuted, isVideoOff,
         )}
 
         {/* Overlay info */}
-        <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
+        <div className="absolute bottom-2 left-2 flex items-center">
           <div className="flex items-center gap-2 bg-black/50 px-2 py-1 rounded">
             {getRoleIcon(currentParticipant.role)}
             <span className="text-white text-xs font-medium truncate line-clamp-1 w-32">
               {currentParticipant.user.name} (You)
             </span>
           </div>
-          <div className="flex gap-1">
-            {isMuted ? (
+        </div>
+        
+        {/* Mic/Video status icons - Bottom right corner */}
+        <div className="absolute bottom-2 right-2 flex gap-1 items-center">
+          {isMuted && (
+            <div className="bg-black/70 rounded-full p-1.5">
               <MicOff className="w-4 h-4 text-red-500" />
-            ) : (
-              <Mic className="w-4 h-4 text-green-500" />
-            )}
-            {!shouldShowVideo ? (
+            </div>
+          )}
+          {!shouldShowVideo && (
+            <div className="bg-black/70 rounded-full p-1.5">
               <VideoOff className="w-4 h-4 text-red-500" />
-            ) : (
-              <VideoIcon className="w-4 h-4 text-green-500" />
-            )}
-          </div>
+            </div>
+          )}
+          {isScreenSharing && (
+            <div className="bg-black/70 rounded-full p-1.5">
+              <MonitorUp className="w-4 h-4 text-blue-500" />
+            </div>
+          )}
         </div>
 
         {/* Fullscreen button */}
@@ -212,10 +219,25 @@ const RemoteVideo = memo(({ stream, participant, connectionState }: RemoteVideoP
               {participant.user.name}
             </span>
           </div>
-          <div className="flex gap-1">
-            {participant.is_muted && <MicOff className="w-4 h-4 text-red-500" />}
-            {participant.is_video_off && <VideoOff className="w-4 h-4 text-red-500" />}
-          </div>
+        </div>
+        
+        {/* Mic/Video status icons - Bottom right corner */}
+        <div className="absolute bottom-2 right-2 flex gap-1 items-center">
+          {participant.is_muted && (
+            <div className="bg-black/70 rounded-full p-1.5">
+              <MicOff className="w-4 h-4 text-red-500" />
+            </div>
+          )}
+          {participant.is_video_off && (
+            <div className="bg-black/70 rounded-full p-1.5">
+              <VideoOff className="w-4 h-4 text-red-500" />
+            </div>
+          )}
+          {participant.is_screen_sharing && (
+            <div className="bg-black/70 rounded-full p-1.5">
+              <MonitorUp className="w-4 h-4 text-blue-500" />
+            </div>
+          )}
         </div>
 
         {/* Fullscreen button */}

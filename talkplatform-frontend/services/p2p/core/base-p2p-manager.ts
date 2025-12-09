@@ -15,6 +15,7 @@ export abstract class BaseP2PManager extends EventEmitter {
   protected meetingId: string = '';
   protected userId: string = '';
   protected isInitialized: boolean = false;
+  protected useNewGateway: boolean = false; // 🔥 NEW: Track gateway version
 
   /**
    * Track socket event listeners for cleanup
@@ -22,11 +23,12 @@ export abstract class BaseP2PManager extends EventEmitter {
    */
   private trackedListeners: Map<string, Function[]> = new Map();
 
-  constructor(socket: Socket, meetingId: string, userId: string) {
+  constructor(socket: Socket, meetingId: string, userId: string, useNewGateway: boolean = false) {
     super();
     this.socket = socket;
     this.meetingId = meetingId;
     this.userId = userId;
+    this.useNewGateway = useNewGateway;
     this.setupSocketReconnection();
   }
 
@@ -72,7 +74,64 @@ export abstract class BaseP2PManager extends EventEmitter {
   }
 
   /**
-   * Emit socket event với error handling
+   * Migrate event name based on gateway version
+   * 🔥 NEW: Support both old and new gateway events
+   * 
+   * Traditional gateway (useNewGateway = false):
+   * - media:ready -> webrtc:ready (no roomId)
+   * - media:offer -> webrtc:offer (no roomId)
+   * - media:answer -> webrtc:answer (no roomId)
+   * - media:ice-candidate -> webrtc:ice-candidate (no roomId)
+   * - media:toggle-mic, media:toggle-video, media:screen-share -> same (no roomId)
+   */
+  protected migrateEventName(event: string, data: any): { event: string; data: any } {
+    // If new gateway, use events as-is
+    if (this.useNewGateway) {
+      return { event, data };
+    }
+
+    // Migrate to traditional gateway format
+    switch (event) {
+      case 'media:ready':
+        return { 
+          event: 'webrtc:ready', 
+          data: { userId: data.userId || this.userId } 
+        };
+      
+      case 'media:offer':
+        return { 
+          event: 'webrtc:offer', 
+          data: { targetUserId: data.targetUserId, offer: data.offer } 
+        };
+      
+      case 'media:answer':
+        return { 
+          event: 'webrtc:answer', 
+          data: { targetUserId: data.targetUserId, answer: data.answer } 
+        };
+      
+      case 'media:ice-candidate':
+        return { 
+          event: 'webrtc:ice-candidate', 
+          data: { targetUserId: data.targetUserId, candidate: data.candidate } 
+        };
+      
+      case 'media:toggle-mic':
+      case 'media:toggle-video':
+      case 'media:screen-share':
+        // These events are the same for both gateways, just remove roomId
+        const { roomId, ...rest } = data;
+        return { event, data: rest };
+      
+      default:
+        // If no migration needed, use as-is
+        return { event, data };
+    }
+  }
+
+  /**
+   * Emit socket event với error handling và event migration
+   * 🔥 NEW: Automatically migrates event names based on gateway version
    */
   protected emitSocketEvent(
     event: string, 
@@ -84,13 +143,16 @@ export abstract class BaseP2PManager extends EventEmitter {
       return;
     }
 
+    // Migrate event name and data if needed
+    const { event: migratedEvent, data: migratedData } = this.migrateEventName(event, data);
+
     if (callback) {
-      this.socket.emit(event, data, callback);
+      this.socket.emit(migratedEvent, migratedData, callback);
     } else {
-      this.socket.emit(event, data);
+      this.socket.emit(migratedEvent, migratedData);
     }
 
-    this.log('debug', `Emitted ${event}`, data);
+    this.log('debug', `Emitted ${migratedEvent} (from ${event})`, migratedData);
   }
 
   /**
