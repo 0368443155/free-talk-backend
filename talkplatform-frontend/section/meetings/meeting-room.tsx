@@ -483,10 +483,20 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     }
   }, [isScreenSharing]);
 
-  // Listen for others' screen-share events to spotlight them
+  // Listen for others' screen-share events to spotlight them and update state
   useEffect(() => {
     if (!socket) return;
     const handleUserScreenShare = (data: { userId: string; isSharing: boolean }) => {
+      // 🔥 FIX: Update participants list when screen share state changes
+      setParticipants(prev => prev.map(p => {
+        const pid = p.user.id || (p.user as any).user_id;
+        if (pid === data.userId) {
+          return { ...p, is_screen_sharing: data.isSharing } as IMeetingParticipant;
+        }
+        return p;
+      }));
+
+      // Spotlight user when sharing
       if (data.isSharing) {
         setSpotlightUserId(data.userId);
       } else if (spotlightUserId === data.userId) {
@@ -620,8 +630,18 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     if (!socket) return;
 
     const handleForceMute = (data: { userId: string; isMuted: boolean }) => {
+      // 🔥 FIX: Always update participants list for ALL users (not just local user)
+      // This ensures host and all participants see state changes when ANY user toggles
+      setParticipants(prev => prev.map(p => {
+        const pid = p.user.id || (p.user as any).user_id;
+        if (pid === data.userId) {
+          return { ...p, is_muted: data.isMuted } as IMeetingParticipant;
+        }
+        return p;
+      }));
+
+      // If it's the current user, also enforce hardware state
       if (data.userId === user.id) {
-        // Host changed my mute state - enforce it
         const shouldBeMuted = data.isMuted;
         const currentlyMuted = isMuted;
         
@@ -645,22 +665,23 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
               : "Your microphone has been turned on.",
             variant: "default"
           });
-          
-          // Also update local state immediately
-          setParticipants(prev => prev.map(p => {
-            const pid = p.user.id || (p.user as any).user_id;
-            if (pid === user.id) {
-              return { ...p, is_muted: shouldBeMuted } as IMeetingParticipant;
-            }
-            return p;
-          }));
         }
       }
     };
 
     const handleForceVideoOff = (data: { userId: string; isVideoOff: boolean }) => {
+      // 🔥 FIX: Always update participants list for ALL users (not just local user)
+      // This ensures host and all participants see state changes when ANY user toggles
+      setParticipants(prev => prev.map(p => {
+        const pid = p.user.id || (p.user as any).user_id;
+        if (pid === data.userId) {
+          return { ...p, is_video_off: data.isVideoOff } as IMeetingParticipant;
+        }
+        return p;
+      }));
+
+      // If it's the current user, also enforce hardware state
       if (data.userId === user.id) {
-        // Host changed my video state - enforce it
         const shouldBeVideoOff = data.isVideoOff;
         const currentlyVideoOff = isVideoOff;
         
@@ -684,20 +705,21 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
               : "The host has enabled your camera.",
             variant: "default"
           });
-          
-          // Also update local state immediately
-          setParticipants(prev => prev.map(p => {
-            const pid = p.user.id || (p.user as any).user_id;
-            if (pid === user.id) {
-              return { ...p, is_video_off: shouldBeVideoOff } as IMeetingParticipant;
-            }
-            return p;
-          }));
         }
       }
     };
 
     const handleForceStopShare = (data: { userId: string; isSharing: boolean }) => {
+      // 🔥 FIX: Always update participants list for ALL users
+      setParticipants(prev => prev.map(p => {
+        const pid = p.user.id || (p.user as any).user_id;
+        if (pid === data.userId) {
+          return { ...p, is_screen_sharing: data.isSharing } as IMeetingParticipant;
+        }
+        return p;
+      }));
+
+      // If it's the current user and host stopped sharing, enforce it
       if (data.userId === user.id && !data.isSharing) {
         // Host stopped my screen share - force stop if currently sharing
         if (isScreenSharing) {
