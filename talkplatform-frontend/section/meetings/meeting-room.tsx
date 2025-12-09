@@ -142,6 +142,7 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
   const [showYouTubeSearch, setShowYouTubeSearch] = useState(false);
   const [youtubeVolume, setYoutubeVolume] = useState(50);
   const youtubePlayerRef = useRef<YouTubePlayerHandle | null>(null);
+  const [sidebarVisible, setSidebarVisible] = useState(true); // 🔥 NEW: Sidebar toggle state
 
   const { toast } = useToast();
   const router = useRouter();
@@ -339,6 +340,8 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
     isMuted,
     isVideoOff,
     isScreenSharing,
+    remoteScreenShares, // 🔥 NEW: Get remote screen shares
+    localScreenStream, // 🔥 NEW: Get local screen stream
     startLocalStream,
     stopLocalStream,
     toggleMute,
@@ -503,11 +506,30 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
         setSpotlightUserId(null);
       }
     };
+    // 🔥 NEW: Handle screen share errors (e.g., someone already sharing)
+    const handleScreenShareError = (data: { message: string }) => {
+      if (data.message && data.message.includes('already sharing')) {
+        toast({
+          title: "Screen Share Unavailable",
+          description: "Another participant is already sharing their screen. Please wait for them to stop.",
+          variant: "destructive",
+        });
+      } else if (data.message) {
+        toast({
+          title: "Screen Share Error",
+          description: data.message,
+          variant: "destructive",
+        });
+      }
+    };
+
     socket.on('media:user-screen-share', handleUserScreenShare);
+    socket.on('media:error', handleScreenShareError);
     return () => {
       socket.off('media:user-screen-share', handleUserScreenShare);
+      socket.off('media:error', handleScreenShareError);
     };
-  }, [socket, spotlightUserId]);
+  }, [socket, spotlightUserId, toast]);
 
   useEffect(() => {
     if (isOnline && !localStream) {
@@ -1185,10 +1207,10 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
                     <div className={showVideoGrid ? "h-full" : "hidden"}>
                       <VideoGrid
                         localStream={localStream}
-                        screenStream={null}
+                        screenStream={localScreenStream} // 🔥 FIX: Pass local screen stream
                         peers={peers}
                         connectionStates={new Map()}
-                        remoteScreenShares={new Map()}
+                        remoteScreenShares={remoteScreenShares} // 🔥 FIX: Pass remote screen shares
                         participants={participants}
                         currentUserId={user.id}
                         isMuted={isMuted}
@@ -1214,8 +1236,25 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
             </div>
           </div>
 
-          {/* Sidebar - Fixed width */}
-          <div className="w-80 bg-gray-800 flex flex-col border-l border-gray-700 flex-shrink-0">
+          {/* Sidebar Toggle Button - Always visible, positioned outside sidebar */}
+          <button
+            onClick={() => setSidebarVisible(!sidebarVisible)}
+            className={`fixed right-0 top-1/2 transform -translate-y-1/2 z-50 bg-gray-800 hover:bg-gray-700 text-white p-2 rounded-l-lg border-l border-t border-b border-gray-700 transition-all ${
+              sidebarVisible ? 'translate-x-80' : 'translate-x-0'
+            }`}
+            aria-label={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
+          >
+            {sidebarVisible ? (
+              <ArrowLeft className="w-4 h-4" />
+            ) : (
+              <ArrowLeft className="w-4 h-4 rotate-180" />
+            )}
+          </button>
+
+          {/* Sidebar - Fixed width with toggle */}
+          <div className={`bg-gray-800 flex flex-col border-l border-gray-700 flex-shrink-0 transition-all duration-300 ${
+            sidebarVisible ? 'w-80' : 'w-0 overflow-hidden'
+          }`}>
             {/* Tab buttons */}
             <div className="flex border-b border-gray-700 flex-shrink-0 hidden">
               <button
@@ -1357,7 +1396,7 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
         </div>
 
         {/* Controls - Fixed at bottom */}
-        <div className="h-14 bg-gray-800 p-2 flex items-center justify-between flex-shrink-0 border-t border-gray-700">
+        <div className="h-16 bg-gray-800 p-2 flex items-center justify-between flex-shrink-0 border-t border-gray-700 z-10">
           {/* Left side: Main controls */}
 
           {/* Left side - Bandwidth monitoring (Phase 3: Real data) */}
@@ -1491,67 +1530,8 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
             </div>
           </div>
 
-          {/* Right side - Message Input */}
-          <div className="flex items-center gap-2">
-            <div className="flex-1 relative">
-              <Input
-                ref={chatInputRef}
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                onKeyDown={handleChatInputKeyPress}
-                placeholder={isOnline ? "Send a message to everyone" : "Join meeting to chat"}
-                disabled={!isOnline || isSending}
-                className="pl-4 pr-12 bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500 focus:ring-blue-500"
-              />
-
-              {/* Emoji picker button */}
-              <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white hover:bg-gray-600 w-8 h-8 p-0"
-                    disabled={!isOnline}
-                  >
-                    <Smile className="w-4 h-4" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent side="top" className="w-80 p-2 bg-gray-800 border-gray-700">
-                  <div className="grid grid-cols-8 gap-1">
-                    {['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '👍', '👎', '👏', '🙌', '👋', '✌️', '🤞', '🤟', '🤘', '👌', '🤌', '🤏', '✨', '🎉'].map((emoji) => (
-                      <Button
-                        key={emoji}
-                        variant="ghost"
-                        size="sm"
-                        className="w-8 h-8 p-0 text-lg hover:bg-gray-700"
-                        onClick={() => {
-                          setNewMessage(prev => prev + emoji);
-                          setShowEmojiPicker(false);
-                          chatInputRef.current?.focus();
-                        }}
-                      >
-                        {emoji}
-                      </Button>
-                    ))}
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            {/* Send button */}
-            <Button
-              onClick={handleChatInputSend}
-              disabled={!newMessage.trim() || !isOnline || isSending}
-              size="sm"
-              className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600"
-            >
-              {isSending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
-            </Button>
-          </div>
+          {/* Right side - Empty (chat input moved to sidebar) */}
+          <div className="w-0"></div>
         </div>
 
         {/* Meeting Bandwidth Monitor - Floating Widget */}

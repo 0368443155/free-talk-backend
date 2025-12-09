@@ -70,8 +70,17 @@ const LocalVideo = memo(({ localStream, currentParticipant, isMuted, isVideoOff,
   }, [localStream]);
 
   // 🔥 FIX: Simple check - if we have stream and video tracks, show video
-  const hasVideoTrack = (localStream?.getVideoTracks().length ?? 0) > 0;
-  const videoTrack = localStream?.getVideoTracks()[0];
+  // Filter out screen share tracks - only show camera tracks
+  const videoTracks = localStream?.getVideoTracks().filter(t => {
+    const label = t.label.toLowerCase();
+    return !label.includes('screen') && 
+           !label.includes('display') && 
+           !label.includes('window') && 
+           !label.includes('monitor') &&
+           !label.includes('desktop');
+  }) || [];
+  const hasVideoTrack = videoTracks.length > 0;
+  const videoTrack = videoTracks[0];
   const isVideoEnabled = videoTrack?.enabled ?? false;
   const shouldShowVideo = localStream && hasVideoTrack && isVideoEnabled;
 
@@ -282,6 +291,119 @@ const RemoteVideo = memo(({ stream, participant, connectionState }: RemoteVideoP
 
 RemoteVideo.displayName = 'RemoteVideo';
 
+// 🔥 NEW: Local screen share video component with proper ref handling
+interface LocalScreenShareVideoProps {
+  screenStream: MediaStream;
+}
+
+const LocalScreenShareVideo = memo(({ screenStream }: LocalScreenShareVideoProps) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (!videoRef.current || !screenStream) return;
+
+    const video = videoRef.current;
+    
+    // Only update if stream has changed
+    if (video.srcObject !== screenStream) {
+      video.srcObject = screenStream;
+      
+      // Play with error handling
+      video.play().catch((err) => {
+        // Ignore AbortError - it's expected when stream changes
+        if (err?.name !== 'AbortError') {
+          console.error('[LocalScreenShareVideo] Failed to play:', err);
+        }
+      });
+    }
+
+    // Handle track ended
+    const handleTrackEnded = () => {
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+    };
+
+    screenStream.getTracks().forEach(track => {
+      track.addEventListener('ended', handleTrackEnded);
+    });
+
+    return () => {
+      screenStream.getTracks().forEach(track => {
+        track.removeEventListener('ended', handleTrackEnded);
+      });
+    };
+  }, [screenStream]);
+
+  return (
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      className="w-full h-full object-contain rounded bg-black"
+    />
+  );
+});
+
+LocalScreenShareVideo.displayName = 'LocalScreenShareVideo';
+
+// 🔥 NEW: Remote screen share video component with proper ref handling
+interface RemoteScreenShareVideoProps {
+  stream: MediaStream;
+  participantName: string;
+}
+
+const RemoteScreenShareVideo = memo(({ stream, participantName }: RemoteScreenShareVideoProps) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (!videoRef.current || !stream) return;
+
+    const video = videoRef.current;
+    
+    // Only update if stream has changed
+    if (video.srcObject !== stream) {
+      video.srcObject = stream;
+      
+      // Play with error handling
+      video.play().catch((err) => {
+        // Ignore AbortError - it's expected when stream changes
+        if (err?.name !== 'AbortError') {
+          console.error(`[RemoteScreenShareVideo] Failed to play for ${participantName}:`, err);
+        }
+      });
+    }
+
+    // Handle track ended
+    const handleTrackEnded = () => {
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+    };
+
+    stream.getTracks().forEach(track => {
+      track.addEventListener('ended', handleTrackEnded);
+    });
+
+    return () => {
+      stream.getTracks().forEach(track => {
+        track.removeEventListener('ended', handleTrackEnded);
+      });
+    };
+  }, [stream, participantName]);
+
+  return (
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      className="w-full h-full object-contain bg-black rounded"
+    />
+  );
+});
+
+RemoteScreenShareVideo.displayName = 'RemoteScreenShareVideo';
+
 export function VideoGrid({
   localStream,
   screenStream, // 🔥 NEW: Separate screen stream from V2
@@ -327,17 +449,7 @@ export function VideoGrid({
         <div className="w-full mb-4">
           <Card className="bg-gray-800 border-gray-700">
             <CardContent className="p-0 aspect-video relative">
-              <video
-                ref={(el) => {
-                  if (el && screenStream) {
-                    el.srcObject = screenStream;
-                    el.play().catch(console.error);
-                  }
-                }}
-                autoPlay
-                playsInline
-                className="w-full h-full object-contain rounded bg-black"
-              />
+              <LocalScreenShareVideo screenStream={screenStream} />
               <div className="absolute bottom-2 left-2 bg-black/70 px-3 py-1 rounded">
                 <span className="text-white text-sm font-medium">
                   🖥️ Your Screen
@@ -357,17 +469,7 @@ export function VideoGrid({
           <div key={`screen-${userId}`} className="w-full mb-4">
             <Card className="bg-gray-800 border-gray-700">
               <CardContent className="p-0 aspect-video relative">
-                <video
-                  ref={(el) => {
-                    if (el && stream) {
-                      el.srcObject = stream;
-                      el.play().catch(console.error);
-                    }
-                  }}
-                  autoPlay
-                  playsInline
-                  className="w-full h-full object-contain bg-black rounded"
-                />
+                <RemoteScreenShareVideo stream={stream} participantName={participant.user.name} />
                 <div className="absolute bottom-2 left-2 bg-black/70 px-3 py-1 rounded flex items-center gap-2">
                   <span className="text-white text-sm font-medium">
                     🖥️ {participant.user.name}'s Screen
@@ -379,8 +481,8 @@ export function VideoGrid({
         );
       })}
 
-      {/* Spotlight section */}
-      {spotlightUserId && spotlightParticipant && (
+      {/* Spotlight section - Hide local camera when screen sharing */}
+      {spotlightUserId && spotlightParticipant && !(spotlightUserId === currentUserId && isScreenSharing) && (
         <div className="w-full">
           {spotlightUserId === currentUserId ? (
             <LocalVideo
@@ -404,15 +506,15 @@ export function VideoGrid({
 
       {/* Grid section */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 auto-rows-fr">
-        {/* Local video */}
-        {currentParticipant && (
+        {/* Local video - Hide camera when screen sharing (screen share is shown separately above) */}
+        {currentParticipant && !isScreenSharing && (
           <LocalVideo
             key="local-video"
             localStream={localStream}
             currentParticipant={currentParticipant}
             isMuted={isMuted}
             isVideoOff={isVideoOff}
-            isScreenSharing={isScreenSharing}
+            isScreenSharing={false}
           />
         )}
 

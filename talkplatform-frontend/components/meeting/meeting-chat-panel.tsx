@@ -66,6 +66,17 @@ export function MeetingChatPanel({
     chatInputRef.current?.focus();
   }, []);
 
+  // 🔥 NEW: Auto-scroll to bottom when messages change or component mounts
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Scroll to bottom when messages change or component mounts
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
+
   return (
     <div className="flex-1 flex flex-col h-full min-h-0 relative">
       {/* Chat disconnected banner */}
@@ -77,7 +88,7 @@ export function MeetingChatPanel({
 
       {/* Messages area - Use MeetingChat for display only */}
       <div className="flex-1 min-h-0 overflow-hidden">
-        <ScrollArea className="h-full p-3">
+        <ScrollArea ref={scrollAreaRef} className="h-full p-3">
           <div className="space-y-1">
             {messages.map((message, index) => {
               // Handle system messages (join/leave notifications)
@@ -126,6 +137,8 @@ export function MeetingChatPanel({
                 Start the conversation!
               </div>
             )}
+            {/* Scroll anchor - always at bottom */}
+            <div ref={messagesEndRef} />
           </div>
         </ScrollArea>
       </div>
