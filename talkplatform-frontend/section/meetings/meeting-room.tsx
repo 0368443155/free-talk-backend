@@ -1167,9 +1167,21 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
           showParticipants={showParticipants}
           showChat={showChat}
           showYouTubeSearch={showYouTubeSearch}
-          onToggleParticipants={() => { setShowParticipants(true); setShowChat(false); setShowFunctions(false); }}
-          onToggleChat={() => { setShowChat(true); setShowParticipants(false); setShowFunctions(false); setShowYouTubeSearch(false); }}
+          onToggleParticipants={() => { 
+            if (!sidebarVisible) setSidebarVisible(true); // 🔥 NEW: Auto-show sidebar if hidden
+            setShowParticipants(true); 
+            setShowChat(false); 
+            setShowFunctions(false); 
+          }}
+          onToggleChat={() => { 
+            if (!sidebarVisible) setSidebarVisible(true); // 🔥 NEW: Auto-show sidebar if hidden
+            setShowChat(true); 
+            setShowParticipants(false); 
+            setShowFunctions(false); 
+            setShowYouTubeSearch(false); 
+          }}
           onToggleYouTubeSearch={() => {
+            if (!sidebarVisible) setSidebarVisible(true); // 🔥 NEW: Auto-show sidebar if hidden
             setShowYouTubeSearch(!showYouTubeSearch);
             setShowParticipants(false);
             setShowChat(false);
@@ -1269,14 +1281,24 @@ export function MeetingRoom({ meeting, user, classroomId, onReconnect }: Meeting
               <button
                 className={`flex-1 p-2 transition-colors ${showChat ? "bg-gray-700 text-white" : "text-gray-400 hover:text-white"
                   }`}
-                onClick={() => { setShowChat(true); setShowParticipants(false); setShowFunctions(false); }}
+                onClick={() => { 
+                  if (!sidebarVisible) setSidebarVisible(true); // 🔥 NEW: Auto-show sidebar if hidden
+                  setShowChat(true); 
+                  setShowParticipants(false); 
+                  setShowFunctions(false); 
+                }}
               >
                 <MessageSquare className="w-5 h-5 mx-auto" />
               </button>
               <button
                 className={`flex-1 p-2 transition-colors ${showFunctions ? "bg-gray-700 text-white" : "text-gray-400 hover:text-white"
                   }`}
-                onClick={() => { setShowFunctions(true); setShowParticipants(false); setShowChat(false); }}
+                onClick={() => { 
+                  if (!sidebarVisible) setSidebarVisible(true); // 🔥 NEW: Auto-show sidebar if hidden
+                  setShowFunctions(true); 
+                  setShowParticipants(false); 
+                  setShowChat(false); 
+                }}
               >
                 <Play className="w-5 h-5 mx-auto" />
               </button>
