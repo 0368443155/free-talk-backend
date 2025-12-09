@@ -301,6 +301,11 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
             });
             
             if (screenShareSender) {
+              // 🔥 FIX: Stop the track first to notify receivers and prevent frozen video
+              if (screenShareSender.track) {
+                screenShareSender.track.stop();
+                console.log(`🛑 Stopped screen share track for ${targetUserId}`);
+              }
               await screenShareSender.replaceTrack(null);
               console.log(`🖥️ Removed screen share track for ${targetUserId}`);
             }
@@ -529,6 +534,11 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
                   });
                   
                   if (screenShareSender) {
+                    // 🔥 FIX: Stop the track first to notify receivers and prevent frozen video
+                    if (screenShareSender.track) {
+                      screenShareSender.track.stop();
+                      console.log(`🛑 Stopped screen share track for ${targetUserId} (from notification)`);
+                    }
                     await screenShareSender.replaceTrack(null);
                     console.log(`🖥️ Removed screen share track for ${targetUserId}`);
                   }
@@ -748,6 +758,29 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
         // Store screen share stream separately
         remoteScreenSharesRef.current.set(targetUserId, remoteStream);
         setRemoteScreenShares(new Map(remoteScreenSharesRef.current));
+        
+        // 🔥 NEW: Listen for track ended/removed to clear screen share
+        const handleTrackEnded = () => {
+          console.log(`🖥️ Screen share track ended from ${targetUserId}`);
+          // Stop all tracks in the stream
+          const streamToStop = remoteScreenSharesRef.current.get(targetUserId);
+          if (streamToStop) {
+            streamToStop.getTracks().forEach(track => track.stop());
+          }
+          // Clear from map
+          remoteScreenSharesRef.current.delete(targetUserId);
+          setRemoteScreenShares(new Map(remoteScreenSharesRef.current));
+        };
+        
+        event.track.onended = handleTrackEnded;
+        
+        // Also listen for track removed from stream
+        remoteStream.addEventListener('removetrack', (e) => {
+          if (e.track && e.track.kind === 'video') {
+            console.log(`🖥️ Screen share track removed from stream for ${targetUserId}`);
+            handleTrackEnded();
+          }
+        });
       } else if (event.track.kind === 'video' && !isScreenShare) {
         // Regular video track - update peer stream (camera)
         setPeers(prev => {
@@ -1089,8 +1122,19 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
     // 🔥 NEW: Listen for screen share events to clear remote screen shares
     const handleRemoteScreenShare = (data: { userId: string; isSharing: boolean }) => {
       if (!data.isSharing) {
-        // User stopped sharing - clear their screen share
+        // User stopped sharing - clear their screen share immediately
         console.log(`🖥️ User ${data.userId} stopped screen sharing, clearing remote screen share`);
+        
+        // Stop tracks in the stream to prevent frozen video (before clearing)
+        const screenShareStreamToStop = remoteScreenSharesRef.current.get(data.userId);
+        if (screenShareStreamToStop) {
+          screenShareStreamToStop.getTracks().forEach(track => {
+            track.stop();
+            console.log(`🛑 Stopped screen share track from ${data.userId}`);
+          });
+        }
+        
+        // Clear from ref and state immediately
         remoteScreenSharesRef.current.delete(data.userId);
         setRemoteScreenShares(new Map(remoteScreenSharesRef.current));
       }

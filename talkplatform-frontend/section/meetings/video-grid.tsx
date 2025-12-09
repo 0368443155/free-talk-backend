@@ -357,10 +357,16 @@ const RemoteScreenShareVideo = memo(({ stream, participantName }: RemoteScreenSh
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    if (!videoRef.current || !stream) return;
+    if (!videoRef.current) return;
 
     const video = videoRef.current;
     
+    // If stream is null or has no tracks, clear video
+    if (!stream || stream.getTracks().length === 0) {
+      video.srcObject = null;
+      return;
+    }
+
     // Only update if stream has changed
     if (video.srcObject !== stream) {
       video.srcObject = stream;
@@ -374,8 +380,16 @@ const RemoteScreenShareVideo = memo(({ stream, participantName }: RemoteScreenSh
       });
     }
 
-    // Handle track ended
+    // Handle track ended or removed
     const handleTrackEnded = () => {
+      console.log(`🛑 Screen share track ended for ${participantName}`);
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+    };
+
+    const handleTrackRemoved = () => {
+      console.log(`🛑 Screen share track removed for ${participantName}`);
       if (videoRef.current) {
         videoRef.current.srcObject = null;
       }
@@ -383,12 +397,17 @@ const RemoteScreenShareVideo = memo(({ stream, participantName }: RemoteScreenSh
 
     stream.getTracks().forEach(track => {
       track.addEventListener('ended', handleTrackEnded);
+      track.addEventListener('mute', handleTrackEnded);
     });
+    
+    stream.addEventListener('removetrack', handleTrackRemoved);
 
     return () => {
       stream.getTracks().forEach(track => {
         track.removeEventListener('ended', handleTrackEnded);
+        track.removeEventListener('mute', handleTrackEnded);
       });
+      stream.removeEventListener('removetrack', handleTrackRemoved);
     };
   }, [stream, participantName]);
 
@@ -460,26 +479,37 @@ export function VideoGrid({
         </div>
       )}
 
-      {/* 🔥 FIX: REMOTE SCREENS */}
-      {remoteScreenShares && Array.from(remoteScreenShares.entries()).map(([userId, stream]) => {
-        const participant = getParticipantInfo(userId);
-        if (!participant) return null;
-        
-        return (
-          <div key={`screen-${userId}`} className="w-full mb-4">
-            <Card className="bg-gray-800 border-gray-700">
-              <CardContent className="p-0 aspect-video relative">
-                <RemoteScreenShareVideo stream={stream} participantName={participant.user.name} />
-                <div className="absolute bottom-2 left-2 bg-black/70 px-3 py-1 rounded flex items-center gap-2">
-                  <span className="text-white text-sm font-medium">
-                    🖥️ {participant.user.name}'s Screen
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        );
-      })}
+      {/* 🔥 FIX: REMOTE SCREENS - Only show if stream has active tracks */}
+      {remoteScreenShares && Array.from(remoteScreenShares.entries())
+        .filter(([userId, stream]) => {
+          // Only show if stream exists and has active video tracks
+          const hasActiveTracks = stream && stream.getVideoTracks().some(track => 
+            track.readyState === 'live' && !track.muted && track.enabled
+          );
+          if (!hasActiveTracks) {
+            console.log(`🖥️ Filtering out screen share for ${userId} - no active tracks`);
+          }
+          return hasActiveTracks;
+        })
+        .map(([userId, stream]) => {
+          const participant = getParticipantInfo(userId);
+          if (!participant) return null;
+          
+          return (
+            <div key={`screen-${userId}`} className="w-full mb-4">
+              <Card className="bg-gray-800 border-gray-700">
+                <CardContent className="p-0 aspect-video relative">
+                  <RemoteScreenShareVideo stream={stream} participantName={participant.user.name} />
+                  <div className="absolute bottom-2 left-2 bg-black/70 px-3 py-1 rounded flex items-center gap-2">
+                    <span className="text-white text-sm font-medium">
+                      🖥️ {participant.user.name}'s Screen
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          );
+        })}
 
       {/* Spotlight section - Hide local camera when screen sharing */}
       {spotlightUserId && spotlightParticipant && !(spotlightUserId === currentUserId && isScreenSharing) && (
