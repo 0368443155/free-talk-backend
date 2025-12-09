@@ -542,6 +542,82 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   /**
+   * @deprecated Use media:toggle-mic instead
+   * Backward compatibility handler for old toggle-audio event
+   */
+  @SubscribeMessage('toggle-audio')
+  async handleToggleAudio(
+    @ConnectedSocket() client: SocketWithUser,
+    @MessageBody() data: { enabled: boolean },
+  ) {
+    if (!client.meetingId || !client.user) return;
+
+    // Convert enabled to isMuted (enabled=false means muted=true)
+    const isMuted = !data.enabled;
+
+    // Update participant
+    await this.participantRepository.update(
+      {
+        meeting: { id: client.meetingId },
+        user: { id: client.user.id },
+      },
+      { is_muted: isMuted },
+    );
+
+    // Notify others - emit both old and new events for compatibility
+    this.server.to(client.meetingId).emit('media:user-muted', {
+      userId: client.user.id,
+      isMuted: isMuted,
+    });
+    
+    // Also emit old event name for backward compatibility
+    this.server.to(client.meetingId).emit('user-muted', {
+      userId: client.user.id,
+      isMuted: isMuted,
+    });
+
+    this.logger.log(`User ${client.user.id} ${data.enabled ? 'unmuted' : 'muted'} in meeting ${client.meetingId} (old event)`);
+  }
+
+  /**
+   * @deprecated Use media:toggle-video instead
+   * Backward compatibility handler for old toggle-video event
+   */
+  @SubscribeMessage('toggle-video')
+  async handleToggleVideoLegacy(
+    @ConnectedSocket() client: SocketWithUser,
+    @MessageBody() data: { enabled: boolean },
+  ) {
+    if (!client.meetingId || !client.user) return;
+
+    // Convert enabled to isVideoOff (enabled=false means videoOff=true)
+    const isVideoOff = !data.enabled;
+
+    // Update participant
+    await this.participantRepository.update(
+      {
+        meeting: { id: client.meetingId },
+        user: { id: client.user.id },
+      },
+      { is_video_off: isVideoOff },
+    );
+
+    // Notify others - emit both old and new events for compatibility
+    this.server.to(client.meetingId).emit('media:user-video-off', {
+      userId: client.user.id,
+      isVideoOff: isVideoOff,
+    });
+    
+    // Also emit old event name for backward compatibility
+    this.server.to(client.meetingId).emit('user-video-off', {
+      userId: client.user.id,
+      isVideoOff: isVideoOff,
+    });
+
+    this.logger.log(`User ${client.user.id} video ${data.enabled ? 'on' : 'off'} in meeting ${client.meetingId} (old event)`);
+  }
+
+  /**
    * Handle Media ready signal (New Gateway)
    * When a user's media stream is ready, broadcast to others so they can initiate connections
    */
@@ -646,6 +722,124 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
       isSharing: false,
       timestamp: new Date(),
     });
+  }
+
+  /**
+   * @deprecated Use admin:mute-user instead
+   * Backward compatibility handler for old force-mute-participant event
+   */
+  @SubscribeMessage('force-mute-participant')
+  async handleForceMuteParticipant(
+    @ConnectedSocket() client: SocketWithUser,
+    @MessageBody() data: { targetUserId: string },
+  ) {
+    if (!(await this.ensureHost(client))) {
+      client.emit('error', { message: 'Only host can mute participants' });
+      return;
+    }
+
+    // Update target participant
+    await this.participantRepository.update(
+      { meeting: { id: client.meetingId }, user: { id: data.targetUserId } },
+      { is_muted: true },
+    );
+
+    // Send command to target user (if connected)
+    const targetSocketId = userSocketMap.get(data.targetUserId);
+    if (targetSocketId) {
+      this.server.to(targetSocketId).emit('force-muted', {
+        byUserId: client.user!.id,
+      });
+    }
+
+    // Broadcast state to all - emit both old and new events
+    this.server.to(client.meetingId!).emit('media:user-muted', {
+      userId: data.targetUserId,
+      isMuted: true,
+    });
+    
+    // Also emit old event name for backward compatibility
+    this.server.to(client.meetingId!).emit('user-muted', {
+      userId: data.targetUserId,
+      isMuted: true,
+    });
+
+    this.logger.log(`Host ${client.user!.id} muted participant ${data.targetUserId} (old event)`);
+  }
+
+  /**
+   * @deprecated Use admin:video-off-user instead
+   * Backward compatibility handler for old force-video-off-participant event
+   */
+  @SubscribeMessage('force-video-off-participant')
+  async handleForceVideoOffParticipant(
+    @ConnectedSocket() client: SocketWithUser,
+    @MessageBody() data: { targetUserId: string },
+  ) {
+    if (!(await this.ensureHost(client))) {
+      client.emit('error', { message: 'Only host can control video' });
+      return;
+    }
+
+    // Update target participant
+    await this.participantRepository.update(
+      { meeting: { id: client.meetingId }, user: { id: data.targetUserId } },
+      { is_video_off: true },
+    );
+
+    // Send command to target user (if connected)
+    const targetSocketId = userSocketMap.get(data.targetUserId);
+    if (targetSocketId) {
+      this.server.to(targetSocketId).emit('force-video-off', {
+        byUserId: client.user!.id,
+      });
+    }
+
+    // Broadcast state to all - emit both old and new events
+    this.server.to(client.meetingId!).emit('media:user-video-off', {
+      userId: data.targetUserId,
+      isVideoOff: true,
+    });
+    
+    // Also emit old event name for backward compatibility
+    this.server.to(client.meetingId!).emit('user-video-off', {
+      userId: data.targetUserId,
+      isVideoOff: true,
+    });
+
+    this.logger.log(`Host ${client.user!.id} turned off video for ${data.targetUserId} (old event)`);
+  }
+
+  /**
+   * @deprecated Use admin:stop-share-user instead
+   * Backward compatibility handler for old force-stop-screen-share event
+   */
+  @SubscribeMessage('force-stop-screen-share')
+  async handleForceStopScreenShare(
+    @ConnectedSocket() client: SocketWithUser,
+    @MessageBody() data: { targetUserId: string },
+  ) {
+    if (!(await this.ensureHost(client))) {
+      client.emit('error', { message: 'Only host can stop screen share' });
+      return;
+    }
+
+    // Send command to target user (if connected)
+    const targetSocketId = userSocketMap.get(data.targetUserId);
+    if (targetSocketId) {
+      this.server.to(targetSocketId).emit('force-stop-screen-share', {
+        byUserId: client.user!.id,
+      });
+    }
+
+    // Broadcast stop screen share signal
+    this.server.to(client.meetingId!).emit('media:user-screen-share', {
+      userId: data.targetUserId,
+      isSharing: false,
+      timestamp: new Date(),
+    });
+
+    this.logger.log(`Host ${client.user!.id} stopped screen share for ${data.targetUserId} (old event)`);
   }
 
   @SubscribeMessage('admin:kick-user')

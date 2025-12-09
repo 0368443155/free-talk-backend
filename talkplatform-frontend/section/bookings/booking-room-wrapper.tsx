@@ -60,3 +60,4 @@ export function BookingRoomWrapper({ bookingId, user }: BookingRoomWrapperProps)
   return <BookingRoom booking={booking} user={user} />;
 }
 
+

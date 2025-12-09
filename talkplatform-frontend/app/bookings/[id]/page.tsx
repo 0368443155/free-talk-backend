@@ -37,3 +37,4 @@ export default function BookingRoomPage() {
   return <BookingRoomWrapper bookingId={bookingId} user={user} />;
 }
 
+
