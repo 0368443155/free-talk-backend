@@ -50,6 +50,7 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [remoteScreenShares, setRemoteScreenShares] = useState<Map<string, MediaStream>>(new Map()); // 🔥 NEW: Remote screen shares
+  const [localScreenStreamState, setLocalScreenStreamState] = useState<MediaStream | null>(null); // 🔥 NEW: State for local screen stream to trigger re-render
   
   // Check if new gateway is enabled
   const useNewGateway = useFeatureFlag('use_new_gateway');
@@ -283,6 +284,7 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
         // Stop screen tracks
         screenStreamRef.current?.getTracks().forEach(t => t.stop());
         screenStreamRef.current = null;
+        setLocalScreenStreamState(null); // 🔥 FIX: Clear state to trigger re-render
 
         // 🔥 NEW: Remove screen share track from peers (don't replace, just remove)
         isReplacingTracksRef.current = true;
@@ -486,6 +488,7 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
       
       // Store screen share stream separately
       screenStreamRef.current = new MediaStream([screenTrack]);
+      setLocalScreenStreamState(screenStreamRef.current); // 🔥 FIX: Update state to trigger re-render
       
       // Keep localStream with camera + audio ONLY (don't add screen track here)
       // This ensures LocalVideo component only shows camera, not screen share
@@ -595,6 +598,7 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
               // Clear screen share state
               setIsScreenSharing(false);
               screenStreamRef.current = null;
+              setLocalScreenStreamState(null); // 🔥 FIX: Clear state to trigger re-render
               
               // Notify server
               if (socket) {
@@ -1262,7 +1266,7 @@ export function useWebRTC({ socket, meetingId, userId, isOnline }: UseWebRTCProp
     isVideoOff,
     isScreenSharing,
     remoteScreenShares, // 🔥 NEW: Return remote screen shares
-    localScreenStream: screenStreamRef.current, // 🔥 NEW: Return local screen stream
+    localScreenStream: localScreenStreamState, // 🔥 FIX: Use state instead of ref to trigger re-render
     startLocalStream,
     stopLocalStream,
     toggleMute,

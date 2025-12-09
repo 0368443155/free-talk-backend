@@ -300,10 +300,18 @@ const LocalScreenShareVideo = memo(({ screenStream }: LocalScreenShareVideoProps
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    if (!videoRef.current || !screenStream) return;
+    if (!videoRef.current) return;
 
     const video = videoRef.current;
     
+    // If stream is null or has no active tracks, clear video
+    if (!screenStream || !screenStream.getVideoTracks().some(track => 
+      track.readyState === 'live' && !track.muted && track.enabled
+    )) {
+      video.srcObject = null;
+      return;
+    }
+
     // Only update if stream has changed
     if (video.srcObject !== screenStream) {
       video.srcObject = screenStream;
@@ -317,8 +325,16 @@ const LocalScreenShareVideo = memo(({ screenStream }: LocalScreenShareVideoProps
       });
     }
 
-    // Handle track ended
+    // Handle track ended or removed
     const handleTrackEnded = () => {
+      console.log(`🛑 Local screen share track ended`);
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+    };
+
+    const handleTrackRemoved = () => {
+      console.log(`🛑 Local screen share track removed`);
       if (videoRef.current) {
         videoRef.current.srcObject = null;
       }
@@ -326,12 +342,17 @@ const LocalScreenShareVideo = memo(({ screenStream }: LocalScreenShareVideoProps
 
     screenStream.getTracks().forEach(track => {
       track.addEventListener('ended', handleTrackEnded);
+      track.addEventListener('mute', handleTrackEnded);
     });
+    
+    screenStream.addEventListener('removetrack', handleTrackRemoved);
 
     return () => {
       screenStream.getTracks().forEach(track => {
         track.removeEventListener('ended', handleTrackEnded);
+        track.removeEventListener('mute', handleTrackEnded);
       });
+      screenStream.removeEventListener('removetrack', handleTrackRemoved);
     };
   }, [screenStream]);
 
@@ -464,7 +485,10 @@ export function VideoGrid({
   return (
     <div className="p-4 space-y-4">
       {/* 🔥 NEW: Screen share section (full width, above everything) */}
-      {screenStream && (
+      {/* Only show if stream exists and has active video tracks */}
+      {screenStream && screenStream.getVideoTracks().some(track => 
+        track.readyState === 'live' && !track.muted && track.enabled
+      ) && (
         <div className="w-full mb-4">
           <Card className="bg-gray-800 border-gray-700">
             <CardContent className="p-0 aspect-video relative">
